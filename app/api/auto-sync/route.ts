@@ -2,16 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { syncOrders } from '@/app/services/orderSyncs';
 import { getAllShops } from '@/app/services/shopeeService';
 
-
 export async function GET(request: NextRequest) {
   try {
     console.log('Memulai sinkronisasi...');
+    
+    const endTime = Math.floor(Date.now() / 1000);
+    const startTime = endTime - (24 * 60 * 60);
 
-    // Waktu sekarang dalam detik (tanpa perlu menambah offset)
-    const endTime = Math.floor(Date.now() / 1000); // Konversi ke detik
-    const startTime = endTime - (24 * 60 * 60); // 1 jam dalam detik
-
-    // Tampilkan startTime dan endTime dalam format string
     console.log('Start Time:', new Date(startTime * 1000).toLocaleString('id-ID', { 
         timeZone: 'Asia/Jakarta',
         hour12: false 
@@ -20,12 +17,9 @@ export async function GET(request: NextRequest) {
         timeZone: 'Asia/Jakarta',
         hour12: false 
     }));
-    
 
-    // Daftar toko yang akan disinkronkan
     const shops = await getAllShops();
-
-    // Jalankan sinkronisasi untuk setiap toko
+    
     const results = await Promise.allSettled(
       shops.map(async (shop) => {
         return new Promise((resolve, reject) => {
@@ -41,27 +35,24 @@ export async function GET(request: NextRequest) {
               console.error(`Error syncing shop ${shop.shop_name} (${shop.shop_id}):`, error);
               reject(error);
             }
-          }).then((orderCount) => {
-            resolve(orderCount); // Asumsikan syncOrders mengembalikan jumlah pesanan
-          }).catch(reject);
+          }).then(resolve).catch(reject);
         });
       })
     );
 
-    // Analisis hasil
+    // Buat summary hasil sync
     const summary = results.reduce<Record<string, any>>((acc, result, index) => {
       const shop = shops[index];
       acc[`${shop.shop_name} (${shop.shop_id})`] = {
         status: result.status,
         ...(result.status === 'fulfilled' && { 
-          total_orders: (result.value as { data: { total: number } }).data.total // Ambil total dari data dengan type assertion
+          total_orders: (result.value as { data: { total: number } }).data.total
         }),
         ...(result.status === 'rejected' && { error: result.reason })
       };
       return acc;
     }, {});
 
-    // Hitung total keseluruhan
     const totalOrders = results.reduce((total, result) => {
       if (result.status === 'fulfilled') {
         return total + (result.value as { data: { total: number } }).data.total;
@@ -69,21 +60,32 @@ export async function GET(request: NextRequest) {
       return total;
     }, 0);
 
-    return NextResponse.json({
-      success: true,
-      message: `Sync completed`,
-      total_orders: totalOrders, // Tambahkan total keseluruhan
+    console.log('Sync selesai:', {
+      total_orders: totalOrders,
       summary
     });
 
-  } catch (error: unknown) {
-    console.error('Auto sync failed:', error);
+    // Kembalikan hasil sync
+    return NextResponse.json({
+      success: true,
+      message: 'Sync process completed',
+      timestamp: new Date().toISOString(),
+      data: {
+        total_orders: totalOrders,
+        summary
+      }
+    }, { status: 200 });
+
+  } catch (error) {
+    console.error('Sync failed:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      message: 'Sync process failed',
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
-} 
+}
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0

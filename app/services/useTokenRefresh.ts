@@ -11,7 +11,7 @@ export async function refreshAllTokens() {
   try {
     const { data: shops, error } = await supabase
       .from('shopee_tokens')
-      .select('shop_id, refresh_token, shop_name')
+      .select('shop_id, refresh_token, shop_name');
 
     if (error) {
       console.error('Error fetching tokens:', error);
@@ -20,21 +20,24 @@ export async function refreshAllTokens() {
 
     console.log(`Berhasil mengambil ${shops.length} toko dari database`);
 
-    let successCount = 0;
-    let failCount = 0;
+    // Proses secara parallel dengan Promise.all
+    const results = await Promise.all(
+      shops.map(async (shop) => {
+        try {
+          const data = await refreshToken(shop.shop_id, shop.refresh_token, shop.shop_name);
+          await redis.hset(`shopee:token:${shop.shop_id}`, 'access_token', JSON.stringify(data.access_token));
+          await redis.expire(`shopee:token:${shop.shop_id}`, 24 * 60 * 60);
+          console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shop_id}`);
+          return { success: true, shop_id: shop.shop_id };
+        } catch (error) {
+          console.error(`Gagal me-refresh token untuk shop_id ${shop.shop_id}:`, error);
+          return { success: false, shop_id: shop.shop_id };
+        }
+      })
+    );
 
-    for (const shop of shops) {
-      try {
-        const data = await refreshToken(shop.shop_id, shop.refresh_token, shop.shop_name);
-        await redis.hset(`shopee:token:${shop.shop_id}`, 'access_token', JSON.stringify(data.access_token));
-        await redis.expire(`shopee:token:${shop.shop_id}`, 24 * 60 * 60); // Expire setelah 1 hari
-        console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shop_id}, token baru: ${data.access_token}`);
-        successCount++;
-      } catch (refreshError) {
-        console.error(`Gagal me-refresh token untuk shop_id ${shop.shop_id}:`, refreshError);
-        failCount++;
-      }
-    }
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
 
     console.log(`Proses refresh selesai. Berhasil: ${successCount}, Gagal: ${failCount}`);
 
@@ -45,4 +48,3 @@ export async function refreshAllTokens() {
     console.error('Gagal me-refresh token:', error);
   }
 }
-
