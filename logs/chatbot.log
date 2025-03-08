@@ -1,0 +1,26 @@
+2025-02-28 17:15:09,426 - INFO - ==========================================Program dimulai==========================================
+2025-02-28 17:15:38,524 - INFO - ✅ Berhasil menjalankan proses order di server
+2025-02-28 17:15:39,874 - INFO - Total chats ditemukan: 3
+2025-02-28 17:15:40,105 - ERROR - Tidak ada pesan dalam response
+2025-02-28 17:16:17,284 - INFO - ==========================================Balasan AI==========================================
+2025-02-28 17:16:17,284 - INFO - Invoice: None - Status pesanan: None
+2025-02-28 17:16:17,284 - INFO - 👤 salsabilla439_: Hallo ka
+2025-02-28 17:16:17,284 - INFO - 🤖 AI: Tentu, kak! Pesanan akan dikirim setiap sore, perkiraan pengiriman 2-3 hari menggunakan reguler. Semoga cepat sampai ya! Jika ada yang mau ditanyakan, silakan! 😊
+2025-02-28 17:16:17,654 - INFO - ==========================================Balasan AI==========================================
+2025-02-28 17:16:17,654 - INFO - Invoice: None - Status pesanan: None
+2025-02-28 17:16:17,654 - INFO - 👤 nadiaputri.123: Kak, pesanan dengan nomor invoice 2502255MS6GPJC sudah kami terima untuk perubahan model kebaya. Kami akan segera proses permintaan kakak. Terima kasih atas kesabarannya! 😊
+2025-02-28 17:16:17,654 - INFO - 🤖 AI: Kak, maaf banget, tapi pesanan yang sudah masuk tidak bisa dibatalkan. Kakak bisa melakukan pemesanan baru. Kami siap bantu jika ada pertanyaan lain! 😊
+2025-02-28 17:16:17,696 - INFO - ✅ Pesan berhasil dikirim ke salsabilla439_
+2025-02-28 17:16:17,967 - INFO - ✅ Pesan berhasil dikirim ke nadiaputri.123
+2025-02-28 17:16:17,971 - INFO - ==========================================Program selesai==========================================
+2025-03-01 14:39:53,439 - INFO - ==========================================Program dimulai==========================================
+2025-03-01 14:40:08,075 - INFO - ✅ Berhasil menjalankan proses order di server
+2025-03-01 14:40:08,362 - INFO - Total chats ditemukan: 3
+2025-03-01 14:40:08,628 - ERROR - Tidak ada pesan dalam response
+2025-03-01 14:40:08,631 - INFO - Pesan terakhir  bukan text/image/sticker/video/image_with_text (type: item), skip balasan
+2025-03-01 14:40:13,379 - INFO - ==========================================Balasan AI==========================================
+2025-03-01 14:40:13,379 - INFO - Invoice: 241204V3X88Q2P - Status pesanan: COMPLETED
+2025-03-01 14:40:13,380 - INFO - 👤 seveenqueen: Kk saya natalan pesannya dulu ya kk
+2025-03-01 14:40:13,380 - INFO - 🤖 AI: Baik, kak! Jika ada pertanyaan atau butuh bantuan, silakan kabari ya. Kami siap membantu! 😊
+2025-03-01 14:40:13,720 - ERROR - ❌ Gagal mengirim pesan ke seveenqueen
+2025-03-01 14:40:13,726 - INFO - ==========================================Program selesai==========================================
