@@ -1,5 +1,9 @@
 import Redis from 'ioredis';
 
+// Tambahkan kode logging debug ini
+console.log('[Redis Debug] Module redis.ts dimuat, environment:', typeof window === 'undefined' ? 'server' : 'browser');
+console.log('[Redis Debug] Stack trace:', new Error().stack);
+
 const REDIS_URL = process.env.NEXT_PUBLIC_REDIS_URL;
 
 if (!REDIS_URL) {

@@ -7,12 +7,12 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Package2, Truck, User, Calendar, Store, PackageX } from 'lucide-react'
+import { Package2, Truck, User, Calendar, Store, PackageX, CheckCircle, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface OrderDetailsProps {
   orderSn: string
@@ -80,6 +90,10 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
   const [orderDetails, setOrderDetails] = useState<OrderDetail | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [selectedAction, setSelectedAction] = useState<{
+    action: 'ACCEPT' | 'REJECT';
+  }>({ action: 'ACCEPT' })
+  const [isConfirmActionOpen, setIsConfirmActionOpen] = useState(false)
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
@@ -148,6 +162,60 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
     }
   };
 
+  const handleCancellationAction = async (action: 'ACCEPT' | 'REJECT') => {
+    if (!orderDetails) return;
+    setSelectedAction({ action });
+    setIsConfirmActionOpen(true);
+  };
+
+  const handleConfirmAction = async () => {
+    setIsConfirmActionOpen(false);
+    
+    if (!orderDetails) return;
+    
+    try {
+      toast.promise(
+        async () => {
+          const response = await fetch('/api/orders/handle-cancellation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              shopId: orderDetails.shop_id,
+              orderSn: orderDetails.order_sn,
+              operation: selectedAction.action
+            })
+          });
+
+          const result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.message || 'Gagal memproses pembatalan');
+          }
+
+          // Update local state jika berhasil
+          setOrderDetails(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              order_status: selectedAction.action === 'ACCEPT' ? 'CANCELLED' : 'READY_TO_SHIP'
+            };
+          });
+
+          return result;
+        },
+        {
+          loading: 'Memproses pembatalan...',
+          success: `Berhasil ${selectedAction.action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`,
+          error: (err) => `${err.message}`
+        }
+      );
+    } catch (error) {
+      console.error('Gagal memproses pembatalan:', error);
+    }
+  };
+
   const renderCancelButton = (status: string) => {
     const allowedStatuses = ['UNPAID', 'READY_TO_SHIP', 'PROCESSED'];
     
@@ -157,9 +225,9 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
           variant="ghost" 
           size="icon"
           onClick={() => setShowConfirmDialog(true)}
-          className="h-6 w-6"
+          className="h-6 w-6 dark:hover:bg-gray-700"
         >
-          <PackageX className="h-4 w-4 text-destructive stroke-2" />
+          <PackageX className="h-4 w-4 text-destructive stroke-2 dark:text-red-400" />
         </Button>
       );
     }
@@ -209,9 +277,31 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
                   </div>
                   {orderDetails.order_status === 'IN_CANCEL' || orderDetails.order_status === 'CANCELLED' ? (
                     <div className="mt-2">
-                      <p className="text-[10px] md:text-sm font-medium text-red-600">
+                      <p className="text-[10px] md:text-sm font-medium text-red-600 dark:text-red-400">
                         {orderDetails.cancel_reason || 'Tidak ada alasan yang diberikan'}
                       </p>
+                      {orderDetails.order_status === 'IN_CANCEL' && (
+                        <div className="flex gap-2 mt-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="h-7 px-2 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/50 dark:hover:text-green-300"
+                            onClick={() => handleCancellationAction('ACCEPT')}
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                            Terima Pembatalan
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="h-7 px-2 text-xs bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/50 dark:hover:text-red-300"
+                            onClick={() => handleCancellationAction('REJECT')}
+                          >
+                            <XCircle className="h-3.5 w-3.5 mr-1" />
+                            Tolak
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -302,8 +392,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
                 </div>
               </div>
             ) : (
-              <div className="text-center py-4 text-gray-500">
-                Data tidak ditemukan
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Data tidak ditemukan</p>
               </div>
             )}
           </ScrollArea>
@@ -311,10 +401,10 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
       </Sheet>
 
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent>
+        <DialogContent className="dark:bg-gray-800 dark:border-gray-700">
           <DialogHeader>
-            <DialogTitle>Konfirmasi Pembatalan</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="dark:text-white">Konfirmasi Pembatalan</DialogTitle>
+            <DialogDescription className="dark:text-gray-300">
               Apakah Anda yakin ingin membatalkan pesanan ini? 
               Tindakan ini tidak dapat dibatalkan.
             </DialogDescription>
@@ -323,18 +413,49 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
             <Button
               variant="outline"
               onClick={() => setShowConfirmDialog(false)}
+              className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600"
             >
               Batal
             </Button>
             <Button
               variant="destructive"
               onClick={handleCancelOrder}
+              className="dark:bg-red-700 dark:hover:bg-red-800"
             >
               Ya, Batalkan Pesanan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isConfirmActionOpen} onOpenChange={setIsConfirmActionOpen}>
+        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Konfirmasi {selectedAction.action === 'ACCEPT' ? 'Terima' : 'Tolak'} Pembatalan
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-gray-300">
+              {selectedAction.action === 'ACCEPT' 
+                ? 'Anda akan menerima permintaan pembatalan pesanan ini. Pesanan akan dibatalkan. Lanjutkan?' 
+                : 'Anda akan menolak permintaan pembatalan pesanan ini. Pesanan akan tetap diproses. Lanjutkan?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmAction}
+              className={selectedAction.action === 'ACCEPT' 
+                ? "bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-800"
+                : "bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
+              }
+            >
+              {selectedAction.action === 'ACCEPT' ? 'Terima Pembatalan' : 'Tolak Pembatalan'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 } 

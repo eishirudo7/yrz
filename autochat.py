@@ -197,7 +197,7 @@ def chatbot(conversation, user_id, ada_invoice, nomor_invoice, store_id, convers
     return None
 
 def reply_to_chat(chat, reply_text):
-    url = "https://yorozuya-v73y.onrender.com/api/msg/send_message"
+    url = "https://yorozuya.me/api/msg/send_message"
     
     try:
         # Pastikan data yang diperlukan ada
@@ -235,7 +235,7 @@ def box_exec(conversation_id, shop_id, to_name, shop_name, unread_count, to_id):
         logging.info(f"Skip membalas chat untuk shop_id {shop_id} karena status_chat = False")
         return
         
-    userchat = f"https://yorozuya-v73y.onrender.com/api/msg/get_message?conversationId={conversation_id}&shopId={shop_id}&pageSize=25"
+    userchat = f"https://yorozuya.me/api/msg/get_message?conversationId={conversation_id}&shopId={shop_id}&pageSize=25"
     
     try:
         rawconv = requests.get(userchat)
@@ -370,7 +370,7 @@ def box_exec(conversation_id, shop_id, to_name, shop_name, unread_count, to_id):
 
 def send_replies():
     try:
-        datachat = requests.get("https://yorozuya-v73y.onrender.com/api/msg/get_conversation_list?unread=true&limit=20")
+        datachat = requests.get("https://yorozuya.me/api/msg/get_conversation_list?unread=true&limit=20")
         
         if not datachat.ok:
             logging.error(f"Gagal mengambil data chat: Status code {datachat.status_code}")
@@ -450,7 +450,7 @@ def tangani_keluhan(id_pengguna: str, nama_toko: str, jenis_keluhan: str, deskri
 
 def cek_keluhan_dan_perubahan(user_id: int, id_pengguna: str):
     try:
-        url = f"https://yorozuya-v73y.onrender.com/api/cek_perubahan?user_id={user_id}"
+        url = f"https://yorozuya.me/api/cek_perubahan?user_id={user_id}"
         response = requests.get(url)
         
         if response.status_code == 200:
@@ -504,7 +504,7 @@ def ubah_detail_pesanan(id_pengguna: str, nama_toko: str, nomor_invoice: str, de
         return False
 
 def ambil_data_pesanan_shopee(user_id: str) -> dict:
-    url = f"https://yorozuya-v73y.onrender.com/api/order_details?user_id={user_id}"
+    url = f"https://yorozuya.me/api/order_details?user_id={user_id}"
     try:
         response = requests.get(url)
         if response.status_code == 200:
@@ -518,7 +518,7 @@ def ambil_data_pesanan_shopee(user_id: str) -> dict:
         return None
 
 def jalankan_proses_order() -> bool:
-    url = "https://yorozuya-v73y.onrender.com/api/proses_order"
+    url = "https://yorozuya.me/api/proses_order"
     try:
         response = requests.get(url)
         if response.status_code == 200:
