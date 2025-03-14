@@ -1,10 +1,11 @@
 import Redis from 'ioredis';
+import 'server-only';
 
 // Tambahkan kode logging debug ini
 console.log('[Redis Debug] Module redis.ts dimuat, environment:', typeof window === 'undefined' ? 'server' : 'browser');
 console.log('[Redis Debug] Stack trace:', new Error().stack);
 
-const REDIS_URL = process.env.NEXT_PUBLIC_REDIS_URL;
+const REDIS_URL = process.env.REDIS_URL;
 
 if (!REDIS_URL) {
   throw new Error('REDIS_URL tidak ditemukan di environment variables');

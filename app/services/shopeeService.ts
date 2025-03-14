@@ -1,10 +1,25 @@
 import { supabase } from '@/lib/supabase';
-import { SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY, shopeeApi } from '@/lib/shopeeConfig';
-import { getValidAccessToken } from './tokenManager';
+import { shopeeApi } from '@/lib/shopeeConfig';
 import { JSONStringify, JSONParse } from 'json-with-bigint';
 
-
-
+// Implementasi baru getValidAccessToken yang menggunakan API route
+async function getValidAccessToken(shopId: number): Promise<string> {
+  try {
+    // Gunakan URL lengkap dengan base URL
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:10000';
+    const response = await fetch(`${baseUrl}/api/token?shop_id=${shopId}`);
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Gagal mendapatkan access token');
+    }
+    
+    return result.data.access_token;
+  } catch (error) {
+    console.error('Gagal mendapatkan access token untuk toko', shopId, error);
+    throw new Error(`Gagal mendapatkan access token untuk toko ${shopId}`);
+  }
+}
 
 export async function getShopInfo(shopId: number): Promise<any> {
     try {
