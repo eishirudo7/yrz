@@ -587,7 +587,16 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
   // Tambahkan state untuk menyimpan blob
   const [shopBlobs, setShopBlobs] = useState<ShopBlob[]>([]);
 
-  // Buat fungsi helper untuk proses pencetakan dan laporan
+  // Fungsi helper untuk membagi array menjadi chunks
+  const chunkArray = <T,>(array: T[], chunkSize: number): T[][] => {
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+      chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+  };
+
+  // Update fungsi processPrintingAndReport dengan pendekatan paralel
   const processPrintingAndReport = async (ordersToPrint: OrderItem[]) => {
     let totalSuccess = 0;
     let totalFailed = 0;
@@ -597,7 +606,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
       failed: number;
     }[] = [];
     const newFailedOrders: typeof failedOrders = [];
-    const newShopBlobs: ShopBlob[] = []; // Tambahkan array untuk menyimpan blob baru
+    const newShopBlobs: ShopBlob[] = [];
 
     try {
       // Kelompokkan berdasarkan shop_id
@@ -610,130 +619,168 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
         return groups;
       }, {});
 
-      for (const [shopId, shopOrders] of Object.entries(ordersByShop)) {
-        const shopName = shopOrders[0].shop_name;
-        let shopSuccess = 0;
-        let shopFailed = 0;
-        const blobs: Blob[] = [];
+      // Konversi ke array untuk pemrosesan paralel
+      const shopEntries = Object.entries(ordersByShop);
+      
+      // Batasi jumlah proses paralel (misalnya 3 toko sekaligus)
+      const PARALLEL_LIMIT = 3;
+      const shopChunks = chunkArray(shopEntries, PARALLEL_LIMIT);
+      
+      // Inisialisasi progress
+      setDocumentBulkProgress(prev => ({
+        ...prev,
+        total: ordersToPrint.length
+      }));
 
-        setDocumentBulkProgress(prev => ({
-          ...prev,
-          currentShop: shopName
-        }));
+      // Proses setiap chunk secara paralel
+      for (const shopChunk of shopChunks) {
+        // Proses toko dalam chunk secara paralel
+        await Promise.all(shopChunk.map(async ([shopIdStr, shopOrders]) => {
+          const shopId = parseInt(shopIdStr);
+          const shopName = shopOrders[0].shop_name;
+          let shopSuccess = 0;
+          let shopFailed = 0;
+          const blobs: Blob[] = [];
 
-        const ordersByCarrier = shopOrders.reduce((groups: { [key: string]: OrderItem[] }, order) => {
-          const carrier = order.shipping_carrier || 'unknown';
-          if (!groups[carrier]) {
-            groups[carrier] = [];
-          }
-          groups[carrier].push(order);
-          return groups;
-        }, {});
-
-        for (const [carrier, carrierOrders] of Object.entries(ordersByCarrier)) {
           setDocumentBulkProgress(prev => ({
             ...prev,
-            currentCarrier: carrier,
-            currentShop: shopName,
-            total: ordersToPrint.length
+            currentShop: shopName
           }));
 
-          const orderParams = carrierOrders.map(order => ({
-            order_sn: order.order_sn,
-            package_number: order.package_number,
-            shipping_document_type: "THERMAL_AIR_WAYBILL" as const,
-            shipping_carrier: order.shipping_carrier
-          }));
-
-          try {
-            const { blob, failedOrders } = await downloadDocument(parseInt(shopId.toString()), orderParams);
-            
-            if (blob) {
-              blobs.push(blob);
+          const ordersByCarrier = shopOrders.reduce((groups: { [key: string]: OrderItem[] }, order) => {
+            const carrier = order.shipping_carrier || 'unknown';
+            if (!groups[carrier]) {
+              groups[carrier] = [];
             }
-            
-            const successCount = carrierOrders.length - failedOrders.length;
-            shopSuccess += successCount;
-            shopFailed += failedOrders.length;
-            totalSuccess += successCount;
-            totalFailed += failedOrders.length;
+            groups[carrier].push(order);
+            return groups;
+          }, {});
 
-            failedOrders.forEach(failedOrderSn => {
-              const orderData = carrierOrders.find(o => o.order_sn === failedOrderSn);
-              if (orderData) {
-                newFailedOrders.push({
-                  orderSn: failedOrderSn,
-                  shopName,
+          // Batasi jumlah proses paralel per kurir (misalnya 2 kurir sekaligus)
+          const CARRIER_PARALLEL_LIMIT = 2;
+          const carrierEntries = Object.entries(ordersByCarrier);
+          const carrierChunks = chunkArray(carrierEntries, CARRIER_PARALLEL_LIMIT);
+
+          for (const carrierChunk of carrierChunks) {
+            // Proses kurir dalam chunk secara paralel
+            const carrierResults = await Promise.all(carrierChunk.map(async ([carrier, carrierOrders]) => {
+              setDocumentBulkProgress(prev => ({
+                ...prev,
+                currentCarrier: carrier,
+                currentShop: shopName
+              }));
+
+              const orderParams = carrierOrders.map(order => ({
+                order_sn: order.order_sn,
+                package_number: order.package_number,
+                shipping_document_type: "THERMAL_AIR_WAYBILL" as const,
+                shipping_carrier: order.shipping_carrier
+              }));
+
+              try {
+                const { blob, failedOrders } = await downloadDocument(shopId, orderParams);
+                
+                return {
                   carrier,
-                  trackingNumber: orderData.tracking_number || '-'
-                });
+                  blob,
+                  failedOrders,
+                  successCount: carrierOrders.length - failedOrders.length,
+                  failedCount: failedOrders.length,
+                  carrierOrders
+                };
+              } catch (error) {
+                console.error(`Error downloading documents for carrier ${carrier}:`, error);
+                
+                // Kembalikan semua order sebagai gagal
+                return {
+                  carrier,
+                  blob: null,
+                  failedOrders: carrierOrders.map(o => o.order_sn),
+                  successCount: 0,
+                  failedCount: carrierOrders.length,
+                  carrierOrders
+                };
               }
-            });
-
-            setDocumentBulkProgress(prev => ({
-              ...prev,
-              processed: prev.processed + carrierOrders.length
             }));
 
-          } catch (error) {
-            console.error(`Error downloading documents for carrier ${carrier}:`, error);
-            shopFailed += carrierOrders.length;
-            totalFailed += carrierOrders.length;
-            
-            carrierOrders.forEach(order => {
-              newFailedOrders.push({
-                orderSn: order.order_sn,
-                shopName,
-                carrier,
-                trackingNumber: order.tracking_number || '-'
+            // Proses hasil dari setiap kurir
+            for (const result of carrierResults) {
+              if (result.blob) {
+                blobs.push(result.blob);
+              }
+              
+              shopSuccess += result.successCount;
+              shopFailed += result.failedCount;
+              totalSuccess += result.successCount;
+              totalFailed += result.failedCount;
+
+              // Tambahkan failed orders ke daftar
+              result.failedOrders.forEach(failedOrderSn => {
+                const orderData = result.carrierOrders.find(o => o.order_sn === failedOrderSn);
+                if (orderData) {
+                  newFailedOrders.push({
+                    orderSn: failedOrderSn,
+                    shopName,
+                    carrier: result.carrier,
+                    trackingNumber: orderData.tracking_number || '-'
+                  });
+                }
               });
-            });
-            continue;
-          }
-        }
 
-        shopReports.push({
-          shopName,
-          success: shopSuccess,
-          failed: shopFailed
-        });
-
-        if (blobs.length > 0) {
-          try {
-            const mergedPDF = await mergePDFs(blobs);
-            // Simpan blob untuk toko ini
-            newShopBlobs.push({
-              shopName,
-              blob: mergedPDF
-            });
-
-            const pdfUrl = URL.createObjectURL(mergedPDF);
-            
-            const newWindow = window.open('', '_blank');
-            if (newWindow) {
-              newWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                  <head><title>${shopName}</title></head>
-                  <body style="margin:0;padding:0;height:100vh;">
-                    <embed src="${pdfUrl}" type="application/pdf" width="100%" height="100%">
-                  </body>
-                </html>
-              `);
-              newWindow.document.close();
+              // Update progress
+              setDocumentBulkProgress(prev => ({
+                ...prev,
+                processed: prev.processed + result.carrierOrders.length
+              }));
             }
-
-            setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
-          } catch (error) {
-            console.error(`Error merging PDFs for shop ${shopName}:`, error);
-            toast.error(`Gagal menggabungkan PDF untuk ${shopName}`);
           }
-        }
+
+          // Tambahkan laporan untuk toko ini
+          shopReports.push({
+            shopName,
+            success: shopSuccess,
+            failed: shopFailed
+          });
+
+          // Gabungkan PDF untuk toko ini jika ada
+          if (blobs.length > 0) {
+            try {
+              const mergedPDF = await mergePDFs(blobs);
+              // Simpan blob untuk toko ini
+              newShopBlobs.push({
+                shopName,
+                blob: mergedPDF
+              });
+
+              const pdfUrl = URL.createObjectURL(mergedPDF);
+              
+              const newWindow = window.open('', '_blank');
+              if (newWindow) {
+                newWindow.document.write(`
+                  <!DOCTYPE html>
+                  <html>
+                    <head><title>${shopName}</title></head>
+                    <body style="margin:0;padding:0;height:100vh;">
+                      <embed src="${pdfUrl}" type="application/pdf" width="100%" height="100%">
+                    </body>
+                  </html>
+                `);
+                newWindow.document.close();
+              }
+
+              setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+            } catch (error) {
+              console.error(`Error merging PDFs for shop ${shopName}:`, error);
+              toast.error(`Gagal menggabungkan PDF untuk ${shopName}`);
+            }
+          }
+        }));
       }
 
       // Update state shopBlobs dengan blob yang baru
       setShopBlobs(newShopBlobs);
 
+      // Tampilkan laporan
       setPrintReport({
         totalSuccess,
         totalFailed,

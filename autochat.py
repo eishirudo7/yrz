@@ -47,7 +47,7 @@ class DatabaseManager:
         self.supabase = create_client(supabase_url, supabase_key)
         
     def get_config(self):
-        config_chat = self.supabase.table('settings').select('*').execute()
+        config_chat = self.supabase.table('pengaturan').select('*').execute()
         return config_chat.data[0] if config_chat.data else None
         
     def get_chat_status(self):
@@ -335,18 +335,12 @@ class Chatbot:
         }
         max_retries = 3
 
-        # Tambahkan print data yang dikirim ke OpenAI
-        print("==================== DATA YANG DIKIRIM KE OPENAI ====================")
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-        print("====================================================================")
-
         for _ in range(max_retries):
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {self.openai_api}"},
                 json=data
             )
-            print(response.json())
 
             if response.status_code == 200:
                 response_data = response.json()["choices"][0]['message']
