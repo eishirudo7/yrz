@@ -335,6 +335,11 @@ class Chatbot:
         }
         max_retries = 3
 
+        # Tambahkan print data yang dikirim ke OpenAI
+        print("==================== DATA YANG DIKIRIM KE OPENAI ====================")
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print("====================================================================")
+
         for _ in range(max_retries):
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
