@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, MessageCircle } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { cn } from "@/lib/utils"
@@ -37,6 +37,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { useOrderSearch } from '@/app/hooks/useOrderSearch'
 import { toast } from 'sonner'
+import { OrderDetails } from '../dashboard/OrderDetails'
+import { OrderHistory } from '../dashboard/OrderHistory'
+import { OrderTrendChart } from './components/OrderTrendChart'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -205,6 +208,16 @@ export default function OrdersPage() {
   // Tambahkan state untuk loading pencarian
   const [isSearchLoading, setIsSearchLoading] = useState(false)
 
+  // Ubah state untuk menyimpan orderSn saja
+  const [selectedOrderSn, setSelectedOrderSn] = useState<string | null>(null)
+  
+  // Tambahkan state untuk mengontrol apakah modal detail terbuka
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+
+  // Tambahkan state untuk OrderHistory
+  const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState<string>('')
+
   // Optimisasi filtered orders dengan useMemo
   const filteredOrders = useMemo(() => {
     if (searchResults.length > 0) return searchResults
@@ -327,14 +340,10 @@ export default function OrdersPage() {
     setDate(dateRange)
   }
 
+  // Kembalikan handleApplyDate ke versi asli
   const handleApplyDate = () => {
     setSelectedDateRange(date)
     setIsCalendarOpen(false)
-    
-    // Reset pagination dan visible orders
-    setVisibleOrders([])
-    setPage(1)
-    setHasMore(true)
   }
 
   const handlePresetDate = (days: number) => {
@@ -513,6 +522,36 @@ export default function OrdersPage() {
     }).filter(Boolean);
   };
 
+  // Fungsi untuk menangani klik pada nomor pesanan
+  const handleOrderClick = (orderSn: string) => {
+    setSelectedOrderSn(orderSn)
+    setIsDetailsOpen(true)
+  }
+
+  // Fungsi untuk menutup modal detail
+  const handleCloseDetails = () => {
+    setIsDetailsOpen(false)
+  }
+
+  // Update fungsi handleUsernameClick
+  const handleUsernameClick = (userId: number, username: string) => {
+    if (!userId) {
+      console.warn('User ID tidak valid');
+      toast.error('User ID tidak valid');
+      return;
+    }
+    
+    // Set user ID dan buka dialog riwayat pesanan
+    setSelectedUserId(userId.toString());
+    setIsOrderHistoryOpen(true);
+  }
+
+  // Update fungsi handleChatClick
+  const handleChatClick = (userId: number, shopId: number, orderSn: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Mencegah trigger handleUsernameClick
+    window.open(`/webchat?user_id=${userId}&shop_id=${shopId}&order_sn=${orderSn}`, '_blank');
+  };
+
   if (ordersLoading) {
     return (
       <div className="w-full p-4 sm:p-6 space-y-6">
@@ -571,7 +610,25 @@ export default function OrdersPage() {
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.create_time)}</TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span>{order.order_sn}</span>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <span 
+                                className="cursor-pointer hover:underline hover:text-primary"
+                                onClick={() => handleOrderClick(order.order_sn)}
+                              >
+                                {order.order_sn}
+                              </span>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                              {selectedOrderSn && selectedOrderSn === order.order_sn && (
+                                <OrderDetails 
+                                  orderSn={selectedOrderSn} 
+                                  isOpen={isDetailsOpen} 
+                                  onClose={handleCloseDetails} 
+                                />
+                              )}
+                            </PopoverContent>
+                          </Popover>
                           {order.cod && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
                               COD
@@ -579,7 +636,23 @@ export default function OrdersPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.buyer_username}</TableCell>
+                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleUsernameClick(order.buyer_user_id ?? 0, order.buyer_username)}
+                            className="hover:text-primary"
+                          >
+                            {order.buyer_username}
+                          </button>
+                          <button
+                            onClick={(e) => handleChatClick(order.buyer_user_id ?? 0, order.shop_id ?? 0, order.order_sn, e)}
+                            className="hover:text-primary"
+                            title="Chat dengan pembeli"
+                          >
+                            <MessageCircle size={14} className="text-gray-500 hover:text-primary" />
+                          </button>
+                        </div>
+                      </TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                         Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
                       </TableCell>
@@ -928,6 +1001,9 @@ export default function OrdersPage() {
         </div>
       </Card>
 
+      {/* Tambahkan chart di sini */}
+      <OrderTrendChart orders={orders} />
+
       {/* Ringkasan Toko */}
       {showSummary && (
         <div className="grid md:grid-cols-2 gap-3">
@@ -957,6 +1033,11 @@ export default function OrdersPage() {
                             <div className="text-primary">
                               <span className="text-xs font-semibold">{sku.quantity} pcs</span>
                             </div>
+                          </div>
+                          <div className="text-primary ml-4">
+                            <span className="text-xs font-semibold text-primary">
+                              Rp {sku.total_amount.toLocaleString('id-ID')}
+                            </span>
                           </div>
                           <ChevronDown 
                             className={`w-4 h-4 text-muted-foreground transition-transform ml-3 ${
@@ -1100,7 +1181,25 @@ export default function OrdersPage() {
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.create_time)}</TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
-                        <span>{order.order_sn}</span>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <span 
+                              className="cursor-pointer hover:underline hover:text-primary"
+                              onClick={() => handleOrderClick(order.order_sn)}
+                            >
+                              {order.order_sn}
+                            </span>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 p-0" align="start">
+                            {selectedOrderSn && selectedOrderSn === order.order_sn && (
+                              <OrderDetails 
+                                orderSn={selectedOrderSn} 
+                                isOpen={isDetailsOpen} 
+                                onClose={handleCloseDetails} 
+                              />
+                            )}
+                          </PopoverContent>
+                        </Popover>
                         {order.cod && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
                             COD
@@ -1108,7 +1207,23 @@ export default function OrdersPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.buyer_username}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleUsernameClick(order.buyer_user_id ?? 0, order.buyer_username)}
+                          className="hover:text-primary"
+                        >
+                          {order.buyer_username}
+                        </button>
+                        <button
+                          onClick={(e) => handleChatClick(order.buyer_user_id ?? 0, order.shop_id ?? 0, order.order_sn, e)}
+                          className="hover:text-primary"
+                          title="Chat dengan pembeli"
+                        >
+                          <MessageCircle size={14} className="text-gray-500 hover:text-primary" />
+                        </button>
+                      </div>
+                    </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
                     </TableCell>
@@ -1156,6 +1271,13 @@ export default function OrdersPage() {
           </span>
         )}
       </div>
+
+      {/* Tambahkan komponen OrderHistory */}
+      <OrderHistory 
+        userId={selectedUserId}
+        isOpen={isOrderHistoryOpen}
+        onClose={() => setIsOrderHistoryOpen(false)}
+      />
     </div>
   )
 }

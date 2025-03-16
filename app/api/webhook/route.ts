@@ -268,7 +268,7 @@ async function handleOrder(data: any) {
             await new Promise(resolve => setTimeout(resolve, 1000));
 
             // Kirim pesan kedua dengan teks informasi
-            const message = `Halo ${orderDetail.buyer_username},\n\nMohon maaf, pesanan dengan nomor ${orderData.ordersn} yang sudah masuk tidak bisa dibatalkan kecuali sudah ada pesanan baru yang sesuai. Jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nJika ingin mengganti alamat atau model, silakan pesan ulang maka pesanan yang salah akan otomatis dikonfirmasi pembatalannya.\n\nTerima kasih atas pengertiannya.`;
+            const message = `Halo ${orderDetail.buyer_username},\n\nMohon maaf, pesanan dengan nomor ${orderData.ordersn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nJika ingin mengganti alamat atau model, silakan pesan ulang maka pesanan yang salah akan otomatis dikonfirmasi pembatalannya.\n\nTerima kasih atas pengertiannya.`;
             console.log('Memulai pengiriman pesan kedua ke pembeli');
             const textResponse = await fetch(`${API_BASE_URL}/api/msg/send_message`, {
               method: 'POST',

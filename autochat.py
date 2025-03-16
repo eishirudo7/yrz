@@ -489,8 +489,7 @@ class ChatManager:
                     for i, p in enumerate(daftar_pesanan, 1):
                         info_pesanan += f"{i}. Nomor pesanan: {p['nomor']}\n   Status: {p['status']}\n   Tanggal: {p['tanggal']}\n   Total: {p['total']}\n\n"
                     
-                    # Tambahkan informasi tentang kebijakan pembatalan
-                    info_pesanan += "Catatan: Karena pelanggan memiliki lebih dari 1 pesanan, jika ada pengajuan pembatalan dari pembeli maka akan diterima."
+                 
                 
                 percakapan.append({
                     "role": "system",

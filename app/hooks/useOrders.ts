@@ -14,6 +14,8 @@ export interface Order {
   create_time: number
   cod: boolean
   cancel_reason: string
+  buyer_user_id?: number
+  shop_id?: number
 }
 
 export function useOrders(dateRange: DateRange | undefined) {
@@ -22,6 +24,10 @@ export function useOrders(dateRange: DateRange | undefined) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Penting: Set loading ke true setiap kali dateRange berubah
+    setLoading(true)
+    console.log("Loading dimulai, dateRange berubah:", dateRange)
+    
     async function fetchOrders() {
       try {
         const fromDate = dateRange?.from || new Date()
@@ -37,24 +43,44 @@ export function useOrders(dateRange: DateRange | undefined) {
         const startTimestamp = Math.floor(startDate.getTime() / 1000)
         const endTimestamp = Math.floor(endDate.getTime() / 1000)
         
-        const { data, error } = await supabase
-          .from('orders_view')
-          .select('*')
-          .filter('create_time', 'gte', startTimestamp)
-          .filter('create_time', 'lte', endTimestamp)
-          .order('pay_time', { ascending: false })
-
-        if (error) throw error
-        setOrders(data)
+        let allOrders: Order[] = []
+        let page = 0
+        const pageSize = 800
+        let hasMore = true
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('orders_view')
+            .select('*')
+            .filter('create_time', 'gte', startTimestamp)
+            .filter('create_time', 'lte', endTimestamp)
+            .order('pay_time', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1)
+          
+          if (error) throw error
+          
+          if (data && data.length > 0) {
+            allOrders = [...allOrders, ...data]
+            page++
+          }
+          
+          // Jika data yang dikembalikan kurang dari pageSize, berarti sudah tidak ada lagi data
+          hasMore = data && data.length === pageSize
+        }
+        
+        console.log("Data berhasil diambil:", allOrders.length)
+        setOrders(allOrders)
       } catch (e) {
+        console.error("Error saat mengambil data:", e)
         setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data')
       } finally {
+        console.log("Loading selesai")
         setLoading(false)
       }
     }
 
     fetchOrders()
-  }, [dateRange])
+  }, [dateRange]) // Pastikan dateRange ada di dependency array
 
   return { orders, loading, error }
 } 
