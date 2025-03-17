@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import ChatButton from '@/components/ChatButton';
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -1302,8 +1303,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
 
   // Update fungsi handleChatClick
   const handleChatClick = (userId: number, shopId: number, orderSn: string, event: React.MouseEvent) => {
-    event.stopPropagation(); // Mencegah trigger handleUsernameClick
-    window.open(`/webchat?user_id=${userId}&shop_id=${shopId}&order_sn=${orderSn}`, '_blank');
+    // Fungsi ini tidak lagi diperlukan jika menggunakan ChatButton
+    event.stopPropagation(); // Tetap pertahankan ini untuk mencegah trigger handleUsernameClick
   };
 
   // Tambahkan state untuk dialog laporan
@@ -1850,20 +1851,26 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center">
                         <button
                           onClick={() => handleUsernameClick(order.buyer_user_id)}
-                          className="hover:text-primary"
+                          className="hover:text-primary mr-2"
                         >
                           {order.buyer_username}
                         </button>
-                        <button
-                          onClick={(e) => handleChatClick(order.buyer_user_id, order.shop_id, order.order_sn, e)}
-                          className="hover:text-primary"
-                          title="Chat dengan pembeli"
-                        >
-                          <MessageSquare size={14} />
-                        </button>
+                        
+                        {/* Tombol Chat dengan ikon saja */}
+                        <ChatButton
+                          shopId={order.shop_id}
+                          toId={order.buyer_user_id}
+                          toName={order.buyer_username || "Pembeli"}
+                          toAvatar={order.buyer_avatar || "/default-avatar.png"}
+                          shopName={order.shop_name}
+                          buttonClassName="flex items-center justify-center h-6 w-6 p-0 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
+                          iconSize={14}
+                          iconOnly={true}
+                          orderId={order.order_sn} // Tambahkan orderId sebagai metadata
+                        />
                       </div>
                     </div>
                   </TableCell>

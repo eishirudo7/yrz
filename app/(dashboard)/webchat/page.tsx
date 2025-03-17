@@ -608,39 +608,46 @@ const WebChatPage: React.FC = () => {
 
           <ScrollArea className="flex-grow overflow-y-auto">
             <div className="p-3">
-              {filteredConversations.map((conversation) => (
-                <div
-                  key={conversation.conversation_id}
-                  className={`flex items-center gap-2 p-2 hover:bg-muted/50 cursor-pointer ${
-                    selectedConversation === conversation.conversation_id ? 'bg-muted/50' : ''
-                  } ${isMobileView ? 'text-sm' : ''}`}
-                  onClick={() => handleConversationSelect(conversation)}
-                >
-                  <Avatar className={isMobileView ? 'h-8 w-8' : ''}>
-                    <AvatarImage src={conversation.to_avatar} />
-                    <AvatarFallback><User className={isMobileView ? 'h-4 w-4' : ''} /></AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 overflow-hidden">
-                    <div className="flex justify-between items-baseline">
-                      <div className="flex items-center">
-                        <p className={`font-medium truncate ${isMobileView ? 'text-xs' : ''}`}>{conversation.shop_name}</p>
+              {filteredConversations.map((conversation, index) => (
+                <React.Fragment key={conversation.conversation_id}>
+                  <div
+                    className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0 p-2 hover:bg-muted/50 cursor-pointer ${
+                      selectedConversation === conversation.conversation_id ? 'bg-muted/50' : ''
+                    } ${isMobileView ? 'text-sm' : ''}`}
+                    onClick={() => handleConversationSelect(conversation)}
+                  >
+                    <Avatar className={`${isMobileView ? 'h-8 w-8' : 'h-9 w-9'} row-span-3 self-center`}>
+                      <AvatarImage src={conversation.to_avatar} />
+                      <AvatarFallback><User className={isMobileView ? 'h-4 w-4' : ''} /></AvatarFallback>
+                    </Avatar>
+                    
+                    <div className="flex justify-between items-center w-full pr-2">
+                      <div className="flex items-center max-w-[65%]">
+                        <p className={`font-medium truncate text-xs leading-tight`}>{conversation.shop_name}</p>
                         {conversation.unread_count > 0 && (
-                          <div className="w-2 h-2 bg-red-500 rounded-full ml-2"></div>
+                          <div className="w-2 h-2 bg-red-500 rounded-full ml-1 flex-shrink-0"></div>
                         )}
                       </div>
-                      <p className={`text-muted-foreground ${isMobileView ? 'text-[10px]' : 'text-xs'}`}>
+                      <p className={`text-muted-foreground text-[10px] flex-shrink-0`}>
                         {new Date(conversation.last_message_timestamp / 1000000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <p className={`font-bold ${isMobileView ? 'text-xs' : 'text-sm'}`}>{conversation.to_name}</p>
+                    
+                    <div className="flex justify-between items-center w-full pr-2">
+                      <p className={`font-bold truncate max-w-[75%] text-xs leading-tight`}>{conversation.to_name}</p>
                       {conversation.to_id != conversation.latest_message_from_id && conversation.unread_count === 0 && (
-                        <CheckCircle2 className={`text-primary ${isMobileView ? 'h-2 w-2' : 'h-3 w-3'}`} />
+                        <CheckCircle2 className={`text-primary flex-shrink-0 h-2 w-2`} />
                       )}
                     </div>
-                    <p className={`text-muted-foreground truncate ${isMobileView ? 'text-xs' : 'text-sm'}`}>{conversation.latest_message_content?.text}</p>
+                    
+                    <p className={`text-muted-foreground truncate pr-2 text-xs leading-tight`}>
+                      {conversation.latest_message_content?.text}
+                    </p>
                   </div>
-                </div>
+                  {index < filteredConversations.length - 1 && (
+                    <div className="border-b border-gray-200 mx-2 my-0.5"></div>
+                  )}
+                </React.Fragment>
               ))}
             </div>
           </ScrollArea>

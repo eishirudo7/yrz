@@ -1,11 +1,18 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useContext } from "react"
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, LabelList } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown } from "lucide-react"
+import { TrendingUp, TrendingDown, MoreHorizontal } from "lucide-react"
 import type { Order } from "@/app/hooks/useOrders"
+import { useTheme } from "next-themes"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface ChartData {
   date: string
@@ -15,7 +22,7 @@ interface ChartData {
   amount: number
 }
 
-type TimeFrame = 'hour' | 'day'
+type TimeFrame = 'hour' | 'day' | 'weekly'
 
 // Fungsi untuk memformat angka ke format rupiah
 const formatRupiah = (amount: number) => {
@@ -155,15 +162,22 @@ const processOrdersData = (orders: Order[], timeframe: TimeFrame): ChartData[] =
 
 // Custom Tooltip Component
 const CustomTooltip = ({ active, payload, label, timeframe }: any) => {
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
+  
   if (active && payload && payload.length) {
     // Ambil data lengkap dari payload
     const data = payload[0].payload
     
     return (
-      <div className="rounded-lg border bg-background p-2 shadow-sm">
+      <div className={`rounded-lg border p-2 shadow-sm ${
+        isDarkMode 
+          ? "border-gray-800 bg-[#1e1e1e] text-white" 
+          : "border-gray-200 bg-white text-gray-900"
+      }`}>
         <div className="grid gap-2">
           <div className="flex flex-col">
-            <span className="text-[0.70rem] uppercase text-muted-foreground">
+            <span className={`text-[0.70rem] uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               {timeframe === 'hour' ? 'RENTANG WAKTU' : 'TANGGAL'}
             </span>
             <span className="font-bold text-xs">
@@ -175,7 +189,7 @@ const CustomTooltip = ({ active, payload, label, timeframe }: any) => {
           
           {/* Tampilkan jumlah pesanan */}
           <div className="flex flex-col">
-            <span className="text-[0.70rem] uppercase text-muted-foreground">
+            <span className={`text-[0.70rem] uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               JUMLAH PESANAN
             </span>
             <span className="font-bold text-xs">
@@ -185,7 +199,7 @@ const CustomTooltip = ({ active, payload, label, timeframe }: any) => {
           
           {/* Tampilkan total omset */}
           <div className="flex flex-col">
-            <span className="text-[0.70rem] uppercase text-muted-foreground">
+            <span className={`text-[0.70rem] uppercase ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
               TOTAL OMSET
             </span>
             <span className="font-bold text-xs">
@@ -263,6 +277,9 @@ const formatAmountLabel = (amount: number) => {
 
 // Komponen Chart
 export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
+  
   const viewRecommendation = getViewRecommendation(orders)
   const defaultTimeframe = viewRecommendation.allowHourly ? 'hour' : 'day'
   
@@ -293,22 +310,86 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
     }
   }, [orders, timeframe])
 
+  const chartColors = {
+    background: isDarkMode ? "#121212" : "#ffffff",
+    text: isDarkMode ? "#ffffff" : "#333333",
+    border: isDarkMode ? "#333333" : "#e2e8f0",
+    grid: isDarkMode ? "#333333" : "#e2e8f0",
+    tooltip: {
+      bg: isDarkMode ? "#1e1e1e" : "#ffffff",
+      text: isDarkMode ? "#ffffff" : "#333333",
+      border: isDarkMode ? "#555555" : "#e2e8f0"
+    },
+    area: {
+      fill: isDarkMode ? "#4169E1" : "#3b82f6", 
+      stroke: isDarkMode ? "#4169E1" : "#3b82f6"
+    },
+    label: isDarkMode ? "#AAAAAA" : "#666666"
+  }
+
   return (
-    <Card className="bg-[#121212] text-white border-gray-800">
+    <Card className={isDarkMode ? "bg-[#121212] text-white border-gray-800" : "bg-white text-gray-900 border-gray-200"}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div className="space-y-1">
-          <CardTitle className="text-base font-medium text-white">
-            Tren Pesanan
+          <CardTitle className={`text-base font-medium ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+            {showAmount ? 'Omset' : 'Pesanan'} {timeframe === 'hour' ? 'Per Jam' : timeframe === 'day' ? 'Per Hari' : 'Mingguan'}
           </CardTitle>
         </div>
-        <div className="flex gap-2">
-          <div className="flex gap-1 border border-gray-700 rounded-md p-1 bg-[#121212]">
+        
+        {/* Dropdown untuk tampilan mobile */}
+        <div className="sm:hidden flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className={`h-8 w-8 ${isDarkMode ? "text-white" : "text-gray-700"}`}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className={isDarkMode ? "bg-[#1e1e1e] text-white border-gray-700" : "bg-white text-gray-900 border-gray-200"}>
+              <DropdownMenuItem 
+                onClick={() => setTimeframe('hour')}
+                className={timeframe === 'hour' ? (isDarkMode ? "bg-blue-900/30 text-blue-300" : "bg-blue-50 text-blue-700") : ""}
+              >
+                Per Jam
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setTimeframe('day')}
+                className={timeframe === 'day' ? (isDarkMode ? "bg-blue-900/30 text-blue-300" : "bg-blue-50 text-blue-700") : ""}
+              >
+                Per Hari
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setTimeframe('weekly')}
+                className={timeframe === 'weekly' ? (isDarkMode ? "bg-blue-900/30 text-blue-300" : "bg-blue-50 text-blue-700") : ""}
+              >
+                Mingguan
+              </DropdownMenuItem>
+              <DropdownMenuItem className={isDarkMode ? "opacity-50 cursor-default" : "opacity-70 cursor-default"}>
+                Tampilkan
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setShowAmount(true)}
+                className={showAmount ? (isDarkMode ? "bg-blue-900/30 text-blue-300" : "bg-blue-50 text-blue-700") : ""}
+              >
+                Omset
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => setShowAmount(false)}
+                className={!showAmount ? (isDarkMode ? "bg-blue-900/30 text-blue-300" : "bg-blue-50 text-blue-700") : ""}
+              >
+                Jumlah
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        
+        {/* Toggle untuk tampilan desktop */}
+        <div className="hidden sm:flex gap-2">
+          <div className={`flex gap-1 border rounded-md p-1 ${isDarkMode ? "border-gray-700 bg-[#121212]" : "border-gray-200 bg-gray-50"}`}>
             <Button
               variant={timeframe === 'hour' ? "default" : "ghost"}
               size="sm"
               onClick={() => setTimeframe('hour')}
-              className="h-7 text-xs"
-              disabled={!viewRecommendation.allowHourly}
+              className="h-7 text-xs px-2 sm:px-3"
             >
               Per Jam
             </Button>
@@ -316,29 +397,35 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
               variant={timeframe === 'day' ? "default" : "ghost"}
               size="sm"
               onClick={() => setTimeframe('day')}
-              className="h-7 text-xs"
-              disabled={!viewRecommendation.allowDaily}
+              className="h-7 text-xs px-2 sm:px-3"
             >
               Per Hari
             </Button>
-          </div>
-          
-          <div className="flex gap-1 border border-gray-700 rounded-md p-1 bg-[#121212]">
             <Button
-              variant={showAmount ? "ghost" : "default"}
+              variant={timeframe === 'weekly' ? "default" : "ghost"}
               size="sm"
-              onClick={() => setShowAmount(false)}
-              className="h-7 text-xs"
+              onClick={() => setTimeframe('weekly')}
+              className="h-7 text-xs px-2 sm:px-3"
             >
-              Jumlah
+              Mingguan
             </Button>
+          </div>
+          <div className={`flex gap-1 border rounded-md p-1 ${isDarkMode ? "border-gray-700 bg-[#121212]" : "border-gray-200 bg-gray-50"}`}>
             <Button
               variant={showAmount ? "default" : "ghost"}
               size="sm"
               onClick={() => setShowAmount(true)}
-              className="h-7 text-xs"
+              className="h-7 text-xs px-2 sm:px-3"
             >
               Omset
+            </Button>
+            <Button
+              variant={showAmount ? "ghost" : "default"}
+              size="sm"
+              onClick={() => setShowAmount(false)}
+              className="h-7 text-xs px-2 sm:px-3"
+            >
+              Jumlah
             </Button>
           </div>
         </div>
@@ -353,11 +440,11 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart 
               data={data}
-              margin={{ top: 20, right: 10, left: 10, bottom: 0 }}
+              margin={{ top: 25 , right: 10, left: 10, bottom: 0 }}
             >
               <CartesianGrid 
                 strokeDasharray="3 3" 
-                stroke="#333333" 
+                stroke={chartColors.grid} 
                 strokeOpacity={0.5}
                 vertical={false}
               />
@@ -370,25 +457,30 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
                 interval={timeframe === 'hour' ? calculateHourInterval(data.length) : 0}
                 minTickGap={20}
                 padding={{ left: 5, right: 5 }}
-                tick={{ fill: "#AAAAAA" }}
+                tick={{ fill: chartColors.label }}
               />
               <YAxis
                 hide={true}
               />
               <Tooltip 
                 content={(props) => <CustomTooltip {...props} timeframe={timeframe} />} 
-                cursor={{ stroke: '#666', strokeWidth: 1, strokeDasharray: '5 5' }}
+                cursor={{ stroke: isDarkMode ? '#666' : '#999', strokeWidth: 1, strokeDasharray: '5 5' }}
+                contentStyle={{
+                  backgroundColor: chartColors.tooltip.bg,
+                  color: chartColors.tooltip.text,
+                  border: `1px solid ${chartColors.tooltip.border}`,
+                }}
               />
               <Area
                 type="monotone"
                 dataKey={showAmount ? "amount" : "orders"}
                 name={showAmount ? "Total Omset" : "Jumlah Pesanan"}
-                stroke="#4169E1"
-                fill="#4169E1"
+                stroke={chartColors.area.stroke}
+                fill={chartColors.area.fill}
                 fillOpacity={0.2}
                 isAnimationActive={false}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: "white" }}
-                dot={{ r: 4, strokeWidth: 2, stroke: "white" }}
+                activeDot={{ r: 6, strokeWidth: 2, stroke: isDarkMode ? "white" : "#3b82f6" }}
+                dot={{ r: 4, strokeWidth: 2, stroke: isDarkMode ? "white" : "#3b82f6" }}
               >
                 <LabelList 
                   dataKey={showAmount ? "amount" : "orders"} 
@@ -396,7 +488,7 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
                   offset={12}
                   formatter={(value: number) => showAmount ? formatAmountLabel(value) : value}
                   fontSize={10}
-                  fill="#AAAAAA"
+                  fill={chartColors.label}
                   angle={showAmount && data.length > 10 ? -45 : 0}
                 />
               </Area>
@@ -405,21 +497,23 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
         </div>
       </CardContent>
       <CardFooter className="flex-col items-start gap-2 text-sm">
-        <div className="flex gap-2 font-medium leading-none text-white">
+        <div className={`flex gap-2 font-medium leading-none ${isDarkMode ? "text-white" : "text-gray-900"}`}>
           {showAmount ? (
             <>Total omset periode ini: {formatRupiah(totalPeriodAmount)}</>
           ) : (
             <>Total pesanan periode ini: {totalPeriodOrders} pesanan</>
           )}
         </div>
-        <div className="leading-none text-gray-400">
+        <div className={`leading-none ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
           {timeframe === 'hour' 
             ? 'Rata-rata ' + (showAmount 
                 ? formatRupiah(averageHourlyAmount) + ' per jam'
                 : averageHourlyOrders.toFixed(1) + ' pesanan per jam')
-            : 'Rata-rata ' + (showAmount 
-                ? formatRupiah(averageDailyAmount) + ' per hari'
-                : averageDailyOrders.toFixed(1) + ' pesanan per hari')
+            : timeframe === 'day' 
+                ? 'Rata-rata ' + (showAmount 
+                    ? formatRupiah(averageDailyAmount) + ' per hari'
+                    : averageDailyOrders.toFixed(1) + ' pesanan per hari')
+                : 'Rata-rata pesanan mingguan'
           }
         </div>
       </CardFooter>

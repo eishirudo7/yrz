@@ -2,7 +2,8 @@ import '@/app/globals.css'
 import { Inter } from 'next/font/google'
 import dynamic from 'next/dynamic'
 import { Toaster } from 'sonner';
-
+import { MiniChatProvider } from '@/contexts/MiniChatContext';
+import MiniChatContainer from '@/components/MiniChatContainer';
 
 import type { Viewport } from 'next'
 
@@ -43,14 +44,17 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" className="h-full overflow-hidden">
       <body className={`h-full ${inter.className}`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+        <MiniChatProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+          <MiniChatContainer />
+        </MiniChatProvider>
         <Toaster richColors expand={false} />
       </body>
     </html>

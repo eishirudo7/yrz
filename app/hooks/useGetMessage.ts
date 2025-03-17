@@ -29,6 +29,36 @@ export function useConversationMessages(conversationId: string | null, shopId: n
     setMessagesState(updater);
   }, []);
 
+  const processApiMessages = (apiMessages: any[], shopId: number): Message[] => {
+    return apiMessages.map(msg => ({
+      id: msg.message_id,
+      sender: msg.from_shop_id === shopId ? 'seller' : 'buyer',
+      type: msg.message_type,
+      content: ['text', 'image_with_text'].includes(msg.message_type) 
+        ? msg.content.text 
+        : msg.message_type === 'order'
+          ? 'Menampilkan detail pesanan'
+          : '',
+      imageUrl: msg.message_type === 'image' 
+        ? msg.content.url 
+        : msg.message_type === 'image_with_text' 
+          ? msg.content.image_url 
+          : undefined,
+      imageThumb: ['image', 'image_with_text'].includes(msg.message_type) ? {
+        url: msg.message_type === 'image' 
+          ? (msg.content.thumb_url || msg.content.url)
+          : (msg.content.thumb_url || msg.content.image_url),
+        height: msg.content.thumb_height,
+        width: msg.content.thumb_width
+      } : undefined,
+      orderData: msg.message_type === 'order' ? {
+        shopId: msg.content.shop_id,
+        orderSn: msg.content.order_sn
+      } : undefined,
+      time: new Date(msg.created_timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }));
+  };
+
   const fetchMessages = useCallback(async (offset?: string) => {
     if (!conversationId) return;
 
@@ -49,38 +79,12 @@ export function useConversationMessages(conversationId: string | null, shopId: n
         return;
       }
 
-      const formattedMessages = response.data.response.messages.map((msg: any) => ({
-        id: msg.message_id,
-        sender: msg.from_shop_id === shopId ? 'seller' : 'buyer',
-        type: msg.message_type,
-        content: ['text', 'image_with_text'].includes(msg.message_type) 
-          ? msg.content.text 
-          : msg.message_type === 'order'
-            ? 'Menampilkan detail pesanan'
-            : '',
-        imageUrl: msg.message_type === 'image' 
-          ? msg.content.url 
-          : msg.message_type === 'image_with_text' 
-            ? msg.content.image_url 
-            : undefined,
-        imageThumb: ['image', 'image_with_text'].includes(msg.message_type) ? {
-          url: msg.message_type === 'image' 
-            ? (msg.content.thumb_url || msg.content.url)
-            : (msg.content.thumb_url || msg.content.image_url),
-          height: msg.content.thumb_height,
-          width: msg.content.thumb_width
-        } : undefined,
-        orderData: msg.message_type === 'order' ? {
-          shopId: msg.content.shop_id,
-          orderSn: msg.content.order_sn
-        } : undefined,
-        time: new Date(msg.created_timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }));
+      const processedMessages = processApiMessages(response.data.response.messages, shopId);
       
       if (offset) {
-        setMessagesState(prevMessages => [...formattedMessages.reverse(), ...prevMessages]);
+        setMessagesState(prevMessages => [...processedMessages.reverse(), ...prevMessages]);
       } else {
-        setMessagesState(formattedMessages.reverse());
+        setMessagesState(processedMessages.reverse());
       }
       
       setNextOffset(response.data.response.page_result.next_offset === "0" ? null : response.data.response.page_result.next_offset);

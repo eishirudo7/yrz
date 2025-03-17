@@ -42,6 +42,7 @@ import { OrderHistory } from '../dashboard/OrderHistory'
 import { OrderTrendChart } from './components/OrderTrendChart'
 import { SKUSalesChart } from "./components/SKUSalesChart"
 import { ShopOrderChart } from "./components/ShopOrderChart"
+import { useTheme } from "next-themes"
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -222,6 +223,10 @@ export default function OrdersPage() {
 
   // Tambahkan state untuk mengontrol mode tampilan
   const [viewMode, setViewMode] = useState<'chart' | 'text'>('chart')
+
+  // Tambahkan hook useTheme
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
 
   // Optimisasi filtered orders dengan useMemo
   const filteredOrders = useMemo(() => {
@@ -1002,12 +1007,16 @@ export default function OrdersPage() {
      
       <div className="flex items-center gap-2 md:col-span-3">
             
-            <div className="flex gap-1 border border-gray-700 rounded-md p-1 bg-[#121212]">
+            <div className={`flex gap-1 border rounded-md p-1 ${
+              isDarkMode 
+                ? "border-gray-700 bg-[#1a1a1a]" 
+                : "border-gray-200 bg-gray-50"
+            }`}>
               <Button
                 variant={viewMode === 'chart' ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode('chart')}
-                className="h-7 text-xs"
+                className="h-8 px-4 text-xs"
               >
                 Chart
               </Button>
@@ -1015,7 +1024,7 @@ export default function OrdersPage() {
                 variant={viewMode === 'text' ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode('text')}
-                className="h-7 text-xs"
+                className="h-8 px-4 text-xs"
               >
                 Ringkasan
               </Button>
@@ -1032,56 +1041,60 @@ export default function OrdersPage() {
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
           {/* Top SKUs dengan desain yang dioptimalkan */}
-          <Card className="overflow-hidden">
-            <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
+          <Card className={`overflow-hidden ${isDarkMode ? "bg-[#121212] border-gray-800" : "bg-white border-gray-200"}`}>
+            <CardHeader className={`py-2.5 px-4 flex flex-row items-center justify-between ${isDarkMode ? "text-white" : "text-gray-900"}`}>
               <h3 className="text-sm font-semibold">10 SKU Terlaris</h3>
-              <span className="text-xs text-muted-foreground">Total Penjualan</span>
+              <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Total Penjualan</span>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[360px]">
-                <div className="divide-y">
+                <div className={`divide-y ${isDarkMode ? "divide-gray-800" : "divide-gray-100"}`}>
                   {getAllTopSkus().map((sku, index) => (
                     <div key={sku.sku_name} className="group">
                       <div 
-                        className="py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                        className={`py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors ${isDarkMode ? "hover:bg-gray-800/50" : "hover:bg-gray-100/50"}`}
                         onClick={() => handleSkuClick(sku.sku_name)}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                              <div className="w-5 h-5 flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                              <div className={`w-5 h-5 flex items-center justify-center text-xs font-semibold ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                                 {index + 1}
                               </div>
-                              <p className="text-sm font-medium truncate">{sku.sku_name}</p>
+                              <p className={`text-sm font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>{sku.sku_name}</p>
                             </div>
                             <div className="text-primary">
-                              <span className="text-xs font-semibold">{sku.quantity} pcs</span>
+                              <span className={`text-xs font-semibold ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>{sku.quantity} pcs</span>
                             </div>
                           </div>
                           <div className="text-primary ml-4">
-                            <span className="text-xs font-semibold text-primary">
+                            <span className={`text-xs font-semibold ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
                               Rp {sku.total_amount.toLocaleString('id-ID')}
                             </span>
                           </div>
                           <ChevronDown 
-                            className={`w-4 h-4 text-muted-foreground transition-transform ml-3 ${
+                            className={`w-4 h-4 transition-transform ml-3 ${
                               expandedSku === sku.sku_name ? 'rotate-180' : ''
-                            } ${expandedSku === sku.sku_name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            } ${expandedSku === sku.sku_name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
+                              isDarkMode ? "text-gray-400" : "text-gray-500"
+                            }`}
                           />
                         </div>
                       </div>
                       
                       {expandedSku === sku.sku_name && (
-                        <div className="bg-muted/30 divide-y animate-in slide-in-from-top-1 duration-200">
+                        <div className={`divide-y animate-in slide-in-from-top-1 duration-200 ${
+                          isDarkMode ? "bg-gray-800/30 divide-gray-700" : "bg-gray-100/30 divide-gray-200"
+                        }`}>
                           {getSkuDetails(sku.sku_name).map(detail => detail && (
                             <div key={detail.shopName} className="py-2 px-4 pl-12">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <Store className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                  <p className="text-xs text-muted-foreground truncate">{detail.shopName}</p>
+                                  <Store className={`w-3.5 h-3.5 flex-shrink-0 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} />
+                                  <p className={`text-xs truncate ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{detail.shopName}</p>
                                 </div>
                                 <div className="ml-2">
-                                  <span className="text-xs font-medium text-primary">{detail.quantity} pcs</span>
+                                  <span className={`text-xs font-medium ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>{detail.quantity} pcs</span>
                                 </div>
                               </div>
                             </div>
@@ -1096,52 +1109,56 @@ export default function OrdersPage() {
           </Card>
 
           {/* Ringkasan Toko dengan desain yang dioptimalkan */}
-          <Card className="overflow-hidden">
-            <CardHeader className="py-2.5 px-4 flex flex-row items-center justify-between">
+          <Card className={`overflow-hidden ${isDarkMode ? "bg-[#121212] border-gray-800" : "bg-white border-gray-200"}`}>
+            <CardHeader className={`py-2.5 px-4 flex flex-row items-center justify-between ${isDarkMode ? "text-white" : "text-gray-900"}`}>
               <h3 className="text-sm font-semibold">Ringkasan per Toko</h3>
-              <span className="text-xs text-muted-foreground">Total Pesanan</span>
+              <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Total Pesanan</span>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[360px]">
-                <div className="divide-y">
+                <div className={`divide-y ${isDarkMode ? "divide-gray-800" : "divide-gray-100"}`}>
                   {getShopsSummary().map((shop) => (
                     <div key={shop.name} className="group">
                       <div 
-                        className="py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors"
+                        className={`py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors ${isDarkMode ? "hover:bg-gray-800/50" : "hover:bg-gray-100/50"}`}
                         onClick={() => setExpandedShop(expandedShop === shop.name ? null : shop.name)}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-medium truncate flex-1">{shop.name}</p>
-                              <span className="text-xs font-semibold text-primary whitespace-nowrap">
+                              <p className={`text-sm font-medium truncate flex-1 ${isDarkMode ? "text-white" : "text-gray-900"}`}>{shop.name}</p>
+                              <span className={`text-xs font-semibold whitespace-nowrap ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
                                 {shop.totalOrders} pesanan
                               </span>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
+                            <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                               Omset: Rp {shop.totalAmount.toLocaleString('id-ID')}
                             </p>
                           </div>
                           <ChevronDown 
-                            className={`w-4 h-4 text-muted-foreground transition-transform ml-3 ${
+                            className={`w-4 h-4 transition-transform ml-3 ${
                               expandedShop === shop.name ? 'rotate-180' : ''
-                            } ${expandedShop === shop.name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            } ${expandedShop === shop.name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
+                              isDarkMode ? "text-gray-400" : "text-gray-500"
+                            }`}
                           />
                         </div>
                       </div>
                       
                       {expandedShop === shop.name && (
-                        <div className="bg-muted/30 divide-y animate-in slide-in-from-top-1 duration-200">
+                        <div className={`divide-y animate-in slide-in-from-top-1 duration-200 ${
+                          isDarkMode ? "bg-gray-800/30 divide-gray-700" : "bg-gray-100/30 divide-gray-200"
+                        }`}>
                           {shop.topSkus.map((sku, index) => (
                             <div key={sku.sku_name} className="py-2 px-4 pl-8">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                  <div className="w-5 h-5 flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                                  <div className={`w-5 h-5 flex items-center justify-center text-xs font-semibold ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
                                     {index + 1}
                                   </div>
-                                  <p className="text-xs font-medium truncate">{sku.sku_name}</p>
+                                  <p className={`text-xs font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>{sku.sku_name}</p>
                                 </div>
-                                <span className="text-xs font-semibold text-primary ml-2 whitespace-nowrap">
+                                <span className={`text-xs font-semibold ml-2 whitespace-nowrap ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
                                   {sku.quantity} pcs
                                 </span>
                               </div>
