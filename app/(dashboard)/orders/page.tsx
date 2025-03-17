@@ -40,6 +40,8 @@ import { toast } from 'sonner'
 import { OrderDetails } from '../dashboard/OrderDetails'
 import { OrderHistory } from '../dashboard/OrderHistory'
 import { OrderTrendChart } from './components/OrderTrendChart'
+import { SKUSalesChart } from "./components/SKUSalesChart"
+import { ShopOrderChart } from "./components/ShopOrderChart"
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -217,6 +219,9 @@ export default function OrdersPage() {
   // Tambahkan state untuk OrderHistory
   const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string>('')
+
+  // Tambahkan state untuk mengontrol mode tampilan
+  const [viewMode, setViewMode] = useState<'chart' | 'text'>('chart')
 
   // Optimisasi filtered orders dengan useMemo
   const filteredOrders = useMemo(() => {
@@ -991,21 +996,40 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            className="md:col-span-3"
-            onClick={() => setShowSummary(!showSummary)}
-          >
-            {showSummary ? 'Sembunyikan Ringkasan' : 'Lihat Ringkasan per Toko'}
-          </Button>
+          
         </div>
       </Card>
-
-      {/* Tambahkan chart di sini */}
-      <OrderTrendChart orders={orders} />
-
-      {/* Ringkasan Toko */}
-      {showSummary && (
+     
+      <div className="flex items-center gap-2 md:col-span-3">
+            
+            <div className="flex gap-1 border border-gray-700 rounded-md p-1 bg-[#121212]">
+              <Button
+                variant={viewMode === 'chart' ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode('chart')}
+                className="h-7 text-xs"
+              >
+                Chart
+              </Button>
+              <Button
+                variant={viewMode === 'text' ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode('text')}
+                className="h-7 text-xs"
+              >
+                Ringkasan
+              </Button>
+            </div>
+          </div>
+       
+      {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}
+      {viewMode === 'chart' ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <OrderTrendChart orders={orders} />
+          <SKUSalesChart orders={orders} />
+          <ShopOrderChart orders={orders} />
+        </div>
+      ) : (
         <div className="grid md:grid-cols-2 gap-3">
           {/* Top SKUs dengan desain yang dioptimalkan */}
           <Card className="overflow-hidden">

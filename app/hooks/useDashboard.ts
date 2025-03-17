@@ -240,134 +240,167 @@ export const useDashboard = () => {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      const { data: orders, error } = await supabase
-        .from('dashboard_view')
-        .select('*');
+      try {
+        // Fungsi untuk mengambil semua data dengan pagination
+        const fetchAllOrders = async (): Promise<OrderItem[]> => {
+          let allOrders: OrderItem[] = []
+          let hasMore = true
+          let page = 0
+          const pageSize = 1000
 
-      if (error) {
-        throw new Error('Gagal mengambil data dari dashboard_view');
-      }
+          while (hasMore) {
+            console.log(`Mengambil data halaman ${page + 1}...`)
+            const { data: orders, error } = await supabase
+              .from('dashboard_view')
+              .select('*')
+              .range(page * pageSize, (page + 1) * pageSize - 1)
+              .order('pay_time', { ascending: false })
 
-      const processOrders = async () => {
-        for (const order of orders) {
-          if (
-            order.order_status === 'PROCESSED' && 
-            order.document_status !== 'READY' ||
-            order.status === 'PROCESSED' &&
-            order.tracking_number === null
-          ) {
-            console.log('Mencoba membuat shipping document untuk:', {
-              order_sn: order.order_sn,
-              shop_id: order.shop_id,
-              status: order.order_status,
-              document: order.document_status
-            });
-            
-            try {
-              // Cek tracking number terlebih dahulu
-              if (!order.tracking_number) {
-                const trackingResponse = await fetch(`/api/shipping-document/create_document?get_tracking=true`, {
+            if (error) {
+              throw new Error('Gagal mengambil data dari dashboard_view')
+            }
+
+            if (orders) {
+              allOrders = [...allOrders, ...orders]
+              console.log(`Berhasil mengambil ${orders.length} data dari halaman ${page + 1}`)
+            }
+
+            // Cek apakah masih ada data selanjutnya
+            hasMore = orders && orders.length === pageSize
+            page++
+          }
+
+          return allOrders
+        }
+
+        // Ambil semua data
+        const orders = await fetchAllOrders()
+
+        // Proses orders seperti sebelumnya
+        const processOrders = async () => {
+          for (const order of orders) {
+            if (
+              order.order_status === 'PROCESSED' && 
+              order.document_status !== 'READY' ||
+              order.status === 'PROCESSED' &&
+              order.tracking_number === null
+            ) {
+              console.log('Mencoba membuat shipping document untuk:', {
+                order_sn: order.order_sn,
+                shop_id: order.shop_id,
+                status: order.order_status,
+                document: order.document_status
+              })
+              
+              try {
+                // Cek tracking number terlebih dahulu
+                if (!order.tracking_number) {
+                  const trackingResponse = await fetch(`/api/shipping-document/create_document?get_tracking=true`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      shopId: order.shop_id,
+                      order_sn: order.order_sn
+                    })
+                  });
+
+                  if (!trackingResponse.ok) {
+                    throw new Error(`HTTP error! status: ${trackingResponse.status}`);
+                  }
+
+                  const trackingData = await trackingResponse.json();
+                  if (trackingData.success) {
+                    order.tracking_number = trackingData.data.tracking_number;
+                    
+                    // Perbarui state dengan tracking number baru
+                    setDashboardData(prevData => ({
+                      ...prevData,
+                      orders: prevData.orders.map(existingOrder => 
+                        existingOrder.order_sn === order.order_sn 
+                          ? { ...existingOrder, tracking_number: trackingData.data.tracking_number }
+                          : existingOrder
+                      )
+                    }));
+                  }
+                }
+
+                // Buat shipping document dengan tracking number yang sudah ada
+                const response = await fetch('/api/shipping-document/create_document', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
                   },
                   body: JSON.stringify({
                     shopId: order.shop_id,
-                    order_sn: order.order_sn
+                    order_sn: order.order_sn,
+                    tracking_number: order.tracking_number
                   })
                 });
-
-                if (!trackingResponse.ok) {
-                  throw new Error(`HTTP error! status: ${trackingResponse.status}`);
+                
+                if (!response.ok) {
+                  const errorData = await response.json();
+                  console.error('Gagal membuat shipping document:', errorData);
+                  throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
                 }
 
-                const trackingData = await trackingResponse.json();
-                if (trackingData.success) {
-                  order.tracking_number = trackingData.data.tracking_number;
-                  
-                  // Perbarui state dengan tracking number baru
+                // Tambahkan pembaruan state setelah dokumen berhasil dibuat
+                const documentData = await response.json();
+                if (documentData.success) {
                   setDashboardData(prevData => ({
                     ...prevData,
                     orders: prevData.orders.map(existingOrder => 
                       existingOrder.order_sn === order.order_sn 
-                        ? { ...existingOrder, tracking_number: trackingData.data.tracking_number }
+                        ? { ...existingOrder, document_status: 'READY' }
                         : existingOrder
                     )
                   }));
                 }
+              } catch (error) {
+                console.error('Error untuk order:', order.order_sn, error);
               }
-
-              // Buat shipping document dengan tracking number yang sudah ada
-              const response = await fetch('/api/shipping-document/create_document', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  shopId: order.shop_id,
-                  order_sn: order.order_sn,
-                  tracking_number: order.tracking_number
-                })
-              });
-              
-              if (!response.ok) {
-                const errorData = await response.json();
-                console.error('Gagal membuat shipping document:', errorData);
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-              }
-
-              // Tambahkan pembaruan state setelah dokumen berhasil dibuat
-              const documentData = await response.json();
-              if (documentData.success) {
-                setDashboardData(prevData => ({
-                  ...prevData,
-                  orders: prevData.orders.map(existingOrder => 
-                    existingOrder.order_sn === order.order_sn 
-                      ? { ...existingOrder, document_status: 'READY' }
-                      : existingOrder
-                  )
-                }));
-              }
-            } catch (error) {
-              console.error('Error untuk order:', order.order_sn, error);
             }
           }
         }
-      };
 
-      await processOrders();
+        await processOrders()
 
-      const summary: DashboardSummary = {
-        pesananPerToko: {},
-        omsetPerToko: {},
-        totalOrders: 0,
-        totalOmset: 0,
-        totalIklan: 0,
-        iklanPerToko: {}
-      };
+        const summary: DashboardSummary = {
+          pesananPerToko: {},
+          omsetPerToko: {},
+          totalOrders: 0,
+          totalOmset: 0,
+          totalIklan: 0,
+          iklanPerToko: {}
+        }
 
-      orders.forEach(order => processOrder(order, summary));
+        orders.forEach(order => processOrder(order, summary))
 
-      setDashboardData({ summary, orders });
+        setDashboardData({ summary, orders })
 
-      const adsData = await fetchAdsData();
-      if (adsData) {
-        setDashboardData(prevData => {
-          const newSummary = { ...prevData.summary };
-          newSummary.totalIklan = parseFloat(adsData.total_cost.replace('Rp. ', '').replace('.', '').replace(',', '.'));
-          newSummary.iklanPerToko = {};
-          adsData.ads_data.forEach((ad: AdData) => {
-            newSummary.iklanPerToko[ad.shop_name] = parseFloat(ad.cost.replace('Rp. ', '').replace('.', '').replace(',', '.'));
-          });
-          return {
-            ...prevData,
-            summary: newSummary
-          };
-        });
+        // Ambil dan proses data iklan
+        const adsData = await fetchAdsData()
+        if (adsData) {
+          setDashboardData(prevData => {
+            const newSummary = { ...prevData.summary }
+            newSummary.totalIklan = parseFloat(adsData.total_cost.replace('Rp. ', '').replace('.', '').replace(',', '.'))
+            newSummary.iklanPerToko = {}
+            adsData.ads_data.forEach((ad: AdData) => {
+              newSummary.iklanPerToko[ad.shop_name] = parseFloat(ad.cost.replace('Rp. ', '').replace('.', '').replace(',', '.'))
+            })
+            return {
+              ...prevData,
+              summary: newSummary
+            }
+          })
+        }
+      } catch (error) {
+        console.error('Error saat mengambil data:', error)
       }
-    };
+    }
 
-    fetchInitialData();
+    fetchInitialData()
 
     // Buat subscription awal
     const channels = {

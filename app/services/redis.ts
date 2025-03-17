@@ -2,8 +2,8 @@ import Redis from 'ioredis';
 import 'server-only';
 
 // Tambahkan kode logging debug ini
-console.log('[Redis Debug] Module redis.ts dimuat, environment:', typeof window === 'undefined' ? 'server' : 'browser');
-console.log('[Redis Debug] Stack trace:', new Error().stack);
+// console.log('[Redis Debug] Module redis.ts dimuat, environment:', typeof window === 'undefined' ? 'server' : 'browser');
+// console.log('[Redis Debug] Stack trace:', new Error().stack);
 
 const REDIS_URL = process.env.REDIS_URL;
 
@@ -64,19 +64,8 @@ redis.on('connect', () => {
 
 export async function checkRedisConnection(): Promise<void> {
   try {
-    // Cek status koneksi terlebih dahulu
-    if (redis.status === 'ready') {
-      await redis.ping();
-      console.log('Koneksi Redis sudah tersedia');
-      return;
-    }
-    
-    // Jika belum terhubung, lakukan koneksi
-    if (redis.status === 'wait') {
-      await redis.connect();
-      await redis.ping();
-      console.log('Koneksi Redis berhasil dibuat');
-    }
+    await redis.ping();
+    console.log('Koneksi Redis berhasil');
   } catch (error) {
     console.error('Gagal terhubung ke Redis:', error);
     throw error;

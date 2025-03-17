@@ -81,9 +81,9 @@ export async function GET(request: Request) {
       data: allData
     });
   } catch (error) {
-    console.error('Gagal mengambil data dari Redis:', error);
+    console.error('Gagal mengambil data dari Redis:', error instanceof Error ? error.message : 'Unknown error', error);
     return NextResponse.json(
-      { status: 'error', message: 'Gagal mengambil data dari Redis' },
+      { status: 'error', message: 'Gagal mengambil data dari Redis', error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
