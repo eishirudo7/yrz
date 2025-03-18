@@ -1866,7 +1866,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                           toName={order.buyer_username || "Pembeli"}
                           toAvatar={order.buyer_avatar || "/default-avatar.png"}
                           shopName={order.shop_name}
-                          buttonClassName="flex items-center justify-center h-6 w-6 p-0 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded"
                           iconSize={14}
                           iconOnly={true}
                           orderId={order.order_sn} // Tambahkan orderId sebagai metadata
