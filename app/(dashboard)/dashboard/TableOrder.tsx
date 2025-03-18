@@ -1818,7 +1818,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                     <span className="hidden sm:inline mr-1">
                       Pembatalan
                     </span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-white/20 dark:bg-gray-200 text-white dark:text-gray-800 text-[10px] font-semibold">
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
                       {derivedData.cancelRequestCount}
                     </span>
                   </Button>
