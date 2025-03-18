@@ -2196,7 +2196,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-700 dark:hover:bg-blue-800"
             >
               Proses Semua
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-medium">
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
                 {derivedData.readyToShipCount}
               </span>
             </AlertDialogAction>

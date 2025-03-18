@@ -55,7 +55,7 @@ export function Sidebar() {
   }
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={100}>
       <aside className="fixed top-0 left-0 z-20 h-full w-[56px] -translate-x-full border-r transition-transform md:translate-x-0">
         <div className="border-b p-2">
           <Link href="/">
