@@ -59,13 +59,6 @@ const processSKUData = (orders: Order[], limit: number = 10) => {
   const skuMap: Record<string, { quantity: number, amount: number }> = {}
   
   orders.forEach(order => {
-    // Filter untuk UNPAID
-    if (order.order_status === 'CANCELLED' || 
-        order.order_status === 'UNPAID' || 
-        order.cancel_reason === 'Failed Delivery') {
-      return;
-    }
-    
     // Gunakan sku_qty seperti di page.tsx
     if (order.sku_qty) {
       const skuEntries = order.sku_qty.split(',').map(entry => entry.trim())

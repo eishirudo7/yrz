@@ -12,7 +12,7 @@ import {
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Impor ikon-ikon yang diperlukan
-import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download } from 'lucide-react'
+import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info } from 'lucide-react'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { OrderDetails } from './OrderDetails'
@@ -31,6 +31,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import ChatButton from '@/components/ChatButton';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -1484,6 +1491,113 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
     }));
   }, []);
 
+  // Tambahkan state untuk dialog konfirmasi terima semua
+  const [isAcceptAllConfirmOpen, setIsAcceptAllConfirmOpen] = useState(false);
+
+  // Tambahkan state untuk tracking progress bulk accept
+  const [bulkAcceptProgress, setBulkAcceptProgress] = useState<{
+    processed: number;
+    total: number;
+    currentOrder: string;
+  }>({
+    processed: 0,
+    total: 0,
+    currentOrder: ''
+  });
+
+  // Tambahkan fungsi untuk menerima semua pembatalan
+  const handleAcceptAllCancellations = useCallback(async () => {
+    setIsAcceptAllConfirmOpen(false);
+    
+    // Filter pesanan dengan status IN_CANCEL dan belum dicetak
+    const cancelOrders = orders.filter(order => 
+      order.order_status === 'IN_CANCEL' && !order.is_printed
+    );
+    
+    if (cancelOrders.length === 0) {
+      toast.info('Tidak ada permintaan pembatalan yang memenuhi syarat');
+      return;
+    }
+
+    try {
+      // Set progress awal
+      setBulkAcceptProgress({
+        processed: 0,
+        total: cancelOrders.length,
+        currentOrder: ''
+      });
+
+      // Proses satu per satu
+      for (const order of cancelOrders) {
+        setBulkAcceptProgress(prev => ({
+          ...prev,
+          currentOrder: order.order_sn
+        }));
+
+        try {
+          const response = await fetch('/api/orders/handle-cancellation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              shopId: order.shop_id,
+              orderSn: order.order_sn,
+              operation: 'ACCEPT'
+            })
+          });
+
+          const result = await response.json();
+          
+          if (result.success) {
+            if (onOrderUpdate) {
+              onOrderUpdate(order.order_sn, {
+                order_status: 'CANCELLED'
+              });
+            }
+          } else {
+            console.error(`Gagal menerima pembatalan ${order.order_sn}:`, result.message);
+            toast.error(`Gagal menerima pembatalan ${order.order_sn}`);
+          }
+
+          setBulkAcceptProgress(prev => ({
+            ...prev,
+            processed: prev.processed + 1
+          }));
+
+          // Delay kecil antara setiap request
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+        } catch (error) {
+          console.error(`Gagal menerima pembatalan ${order.order_sn}:`, error);
+          toast.error(`Gagal menerima pembatalan ${order.order_sn}`);
+        }
+      }
+
+      toast.success('Proses penerimaan pembatalan selesai');
+
+    } catch (error) {
+      console.error('Gagal menerima pembatalan:', error);
+      toast.error('Terjadi kesalahan saat menerima pembatalan');
+    } finally {
+      // Reset progress setelah selesai
+      setTimeout(() => {
+        setBulkAcceptProgress({
+          processed: 0,
+          total: 0,
+          currentOrder: ''
+        });
+      }, 2000);
+    }
+  }, [orders, onOrderUpdate]);
+
+  // Menghitung jumlah pesanan yang memenuhi syarat untuk diterima pembatalannya
+  const eligibleForAccept = useMemo(() => {
+    return orders.filter(order => 
+      order.order_status === 'IN_CANCEL' && !order.is_printed
+    ).length;
+  }, [orders]);
+
   return (
     <div className="w-full">
       {documentBulkProgress.total > 0 && (
@@ -1676,44 +1790,80 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
           <div className="flex justify-between">
             {/* Grup Tombol Pesanan - Sebelah Kiri */}
             <div className="flex gap-2">
+              {/* Tombol Proses Semua dengan warna primary */}
               <Button
                 onClick={() => setIsProcessAllConfirmOpen(true)}
-                className="px-2 sm:px-3 py-2 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap h-[32px] min-h-0"
+                className="px-2 sm:px-3 py-0 h-[32px] text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap flex items-center"
                 disabled={derivedData.readyToShipCount === 0}
-                title="Proses Pesanan"
               >
-                <Send size={14} className="sm:mr-1" />
-                <span className="hidden sm:inline">
-                  Proses Semua ({derivedData.readyToShipCount})
+                <Send size={14} className="sm:mr-1.5" />
+                <span className="hidden sm:inline mr-1">
+                  Proses Semua
                 </span>
-                <span className="sm:hidden ml-1">
-                  ({derivedData.readyToShipCount})
-                </span>
+                {derivedData.readyToShipCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold">
+                    {derivedData.readyToShipCount}
+                  </span>
+                )}
               </Button>
 
-              <Button
-                onClick={() => setIsRejectAllConfirmOpen(true)}
-                className="px-2 sm:px-3 py-2 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap h-[32px] min-h-0"
-                disabled={derivedData.cancelRequestCount === 0}
-                title="Tolak Semua Pembatalan"
-              >
-                <XCircle size={14} className="sm:mr-1" />
-                <span className="hidden sm:inline">
-                  Tolak Pembatalan ({derivedData.cancelRequestCount})
-                </span>
-                <span className="sm:hidden ml-1">
-                  ({derivedData.cancelRequestCount})
-                </span>
-              </Button>
+              {/* Dropdown Pembatalan tetap menggunakan DropdownMenu yang lebih modern */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    className="px-2 sm:px-3 py-0 h-[32px] text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap flex items-center"
+                    disabled={derivedData.cancelRequestCount === 0}
+                  >
+                    <XCircle size={14} className="sm:mr-1.5" />
+                    <span className="hidden sm:inline mr-1">
+                      Pembatalan
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-full bg-white/20 dark:bg-gray-200 text-white dark:text-gray-800 text-[10px] font-semibold">
+                      {derivedData.cancelRequestCount}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  className="w-56" 
+                  align="start" 
+                  alignOffset={5}
+                  sideOffset={5}
+                >
+                  <DropdownMenuItem 
+                    className="flex items-center cursor-pointer"
+                    onClick={() => setIsAcceptAllConfirmOpen(true)}
+                    disabled={eligibleForAccept === 0}
+                  >
+                    <CheckCircle size={14} className="mr-2 text-green-500" />
+                    <span className="flex-1">Terima Semua</span>
+                    <span className="ml-auto px-1.5 py-0.5 rounded-full bg-green-100 text-green-800 text-[10px] font-medium dark:bg-green-800/30 dark:text-green-400">
+                      {eligibleForAccept}
+                    </span>
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuSeparator />
+                  
+                  <DropdownMenuItem 
+                    className="flex items-center cursor-pointer"
+                    onClick={() => setIsRejectAllConfirmOpen(true)}
+                    disabled={derivedData.cancelRequestCount === 0}
+                  >
+                    <XCircle size={14} className="mr-2 text-red-500" />
+                    <span className="flex-1">Tolak Semua</span>
+                    <span className="ml-auto px-1.5 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-medium dark:bg-red-800/30 dark:text-red-400">
+                      {derivedData.cancelRequestCount}
+                    </span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-              {/* Tombol sync */}
+              {/* Tombol Sinkronkan dengan warna primary */}
               <Button
                 onClick={handleSyncOrders}
                 disabled={isSyncing}
-                className="px-2 sm:px-3 py-2 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap h-[32px] min-h-0"
-                title="Sinkronkan Pesanan"
+                className="px-2 sm:px-3 py-0 h-[32px] text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap flex items-center"
               >
-                <RefreshCcw size={14} className={`sm:mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+                <RefreshCcw size={14} className={`sm:mr-1.5 ${isSyncing ? 'animate-spin' : ''}`} />
                 <span className="hidden sm:inline">
                   {isSyncing ? 'Sinkronisasi...' : 'Sinkronkan'}
                 </span>
@@ -1730,13 +1880,17 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               >
                 <Printer size={14} className="sm:mr-1" />
                 <span className="hidden sm:inline">
-                  Belum Print ({derivedData.unprintedCount})
+                  Belum Print
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
+                    {derivedData.unprintedCount}
+                  </span>
                 </span>
-                <span className="sm:hidden ml-1">
-                  ({derivedData.unprintedCount})
+                <span className="sm:hidden">
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
+                    {derivedData.unprintedCount}
+                  </span>
                 </span>
               </Button>
-
               <Button
                 onClick={handleBulkPrintClick}
                 className="px-2 sm:px-3 py-2 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground dark:text-primary-foreground whitespace-nowrap h-[32px] min-h-0"
@@ -1749,11 +1903,16 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                 <span className="hidden sm:inline">
                   {tableState.selectedOrders.length > 0 
                     ? `Cetak ${tableState.selectedOrders.length} Dokumen`
-                    : `Cetak Semua (${derivedData.totalPrintableDocuments})`
+                    : `Cetak Semua`
                   }
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
+                    {tableState.selectedOrders.length || derivedData.totalPrintableDocuments}
+                  </span>
                 </span>
-                <span className="sm:hidden ml-1">
-                  ({tableState.selectedOrders.length || derivedData.totalPrintableDocuments})
+                <span className="sm:hidden">
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
+                    {tableState.selectedOrders.length || derivedData.totalPrintableDocuments}
+                  </span>
                 </span>
               </Button>
             </div>
@@ -2037,6 +2196,9 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-700 dark:hover:bg-blue-800"
             >
               Proses Semua
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-medium">
+                {derivedData.readyToShipCount}
+              </span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -2044,27 +2206,34 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
 
       {/* Tambahkan Dialog Konfirmasi Reject All */}
       <AlertDialog open={isRejectAllConfirmOpen} onOpenChange={setIsRejectAllConfirmOpen}>
-        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="dark:text-white">
-              Konfirmasi Tolak Semua Pembatalan
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              <span>Tolak Semua Pembatalan</span>
             </AlertDialogTitle>
-            <AlertDialogDescription className="dark:text-gray-300">
-              Anda akan menolak {derivedData.cancelRequestCount} permintaan pembatalan pesanan. 
-              Pembeli tidak akan dapat mengajukan pembatalan lagi untuk pesanan-pesanan ini. Lanjutkan?
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Anda akan menolak {derivedData.cancelRequestCount} permintaan pembatalan pesanan.
+              </p>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-2 text-blue-800 text-xs dark:bg-blue-900/30 dark:border-blue-800/30 dark:text-blue-300">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>Pembeli tidak akan dapat mengajukan pembatalan lagi untuk pesanan-pesanan ini.</p>
+                </div>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="mt-0">
               Batal
             </AlertDialogCancel>
             <AlertDialogAction 
-              onClick={() => {
-                setIsRejectAllConfirmOpen(false);
-                handleRejectAllCancellations();
-              }}
-              className="bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
+              onClick={handleRejectAllCancellations}
+              className="bg-red-600 hover:bg-red-700 text-white"
             >
+              <XCircle className="h-4 w-4 mr-2" />
               Tolak Semua
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -2374,6 +2543,65 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Tambahkan dialog konfirmasi untuk menerima semua */}
+      <AlertDialog open={isAcceptAllConfirmOpen} onOpenChange={setIsAcceptAllConfirmOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <span>Terima Semua Pembatalan</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Anda akan menerima {eligibleForAccept} permintaan pembatalan pesanan yang belum dicetak.
+              </p>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-2 text-amber-800 text-xs dark:bg-amber-900/30 dark:border-amber-800/30 dark:text-amber-300">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>Pesanan-pesanan ini akan dibatalkan secara permanen dan tidak dapat dikembalikan.</p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="mt-0">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleAcceptAllCancellations}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Terima Semua
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Tambahkan progress bar untuk bulk accept jika sedang berjalan */}
+      {bulkAcceptProgress.total > 0 && (
+        <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={14} className="text-green-500 animate-pulse" />
+                <span className="font-medium dark:text-white">
+                  Menerima Pembatalan: {bulkAcceptProgress.currentOrder}
+                </span>
+              </div>
+              <span className="text-gray-600 dark:text-gray-400">
+                {bulkAcceptProgress.processed}/{bulkAcceptProgress.total}
+              </span>
+            </div>
+            <Progress 
+              value={(bulkAcceptProgress.processed / bulkAcceptProgress.total) * 100} 
+              className="h-1"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

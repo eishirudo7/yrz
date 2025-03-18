@@ -65,12 +65,8 @@ const processShopData = (orders: Order[]): ShopData[] => {
       }
     }
     
-    if (order.order_status !== 'CANCELLED' && 
-        order.order_status !== 'UNPAID' && 
-        order.cancel_reason !== 'Failed Delivery') {
-      shopMap[shopName].quantity += 1 // Tambah 1 pesanan
-      shopMap[shopName].amount += parseFloat(order.total_amount)
-    }
+    shopMap[shopName].quantity += 1 // Tambah 1 pesanan
+    shopMap[shopName].amount += parseFloat(order.total_amount)
   })
   
   // Konversi ke array dan urutkan
@@ -144,11 +140,7 @@ export const ShopOrderChart = ({ orders }: { orders: Order[] }) => {
   });
   
   // Hitung total pesanan langsung dari data mentah dengan filter yang sama
-  const totalOrders = orders.filter(order => 
-    order.order_status !== 'CANCELLED' && 
-    order.order_status !== 'UNPAID' && 
-    order.cancel_reason !== 'Failed Delivery'
-  ).length
+  const totalOrders = orders.length  // Perubahan di sini, karena sudah difilter
   
   // Hitung total amount dari data yang sudah diproses
   const totalAmount = sortedData.reduce((sum, item) => sum + item.amount, 0)

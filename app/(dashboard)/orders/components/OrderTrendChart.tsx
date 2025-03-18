@@ -83,13 +83,8 @@ const processOrdersData = (orders: Order[], timeframe: TimeFrame): ChartData[] =
       }
     }
     
-    // Tambahkan filter untuk UNPAID
-    if (order.order_status !== 'CANCELLED' && 
-        order.order_status !== 'UNPAID' && 
-        order.cancel_reason !== 'Failed Delivery') {
-      acc[key].orders += 1
-      acc[key].amount += parseFloat(order.total_amount)
-    }
+    acc[key].orders += 1
+    acc[key].amount += parseFloat(order.total_amount)
     
     return acc
   }, {})

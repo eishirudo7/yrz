@@ -12,6 +12,12 @@ interface MessageContent {
   sticker_id?: string;
   sticker_package_id?: string;
   image_url?: string;
+  url?: string;              // Tambahkan untuk pesan tipe 'image'
+  thumb_url?: string;        // Tambahkan untuk thumbnail
+  thumb_height?: number;     // Dimensi thumbnail
+  thumb_width?: number;      // Dimensi thumbnail
+  order_sn?: string;         // Tambahkan untuk tipe pesan 'order'
+  shop_id?: number;          // Tambahkan untuk tipe pesan 'order'
 }
 
 interface Message {
@@ -128,6 +134,40 @@ const ChatMessage = React.memo(({
           />
         ) : (
           <div className="text-xs">Sticker</div>
+        );
+      case 'image':
+        return message.content.url ? (
+          <img 
+            src={message.content.url} 
+            alt="Gambar" 
+            className="max-w-[80px] max-h-[80px] rounded-md" 
+          />
+        ) : (
+          <div className="text-xs">Gambar tidak tersedia</div>
+        );
+      case 'image_with_text':
+        return (
+          <div>
+            {message.content.image_url && (
+              <img 
+                src={message.content.image_url} 
+                alt="Gambar dengan teks" 
+                className="max-w-[80px] max-h-[80px] rounded-md mb-1" 
+              />
+            )}
+            {message.content.text && (
+              <div className="text-xs">{message.content.text}</div>
+            )}
+          </div>
+        );
+      case 'order':
+        return (
+          <div className="text-xs">
+            <div className="font-medium mb-0.5">Detail Pesanan</div>
+            {message.content.order_sn && (
+              <div className="text-[10px] font-mono">{message.content.order_sn}</div>
+            )}
+          </div>
         );
       default:
         return <div className="text-xs">Pesan tidak didukung</div>;

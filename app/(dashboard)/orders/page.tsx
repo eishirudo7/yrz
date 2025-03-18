@@ -43,6 +43,7 @@ import { OrderTrendChart } from './components/OrderTrendChart'
 import { SKUSalesChart } from "./components/SKUSalesChart"
 import { ShopOrderChart } from "./components/ShopOrderChart"
 import { useTheme } from "next-themes"
+import ChatButton from '@/components/ChatButton'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -182,7 +183,7 @@ export default function OrdersPage() {
   })
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange | undefined>(date)
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
-  const [activeFilter, setActiveFilter] = useState<string | null>(null)
+  const [activeFilter, setActiveFilter] = useState<string | null>('total')
   const [selectedShops, setSelectedShops] = useState<string[]>([])
   const [isShopFilterOpen, setIsShopFilterOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -556,11 +557,37 @@ export default function OrdersPage() {
     setIsOrderHistoryOpen(true);
   }
 
-  // Update fungsi handleChatClick
-  const handleChatClick = (userId: number, shopId: number, orderSn: string, event: React.MouseEvent) => {
-    event.stopPropagation(); // Mencegah trigger handleUsernameClick
-    window.open(`/webchat?user_id=${userId}&shop_id=${shopId}&order_sn=${orderSn}`, '_blank');
-  };
+  // Menghitung omset berdasarkan filter yang aktif
+  const getFilteredOmset = useMemo(() => {
+    const filteredOrdersForOmset = orders.filter(order => {
+      if (!activeFilter) return true;
+      
+      if (activeFilter === 'failed') {
+        return order.cancel_reason === 'Failed Delivery';
+      }
+      
+      switch (activeFilter) {
+        case 'pending':
+          return order.order_status === 'UNPAID';
+        case 'process':
+          return order.order_status === 'PROCESSED';
+        case 'shipping':
+          return order.order_status === 'SHIPPED';
+        case 'cancel':
+          return order.order_status === 'CANCELLED';
+        case 'total':
+          if (order.cancel_reason === 'Failed Delivery') return false;
+          return !['CANCELLED'].includes(order.order_status);
+        default:
+          return true;
+      }
+    }).filter(order => {
+      if (selectedShops.length === 0) return true;
+      return selectedShops.includes(order.shop_name);
+    });
+
+    return filteredOrdersForOmset.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+  }, [orders, activeFilter, selectedShops]);
 
   if (ordersLoading) {
     return (
@@ -654,13 +681,18 @@ export default function OrdersPage() {
                           >
                             {order.buyer_username}
                           </button>
-                          <button
-                            onClick={(e) => handleChatClick(order.buyer_user_id ?? 0, order.shop_id ?? 0, order.order_sn, e)}
-                            className="hover:text-primary"
-                            title="Chat dengan pembeli"
-                          >
-                            <MessageCircle size={14} className="text-gray-500 hover:text-primary" />
-                          </button>
+                          
+                          <ChatButton
+                            shopId={order.shop_id ?? 0}
+                            toId={order.buyer_user_id ?? 0}
+                            toName={order.buyer_username || "Pembeli"}
+                            toAvatar={""}
+                            shopName={order.shop_name}
+                            iconSize={14}
+                            iconOnly={true}
+                            orderId={order.order_sn}
+                            orderStatus={order.order_status}
+                          />
                         </div>
                       </TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
@@ -711,9 +743,7 @@ export default function OrdersPage() {
                   Total Omset
                 </p>
                 <p className="text-2xl font-bold text-green-600">
-                  Rp {getShopsSummary()
-                    .reduce((sum, shop) => sum + shop.totalAmount, 0)
-                    .toLocaleString('id-ID')}
+                  Rp {getFilteredOmset.toLocaleString('id-ID')}
                 </p>
               </div>
               <div className="p-2.5 rounded-xl bg-green-50">
@@ -1034,9 +1064,9 @@ export default function OrdersPage() {
       {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}
       {viewMode === 'chart' ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <OrderTrendChart orders={orders} />
-          <SKUSalesChart orders={orders} />
-          <ShopOrderChart orders={orders} />
+          <OrderTrendChart orders={filteredOrders} />
+          <SKUSalesChart orders={filteredOrders} />
+          <ShopOrderChart orders={filteredOrders} />
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
@@ -1256,13 +1286,18 @@ export default function OrdersPage() {
                         >
                           {order.buyer_username}
                         </button>
-                        <button
-                          onClick={(e) => handleChatClick(order.buyer_user_id ?? 0, order.shop_id ?? 0, order.order_sn, e)}
-                          className="hover:text-primary"
-                          title="Chat dengan pembeli"
-                        >
-                          <MessageCircle size={14} className="text-gray-500 hover:text-primary" />
-                        </button>
+                        
+                        <ChatButton
+                          shopId={order.shop_id ?? 0}
+                          toId={order.buyer_user_id ?? 0}
+                          toName={order.buyer_username || "Pembeli"}
+                          toAvatar={""}
+                          shopName={order.shop_name}
+                          iconSize={14}
+                          iconOnly={true}
+                          orderId={order.order_sn}
+                          orderStatus={order.order_status}
+                        />
                       </div>
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
