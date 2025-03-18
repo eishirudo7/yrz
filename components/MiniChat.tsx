@@ -341,65 +341,6 @@ const MiniChat = React.memo(({
     }
   }, [messages.length]);
   
-  // Logika untuk menangani pesan SSE
-  useEffect(() => {
-    const handleSSEMessage = (event: CustomEvent) => {
-      const data = event.detail;
-      
-      // Hanya proses pesan yang relevan untuk percakapan ini
-      if (data.type === 'new_message' && data.conversation_id === conversationId) {
-        console.log('MiniChat: Pesan baru diterima via SSE', data);
-        
-        // Konversi data SSE ke format Message yang digunakan MiniChat
-        const newMessage: Message = {
-          message_id: data.message_id,
-          from_id: data.sender,
-          to_id: data.receiver,
-          from_shop_id: data.shop_id === shopId ? shopId : 0,
-          to_shop_id: data.shop_id === shopId ? 0 : shopId,
-          message_type: data.message_type,
-          content: data.content,
-          conversation_id: data.conversation_id,
-          created_timestamp: data.timestamp,
-          region: 'ID',
-          status: 'normal',
-          message_option: 0,
-          source: 'sse',
-          source_content: {},
-          quoted_msg: null
-        };
-        
-        // Periksa apakah pesan sudah ada di daftar (untuk menghindari duplikat)
-        setMessages(prev => {
-          // Jika pesan dengan ID yang sama sudah ada, jangan tambahkan lagi
-          if (prev.some(msg => msg.message_id === newMessage.message_id)) {
-            return prev;
-          }
-          
-          // Tambahkan pesan baru dan urutkan berdasarkan timestamp
-          const updatedMessages = [...prev, newMessage].sort(
-            (a, b) => a.created_timestamp - b.created_timestamp
-          );
-          
-          // Scroll ke bawah setelah menambahkan pesan baru
-          setTimeout(() => {
-            if (messagesEndRef.current) {
-              messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-            }
-          }, 100);
-          
-          return updatedMessages;
-        });
-      }
-    };
-    
-    window.addEventListener('sse-message', handleSSEMessage as EventListener);
-    
-    return () => {
-      window.removeEventListener('sse-message', handleSSEMessage as EventListener);
-    };
-  }, [conversationId, shopId]);
-  
   // Jika diminimalkan, tampilkan hanya header
   if (isMinimized) {
     return (

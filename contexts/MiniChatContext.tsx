@@ -210,93 +210,41 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const handleSSEMessage = (event: CustomEvent) => {
       const data = event.detail;
       
-      // Log semua event SSE untuk debugging
-      console.log('[SSE] Event diterima:', data);
-      
       if (data.type === 'new_message') {
-        console.log('[SSE Chat] Pesan baru diterima:', {
-          conversationId: data.conversation_id,
-          messageId: data.message_id,
-          sender: data.sender,
-          messageType: data.message_type,
-          content: data.content
-        });
-        
-        // Cek apakah pesan untuk percakapan yang sudah ada
-        const existingConversation = state.conversations.find(
+        // Periksa apakah conversationId sudah ada dalam daftar
+        const conversationExists = state.conversations.some(
           conv => conv.conversation_id === data.conversation_id
         );
         
-        if (existingConversation) {
-          console.log('[SSE Chat] Percakapan sudah ada, update data:', {
-            conversationId: data.conversation_id,
-            previousUnreadCount: existingConversation.unread_count,
-            updatedUnreadCount: data.shop_id !== existingConversation.shop_id 
-              ? (existingConversation.unread_count || 0) + 1 
-              : existingConversation.unread_count
-          });
+        if (!conversationExists) {
+          console.log('Percakapan baru ditemukan dari SSE:', data.conversation_id);
           
-          // Update percakapan yang sudah ada
-          dispatch({ type: 'SET_CONVERSATIONS', payload: state.conversations.map(conv => 
-            conv.conversation_id === data.conversation_id
-              ? {
-                  ...conv,
-                  latest_message_content: { text: data.content.text || '' },
-                  latest_message_from_id: data.sender,
-                  last_message_timestamp: data.timestamp * 1000000,
-                  unread_count: data.shop_id !== conv.shop_id 
-                    ? (conv.unread_count || 0) + 1 
-                    : conv.unread_count
-                }
-              : conv
-          ) });
-        } else {
-          console.log('[SSE Chat] ⚠️ Percakapan belum ada dalam daftar:', {
-            conversationId: data.conversation_id,
-            hasRequiredData: !!(data.sender && data.sender_name),
-            sender: data.sender,
-            senderName: data.sender_name,
-            shopId: data.shop_id
-          });
+          // Simpan data minimal yang diperlukan
+          const newConversation = {
+            conversation_id: data.conversation_id,
+            to_id: data.sender,
+            to_name: data.sender_name || 'Pengguna',
+            to_avatar: data.sender_avatar || '',
+            shop_id: data.shop_id,
+            shop_name: data.shop_name || 'Toko',
+            latest_message_content: { text: data.content.text || '' },
+            latest_message_from_id: data.sender,
+            last_message_timestamp: data.timestamp * 1000000,
+            unread_count: 1
+          };
           
-          // Ini adalah percakapan baru, buat objek percakapan baru
-          // dan tambahkan ke daftar jika data lengkap tersedia
-          if (data.sender && data.sender_name) {
-            const newConversation = {
-              conversation_id: data.conversation_id,
-              to_id: data.sender,
-              to_name: data.sender_name,
-              to_avatar: data.sender_avatar || '',
-              shop_id: data.shop_id,
-              shop_name: data.shop_name || '',
-              latest_message_content: { text: data.content.text || '' },
-              latest_message_from_id: data.sender,
-              last_message_timestamp: data.timestamp * 1000000,
-              unread_count: 1
-            } as Conversation; // Gunakan type assertion untuk menghindari error TypeScript
-            
-            console.log('[SSE Chat] ✅ Menambahkan percakapan baru ke daftar:', newConversation);
-            
-            // Tambahkan ke daftar percakapan
-            dispatch({ type: 'SET_CONVERSATIONS', payload: [newConversation, ...state.conversations] });
-          } else {
-            console.log('[SSE Chat] ❌ Data tidak lengkap untuk percakapan baru, memanggil API refresh');
-            // Data tidak lengkap, refresh daftar dari API
-            dispatch({ type: 'SET_LOADING', payload: true });
-            fetchConversations();
-          }
+          // Tambahkan ke daftar percakapan
+          dispatch({ type: 'SET_CONVERSATIONS', payload: [newConversation, ...state.conversations] });
         }
       }
     };
 
-    console.log('[SSE] Menambahkan event listener');
     window.addEventListener('sse-message', handleSSEMessage as EventListener);
     
     return () => {
-      console.log('[SSE] Menghapus event listener');
       window.removeEventListener('sse-message', handleSSEMessage as EventListener);
     };
-  }, [state.conversations, dispatch]);
+  }, [state.conversations]);
 
   // Fungsi untuk menandai pesan sebagai dibaca
   const markMessageAsRead = async (conversationId: string, messageId: string) => {
@@ -338,30 +286,20 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Fungsi untuk mengambil daftar percakapan
   const fetchConversations = useCallback(async () => {
-    console.log('[API] Memulai fetchConversations');
-    
     try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      
       const response = await fetch('/api/msg/get_conversation_list');
       
       if (!response.ok) {
-        console.error('[API] Error fetchConversations:', response.status, response.statusText);
-        throw new Error('Failed to fetch conversations');
+        throw new Error('Gagal mengambil daftar percakapan');
       }
       
       const data = await response.json();
+      dispatch({ type: 'SET_CONVERSATIONS', payload: data });
       
-      if (data.response && Array.isArray(data.response.conversations)) {
-        console.log('[API] fetchConversations berhasil:', {
-          totalConversations: data.response.conversations.length,
-          firstConversation: data.response.conversations[0]
-        });
-        
-        dispatch({ type: 'SET_CONVERSATIONS', payload: data.response.conversations });
-      } else {
-        console.error('[API] Format respons tidak sesuai:', data);
-      }
     } catch (error) {
-      console.error('[API] Error fetchConversations:', error);
+      console.error('Error fetching conversations:', error);
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
