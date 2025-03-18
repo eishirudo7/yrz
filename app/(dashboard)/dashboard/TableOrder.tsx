@@ -1864,11 +1864,12 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                           shopId={order.shop_id}
                           toId={order.buyer_user_id}
                           toName={order.buyer_username || "Pembeli"}
-                          toAvatar={order.buyer_avatar || "/default-avatar.png"}
+                          toAvatar={order.buyer_avatar || ""} 
                           shopName={order.shop_name}
                           iconSize={14}
                           iconOnly={true}
-                          orderId={order.order_sn} // Tambahkan orderId sebagai metadata
+                          orderId={order.order_sn}
+                          orderStatus={order.order_status} // Tambahkan orderStatus
                         />
                       </div>
                     </div>

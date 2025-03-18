@@ -5,10 +5,12 @@ import { useSSE } from '@/app/services/SSEService'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { ShoppingBag, MessageSquare, AlertTriangle, Bell } from 'lucide-react'
+import { useMiniChat } from '@/contexts/MiniChatContext'
 
 export function GlobalNotification() {
   const { lastMessage } = useSSE();
   const router = useRouter();
+  const { openChat } = useMiniChat();
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -41,10 +43,20 @@ export function GlobalNotification() {
       action: {
         label: "Balas",
         onClick: () => {
-          const params = new URLSearchParams();
-          params.set('user_id', message.sender.toString());
-          params.set('shop_id', message.shop_id.toString());
-          router.push(`/webchat?${params.toString()}`, { scroll: false });
+          openChat({
+            toId: message.sender,
+            toName: message.sender_name,
+            toAvatar: '',
+            shopId: message.shop_id,
+            shopName: message.shop_name,
+            conversationId: message.conversation_id,
+            metadata: {
+              source: 'notification',
+              timestamp: new Date(message.timestamp * 1000).toISOString()
+            }
+          });
+          
+          toast.dismiss();
         }
       }
     });

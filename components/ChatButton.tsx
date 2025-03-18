@@ -16,6 +16,7 @@ interface ChatButtonProps {
   iconOnly?: boolean;
   orderId?: string;
   productId?: string;
+  orderStatus?: string; // Tambahkan orderStatus
 }
 
 // Gunakan React.memo untuk mencegah re-render yang tidak perlu
@@ -30,7 +31,8 @@ const ChatButton = React.memo(({
   iconSize = 16,
   iconOnly = false,
   orderId,
-  productId
+  productId,
+  orderStatus
 }: ChatButtonProps) => {
   const { openChat, state } = useMiniChat();
   
@@ -49,11 +51,12 @@ const ChatButton = React.memo(({
       metadata: {
         orderId,
         productId,
+        orderStatus, // Tambahkan orderStatus
         source: 'chat_button',
         timestamp: new Date().toISOString()
       }
     });
-  }, [conversationId, shopId, toId, toName, toAvatar, shopName, orderId, productId, openChat]);
+  }, [conversationId, shopId, toId, toName, toAvatar, shopName, orderId, productId, orderStatus, openChat]);
 
   // Gunakan style bawaan yang lebih baik
   const defaultButtonClass = "inline-flex items-center justify-center text-gray-600 hover:text-primary transition-colors focus:outline-none";

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, User as UserIcon, X, Minimize, Maximize, MinusSquare, RefreshCw } from "lucide-react";
+import { Send, User as UserIcon, X, Minimize, Maximize, MinusSquare, RefreshCw, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 // Definisikan tipe Message yang sesuai dengan respons API
@@ -30,6 +30,15 @@ interface Message {
   source: string;
   source_content: any;
   quoted_msg: any;
+}
+
+// Perluas interface ChatMetadata untuk menyertakan orderStatus
+interface ChatMetadata {
+  orderId?: string;
+  productId?: string;
+  source?: string;
+  timestamp?: string;
+  orderStatus?: string; // Tambahkan orderStatus
 }
 
 // Pisahkan komponen input untuk mengurangi re-render
@@ -74,13 +83,13 @@ const ChatInput = React.memo(({
       <Button 
         onClick={handleSend}
         disabled={!inputValue.trim() || isLoading}
-        className="h-7 w-7 p-0 flex items-center justify-center"
+        className="h-6 w-6 p-0 flex items-center justify-center"
         size="sm"
       >
         {isLoading ? (
           <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
         ) : (
-          <Send size={12} />
+          <Send size={10} />
         )}
       </Button>
     </div>
@@ -197,14 +206,10 @@ interface MiniChatProps {
   toAvatar: string;
   shopName: string;
   isMinimized: boolean;
-  metadata?: {
-    orderId?: string;
-    productId?: string;
-    source?: string;
-    timestamp?: string;
-  };
+  metadata?: ChatMetadata;
   onClose: () => void;
   onMinimize: () => void;
+  position?: number;
 }
 
 const MiniChat = React.memo(({
@@ -217,7 +222,8 @@ const MiniChat = React.memo(({
   isMinimized,
   metadata,
   onClose,
-  onMinimize
+  onMinimize,
+  position = 0
 }: MiniChatProps) => {
   // Konversi ke angka jika belum
   const shopId = typeof propShopId === 'number' ? propShopId : Number(propShopId);
@@ -226,6 +232,8 @@ const MiniChat = React.memo(({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [processedOrderSns, setProcessedOrderSns] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Fungsi untuk mengambil pesan
@@ -341,10 +349,53 @@ const MiniChat = React.memo(({
     }
   }, [messages.length]);
   
+  // Modifikasi fungsi pembatalan - hapus pesan konfirmasi dalam chat
+  const handleCancellationAction = useCallback(async (orderSn: string, action: 'ACCEPT' | 'REJECT') => {
+    try {
+      setLoadingAction(action);
+      
+      const response = await fetch('/api/orders/handle-cancellation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          shopId,
+          orderSn,
+          operation: action
+        })
+      });
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Gagal memproses pembatalan');
+      }
+      
+      // Tandai pesanan sebagai sudah diproses
+      setProcessedOrderSns(prev => [...prev, orderSn]);
+      
+      // Tampilkan pesan sukses via toast saja, tanpa tambah pesan ke chat
+      toast.success(`Berhasil ${action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`);
+      
+      // Tidak perlu menambahkan pesan konfirmasi ke chat
+      // Tidak perlu merefresh messages
+      
+    } catch (error) {
+      console.error('Gagal memproses pembatalan:', error);
+      toast.error(error instanceof Error ? error.message : 'Gagal memproses pembatalan');
+    } finally {
+      setLoadingAction(null);
+    }
+  }, [shopId, toId]);
+  
   // Jika diminimalkan, tampilkan hanya header
   if (isMinimized) {
     return (
-      <div className="flex items-center justify-between p-2 border rounded-lg shadow-lg bg-white dark:bg-gray-800 dark:border-gray-700 w-64">
+      <div 
+        className="flex items-center justify-between p-2 border border-gray-100 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700 w-64 z-50 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.5)]"
+        style={{ right: `${position * 17}rem` }}
+      >
         <div className="flex items-center">
           <Avatar src={toAvatar} name={toName} size={5} className="mr-1.5" />
           <div>
@@ -353,11 +404,11 @@ const MiniChat = React.memo(({
           </div>
         </div>
         <div className="flex items-center">
-          <button onClick={onMinimize} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-            <MinusSquare size={14} className="dark:text-gray-300" />
+          <button onClick={onMinimize} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors">
+            <MinusSquare size={14} className="text-gray-600 dark:text-gray-400" />
           </button>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-            <X size={14} className="dark:text-gray-300" />
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors">
+            <X size={14} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
       </div>
@@ -365,9 +416,12 @@ const MiniChat = React.memo(({
   }
   
   return (
-    <div className="flex flex-col w-64 h-96 border rounded-lg shadow-lg bg-white dark:bg-gray-800 dark:border-gray-700">
-      {/* Header */}
-      <div className="flex items-center justify-between p-1.5 border-b dark:border-gray-700">
+    <div 
+      className="flex flex-col w-64 h-96 border border-gray-100 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700 z-50 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.5)]"
+      style={{ right: `${position * 17}rem` }}
+    >
+      {/* Header dengan visual yang disederhanakan */}
+      <div className="flex items-center justify-between p-2 border-b border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-t-lg">
         <div className="flex items-center">
           <Avatar 
             src={toAvatar} 
@@ -380,34 +434,76 @@ const MiniChat = React.memo(({
             <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[120px]">{shopName}</div>
           </div>
         </div>
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <button 
             onClick={fetchMessages} 
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded mr-0.5"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors"
             disabled={isLoading}
             title="Refresh pesan"
           >
-            <RefreshCw size={14} className={`${isLoading ? "animate-spin" : ""} dark:text-gray-300`} />
+            <RefreshCw size={14} className={`${isLoading ? "animate-spin" : ""} text-gray-600 dark:text-gray-400`} />
           </button>
-          <button onClick={onMinimize} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-            <MinusSquare size={14} className="dark:text-gray-300" />
+          <button onClick={onMinimize} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors">
+            <MinusSquare size={14} className="text-gray-600 dark:text-gray-400" />
           </button>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-            <X size={14} className="dark:text-gray-300" />
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors">
+            <X size={14} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
       </div>
       
-      {/* Tampilkan metadata order (hanya ID order) jika ada */}
+      {/* Tampilkan metadata order jika ada - dengan desain yang lebih clean */}
       {metadata?.orderId && (
-        <div className="px-2 py-1 bg-gray-50 dark:bg-gray-900 text-[10px] text-gray-500 dark:text-gray-400 border-b dark:border-gray-700 flex items-center">
-          <span className="font-medium">Order:</span>
-          <span className="ml-1 truncate">{metadata.orderId}</span>
+        <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900/50 text-[10px] text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center">
+            <span className="font-medium">Order:</span>
+            <span className="ml-1 truncate font-mono">{metadata.orderId}</span>
+          </div>
+          
+          {/* Cek apakah pesanan sedang memiliki status IN_CANCEL dan belum diproses */}
+          {metadata?.orderStatus === 'IN_CANCEL' && !processedOrderSns.includes(metadata.orderId!) && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCancellationAction(metadata.orderId!, 'ACCEPT');
+                }}
+                title="Terima Pembatalan"
+                disabled={loadingAction !== null}
+              >
+                {loadingAction === 'ACCEPT' ? (
+                  <div className="h-2 w-2 rounded-full border border-green-600 border-t-transparent animate-spin" />
+                ) : (
+                  <CheckCircle size={12} className="text-green-600 dark:text-green-400" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCancellationAction(metadata.orderId!, 'REJECT');
+                }}
+                title="Tolak Pembatalan"
+                disabled={loadingAction !== null}
+              >
+                {loadingAction === 'REJECT' ? (
+                  <div className="h-2 w-2 rounded-full border border-red-600 border-t-transparent animate-spin" />
+                ) : (
+                  <XCircle size={12} className="text-red-600 dark:text-red-400" />
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
       
-      {/* Messages */}
-      <div className="flex-1 p-2 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+      {/* Messages area */}
+      <div className="flex-1 p-2 overflow-y-auto bg-white dark:bg-gray-800">
         {isLoading && messages.length === 0 ? (
           <div className="flex justify-center items-center h-full">
             <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
@@ -428,8 +524,10 @@ const MiniChat = React.memo(({
         <div ref={messagesEndRef} />
       </div>
       
-      {/* Input */}
-      <ChatInput onSend={handleSendMessage} isLoading={isSending} />
+      {/* Input dengan styling yang sederhana */}
+      <div className="border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-lg">
+        <ChatInput onSend={handleSendMessage} isLoading={isSending} />
+      </div>
     </div>
   );
 });

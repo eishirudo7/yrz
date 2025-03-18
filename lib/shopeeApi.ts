@@ -535,8 +535,16 @@ export class ShopeeAPI {
     const headers = { 'Content-Type': 'application/json' };
 
     try {
-      const response = await axios.post(fullUrl, body, { headers });
-      return response.data;
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers: {
+          ...headers
+        },
+        body: JSONStringify(body) // Gunakan JSONStringify untuk request juga
+      });
+      
+      const rawText = await response.text();
+      return JSONParse(rawText); // Gunakan JSONParse untuk respons
     } catch (error) {
       console.error('Error mengirim pesan:', error);
       throw error;

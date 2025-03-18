@@ -1,6 +1,6 @@
 'use client'
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
-
+import { JSONStringify } from 'json-with-bigint';
 // Definisikan tipe untuk data percakapan dari API
 interface Conversation {
   conversation_id: string;
@@ -19,6 +19,7 @@ interface ChatMetadata {
   productId?: string;
   source?: string;
   timestamp?: string;
+  orderStatus?: string;
 }
 
 // Definisikan tipe state
@@ -36,6 +37,7 @@ interface MiniChatState {
   }[];
   conversations: Conversation[];
   isLoading: boolean;
+  isMobile: boolean;
 }
 
 // Definisikan tipe untuk chat
@@ -56,7 +58,9 @@ type MiniChatAction =
   | { type: 'MINIMIZE_CHAT'; payload: { minimize: boolean } }
   | { type: 'SEND_MESSAGE'; payload: { conversationId: string; message: string } }
   | { type: 'SET_CONVERSATIONS'; payload: Conversation[] }
-  | { type: 'SET_LOADING'; payload: boolean };
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'ADD_CONVERSATION'; payload: Conversation }
+  | { type: 'SET_MOBILE'; payload: boolean };
 
 // Buat context
 const MiniChatContext = createContext<{
@@ -74,6 +78,20 @@ const MiniChatContext = createContext<{
 // Buat reducer
 const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChatState => {
   switch (action.type) {
+    case 'SET_MOBILE':
+      // Jika berubah dari desktop ke mobile, terapkan batasan 1 chat
+      if (action.payload && !state.isMobile && state.activeChats.length > 1) {
+        return {
+          ...state,
+          isMobile: action.payload,
+          activeChats: state.activeChats.slice(-1) // Hanya ambil chat terbaru
+        };
+      }
+      return {
+        ...state,
+        isMobile: action.payload
+      };
+      
     case 'OPEN_CHAT': {
       const { toId, shopId, toName, toAvatar, shopName, metadata } = action.payload;
       
@@ -95,17 +113,38 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
             finalAvatar = matchingConversation.to_avatar;
           }
         } else {
-          console.warn('Tidak dapat menemukan conversationId yang cocok');
-          return state; // Jangan buka chat jika tidak ada conversationId
-        }
-      } else {
-        // Jika conversationId disediakan, cari dalam daftar percakapan untuk mendapatkan avatar
-        const matchingConversation = state.conversations.find(
-          conv => conv.conversation_id === conversationId
-        );
-        
-        if (matchingConversation && matchingConversation.to_avatar) {
-          finalAvatar = matchingConversation.to_avatar;
+          // Buat ID sementara
+          conversationId = `temp_${toId}_${shopId}_${Date.now()}`;
+          console.log('Membuat temporary conversationId:', conversationId);
+          
+          // Tambahkan juga ke daftar percakapan
+          const tempConversation: Conversation = {
+            conversation_id: conversationId,
+            to_id: toId,
+            to_name: toName,
+            to_avatar: finalAvatar,
+            shop_id: shopId,
+            shop_name: shopName,
+            last_message_timestamp: Date.now(),
+            unread_count: 0
+          };
+          
+          // Tambahkan percakapan sementara ke state
+          return {
+            ...state,
+            isOpen: true,
+            isMinimized: false,
+            conversations: [tempConversation, ...state.conversations],
+            activeChats: handleMaxChatsLimit([...state.activeChats, {
+              conversationId,
+              toId,
+              toName,
+              toAvatar: finalAvatar,
+              shopId,
+              shopName,
+              metadata
+            }], state.isMobile)
+          };
         }
       }
       
@@ -115,10 +154,12 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
       );
       
       if (existingChatIndex >= 0) {
-        // Update chat yang sudah ada dengan data terbaru
+        // Update chat yang sudah ada dengan data terbaru dan pindahkan ke posisi terakhir (paling depan)
         const updatedChats = [...state.activeChats];
-        updatedChats[existingChatIndex] = {
-          ...updatedChats[existingChatIndex],
+        const chatToUpdate = updatedChats.splice(existingChatIndex, 1)[0];
+        
+        const updatedChat = {
+          ...chatToUpdate,
           toId,
           toName,
           toAvatar: finalAvatar,
@@ -126,7 +167,7 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
           shopName,
           // Gabungkan metadata jika ada
           metadata: {
-            ...updatedChats[existingChatIndex].metadata,
+            ...chatToUpdate.metadata,
             ...metadata
           }
         };
@@ -135,16 +176,16 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
           ...state,
           isOpen: true,
           isMinimized: false,
-          activeChats: updatedChats
+          activeChats: handleMaxChatsLimit([...updatedChats, updatedChat], state.isMobile)
         };
       }
       
-      // Tambahkan chat baru
+      // Tambahkan chat baru dengan memeriksa batas maksimum
       return {
         ...state,
         isOpen: true,
         isMinimized: false,
-        activeChats: [...state.activeChats, {
+        activeChats: handleMaxChatsLimit([...state.activeChats, {
           conversationId,
           toId,
           toName,
@@ -152,7 +193,7 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
           shopId,
           shopName,
           metadata
-        }]
+        }], state.isMobile)
       };
     }
       
@@ -187,10 +228,30 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
         isLoading: action.payload
       };
       
+    case 'ADD_CONVERSATION':
+      return {
+        ...state,
+        conversations: [...state.conversations, action.payload]
+      };
+      
     default:
       return state;
   }
 };
+
+// Fungsi untuk menangani batas maksimum chat aktif (6)
+function handleMaxChatsLimit(chats: MiniChatState['activeChats'], isMobile: boolean) {
+  if (isMobile) {
+    // Untuk mobile, hanya izinkan 1 chat
+    return chats.slice(-1); // Ambil hanya chat terbaru
+  } else {
+    // Untuk desktop, batasi hingga 6 chat
+    if (chats.length > 6) {
+      return chats.slice(1); // Hapus chat tertua
+    }
+    return chats;
+  }
+}
 
 // Buat provider
 export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -199,7 +260,8 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isMinimized: false,
     activeChats: [],
     conversations: [],
-    isLoading: false
+    isLoading: false,
+    isMobile: false // Default set ke false
   });
   
   // Tambahkan state untuk total unread messages
@@ -245,6 +307,23 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       window.removeEventListener('sse-message', handleSSEMessage as EventListener);
     };
   }, [state.conversations]);
+
+  // Tambahkan hook untuk mendeteksi mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobile = window.innerWidth < 768; // Tentukan breakpoint untuk mobile
+      dispatch({ type: 'SET_MOBILE', payload: isMobile });
+    };
+    
+    // Cek saat pertama kali load
+    checkMobile();
+    
+    // Tambahkan event listener untuk resize
+    window.addEventListener('resize', checkMobile);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Fungsi untuk menandai pesan sebagai dibaca
   const markMessageAsRead = async (conversationId: string, messageId: string) => {
@@ -310,10 +389,99 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchConversations();
   }, [fetchConversations]);
   
-  // Gunakan useCallback untuk fungsi-fungsi
-  const openChat = useCallback((chat: ChatInfo) => {
-    dispatch({ type: 'OPEN_CHAT', payload: chat });
-  }, []);
+  // Fungsi openChat yang lebih efisien
+  const openChat = useCallback(async (chat: ChatInfo) => {
+    const { toId, shopId, conversationId: existingConversationId, metadata } = chat;
+    
+    // Jika sudah ada conversationId, langsung gunakan
+    if (existingConversationId) {
+      dispatch({ type: 'OPEN_CHAT', payload: chat });
+      return;
+    }
+    
+    // Cari conversationId dari daftar percakapan jika tidak disediakan
+    const matchingConversation = state.conversations.find(
+      conv => conv.to_id === toId && conv.shop_id === shopId
+    );
+    
+    if (matchingConversation) {
+      // Gunakan data dari percakapan yang sudah ada
+      dispatch({ 
+        type: 'OPEN_CHAT', 
+        payload: {
+          ...chat,
+          conversationId: matchingConversation.conversation_id,
+          toAvatar: matchingConversation.to_avatar || chat.toAvatar
+        }
+      });
+      return;
+    }
+    
+    // Jika tidak ada conversationId dan perlu inisiasi
+    if (metadata?.orderId) {
+      try {
+        const response = await fetch('/api/msg/initialize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userId: toId,
+            orderSn: metadata.orderId,
+            shopId: shopId
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.success && data.conversation?.conversation_id) {
+            // Langsung gunakan conversation_id dari respons inisiasi
+            const newConversationId = String(data.conversation.conversation_id);
+            
+            // Buat objek percakapan baru berdasarkan data yang kita sudah punya + conversation_id baru
+            const newConversation = {
+              conversation_id: newConversationId,
+              to_id: toId,
+              to_name: chat.toName,
+              to_avatar: chat.toAvatar || '',
+              shop_id: shopId,
+              shop_name: chat.shopName,
+              last_message_timestamp: Date.now(),
+              unread_count: 0
+            };
+            
+            // Tambahkan ke daftar percakapan secara lokal tanpa meminta ulang dari server
+            dispatch({ 
+              type: 'ADD_CONVERSATION', 
+              payload: newConversation 
+            });
+            
+            // Buka chat dengan conversation_id baru
+            dispatch({ 
+              type: 'OPEN_CHAT', 
+              payload: { 
+                ...chat, 
+                conversationId: newConversationId 
+              } 
+            });
+            return;
+          }
+        }
+        
+        // Jika inisiasi gagal, buka chat tanpa conversationId (akan menampilkan error atau pesan bantuan)
+        dispatch({ type: 'OPEN_CHAT', payload: chat });
+        
+      } catch (error) {
+        console.error('Error initializing conversation:', error);
+        // Tetap buka chat meskipun inisiasi gagal
+        dispatch({ type: 'OPEN_CHAT', payload: chat });
+      }
+    } else {
+      // Jika tidak ada orderId untuk inisiasi, buka chat tanpa conversationId
+      dispatch({ type: 'OPEN_CHAT', payload: chat });
+    }
+  }, [state.conversations, dispatch]);
   
   const closeChat = useCallback((conversationId: string) => {
     dispatch({ type: 'CLOSE_CHAT', payload: { conversationId } });

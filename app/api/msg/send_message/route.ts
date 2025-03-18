@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { JSONStringify } from 'json-with-bigint';
 
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { supabase } from '@/lib/supabase';
@@ -52,13 +53,25 @@ export async function POST(req: NextRequest) {
     // Periksa keberhasilan berdasarkan adanya 'response' dan 'message_id'
     if (result.response && result.response.message_id) {
       console.log('Pesan berhasil dikirim:', result.response);
-      return NextResponse.json({ success: true, data: result.response });
+      
+      // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
+      return new NextResponse(JSONStringify({
+        success: true,
+        data: {
+          ...result.response,
+          conversation_id: String(result.response.conversation_id) // Pastikan conversation_id adalah string
+        }
+      }), {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
     } else {
       console.error('Gagal mengirim pesan:', result.error || 'Tidak ada message_id dalam respons');
       return NextResponse.json({ success: false, error: result.error || 'Gagal mengirim pesan' }, { status: 400 });
     }
   } catch (error) {
-    
+    console.error('Error internal server:', error);
     return NextResponse.json({ success: false, error: 'Terjadi kesalahan internal server' }, { status: 500 });
   }
 }

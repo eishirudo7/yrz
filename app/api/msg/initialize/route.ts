@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { supabase } from '@/lib/supabase';
+import { JSONStringify } from 'json-with-bigint';
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,18 +41,19 @@ export async function POST(req: NextRequest) {
     console.log('Respon dari Shopee API:', result);
 
     if (result.response && result.response.message_id) {
-      // Jika berhasil, return data lengkap dari response Shopee
-      return NextResponse.json({
+      const respData = {
         success: true,
         conversation: {
-          message_id: result.response.message_id,
-          to_id: result.response.to_id,
-          message_type: result.response.message_type,
-          content: result.response.content,
-          conversation_id: result.response.conversation_id,
-          created_timestamp: result.response.created_timestamp,
-          source_content: result.response.source_content
+          ...result.response,
+          conversation_id: String(result.response.conversation_id)
         }
+      };
+      
+      // Gunakan JSONStringify untuk memastikan penanganan BigInt yang konsisten
+      return new NextResponse(JSONStringify(respData), {
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
     } else {
       return NextResponse.json(
