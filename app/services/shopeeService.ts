@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { JSONStringify, JSONParse } from 'json-with-bigint';
 
+
 // Implementasi baru getValidAccessToken yang menggunakan API route
 async function getValidAccessToken(shopId: number): Promise<string> {
   try {
@@ -1512,6 +1513,42 @@ export async function unlistItems(
       success: false,
       error: 'UNLIST_ITEMS_FAILED',
       message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+    };
+  }
+}
+
+export async function getEscrowDetail(shopId: number, orderSn: string): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    
+    console.info(`Mengambil detail escrow untuk pesanan ${orderSn}`);
+    
+    const result = await shopeeApi.getEscrowDetail(shopId, orderSn, accessToken);
+    
+    if (result.error) {
+      console.error(`Error saat mengambil detail escrow: ${JSON.stringify(result)}`);
+      return {
+        success: false,
+        error: result.error,
+        message: result.message || 'Gagal mengambil detail escrow',
+        request_id: result.request_id || ''
+      };
+    }
+    
+    console.info(`Berhasil mengambil detail escrow untuk pesanan ${orderSn}`);
+    return {
+      success: true,
+      data: result.response,
+      request_id: result.request_id
+    };
+    
+  } catch (error) {
+    console.error(`Terjadi kesalahan saat mengambil detail escrow: ${error}`);
+    return {
+      success: false,
+      error: "internal_server_error",
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
+      request_id: ''
     };
   }
 }

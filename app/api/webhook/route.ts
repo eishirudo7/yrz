@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { upsertOrderData, upsertOrderItems, upsertLogisticData, trackingUpdate, updateDocumentStatus, withRetry, updateOrderStatusOnly } from '@/app/services/databaseOperations';
+import { upsertOrderData, upsertOrderItems, upsertLogisticData, trackingUpdate, updateDocumentStatus, withRetry, updateOrderStatusOnly, saveEscrowDetail } from '@/app/services/databaseOperations';
 import { prosesOrder } from '@/app/services/prosesOrder';
 import { getOrderDetail } from '@/app/services/shopeeService';
+import { getEscrowDetail } from '@/app/services/shopeeService';
 import { redis } from '@/app/services/redis';
 import { PenaltyService } from '@/app/services/penaltyService';
 import { UpdateService } from '@/app/services/updateService';
@@ -202,6 +203,27 @@ async function handleOrder(data: any) {
       const shops = JSON.parse(autoShipData);
       const shop = shops.find((s: any) => s.shop_id === data.shop_id);
       shopName = shop?.shop_name || '';
+    }
+
+    // Ambil dan simpan escrow detail jika status PROCESSED atau COMPLETED
+    if (orderData.status === 'PROCESSED' || orderData.status === 'COMPLETED') {
+      try {
+        console.log(`Mengambil detail escrow untuk order: ${orderData.ordersn} dengan status ${orderData.status}`);
+        const escrowDetail = await withRetry(
+          () => getEscrowDetail(data.shop_id, orderData.ordersn),
+          3,
+          2000
+        );
+        
+        if (escrowDetail && !escrowDetail.error) {
+          await saveEscrowDetail(data.shop_id, escrowDetail.data || escrowDetail);
+          console.log(`Detail escrow berhasil disimpan untuk order: ${orderData.ordersn}`);
+        } else {
+          console.error(`Gagal mendapatkan detail escrow: ${JSON.stringify(escrowDetail)}`);
+        }
+      } catch (error) {
+        console.error(`Error saat mengambil dan menyimpan escrow detail: ${error}`);
+      }
     }
 
     if (orderData.status === 'READY_TO_SHIP') {

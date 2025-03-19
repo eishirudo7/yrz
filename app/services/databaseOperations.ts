@@ -260,3 +260,47 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
       console.log(`Status pesanan berhasil diperbarui untuk order_sn: ${orderSn} ke status: ${status}`);
     });
   }
+
+  export async function saveEscrowDetail(shopId: number, orderData: any): Promise<void> {
+    try {
+      console.log(`Menyimpan detail escrow untuk order_sn: ${orderData.order_sn}`);
+      
+      if (!orderData || !orderData.order_sn) {
+        throw new Error('Data escrow tidak valid');
+      }
+      
+      const escrowData = {
+        order_sn: orderData.order_sn,
+        shop_id: shopId,
+        escrow_amount: orderData.escrow_amount || null,
+        buyer_total_amount: orderData.buyer_total_amount || null,
+        original_price: orderData.original_price || null,
+        seller_discount: orderData.seller_discount || null,
+        shopee_discount: orderData.shopee_discount || null,
+        voucher_from_seller: orderData.voucher_from_seller || null,
+        commission_fee: orderData.commission_fee || null,
+        service_fee: orderData.service_fee || null,
+        seller_transaction_fee: orderData.seller_transaction_fee || null,
+        actual_shipping_fee: orderData.actual_shipping_fee || null,
+        buyer_payment_method: orderData.buyer_payment_method || null,
+        updated_at: new Date().toISOString(),
+        escrow_amount_after_adjustment: orderData.escrow_amount_after_adjustment || 0
+      };
+      
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from('order_escrow')
+          .upsert(escrowData, { onConflict: 'order_sn,shop_id' });
+          
+        if (error) {
+          throw new Error(`Gagal menyimpan detail escrow: ${error.message}`);
+        }
+        
+        console.log(`Detail escrow berhasil disimpan untuk order_sn: ${orderData.order_sn}`);
+      }, 3, 1000);
+      
+    } catch (error) {
+      console.error('Gagal menyimpan detail escrow:', error);
+      throw error;
+    }
+  }

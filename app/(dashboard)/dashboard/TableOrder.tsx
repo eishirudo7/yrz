@@ -1627,8 +1627,62 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
     ).length;
   }, [orders]);
 
+  // Tempatkan komponen progress bar di atas tabel, kemungkinan di sekitar area filter/search
+  // Biasanya ini berada di bagian awal fungsi return dari komponen OrdersDetailTable
+
+  // Misalnya, setelah header/filter dan sebelum tabel:
+      {/* Header dan filter tetap di tempatnya */}
+      
+      
+      
+      {/* Tabel */}
+      
   return (
+    
     <div className="w-full">
+      {bulkAcceptProgress.total > 0 && (
+        <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <CheckCircle size={14} className="text-green-500 animate-pulse" />
+                <span className="font-medium dark:text-white">
+                  Menerima Pembatalan: {bulkAcceptProgress.currentOrder}
+                </span>
+              </div>
+              <span className="text-gray-600 dark:text-gray-400">
+                {bulkAcceptProgress.processed}/{bulkAcceptProgress.total}
+              </span>
+            </div>
+            <Progress 
+              value={(bulkAcceptProgress.processed / bulkAcceptProgress.total) * 100} 
+              className="h-1"
+            />
+          </div>
+        </div>
+      )}
+      {/* Progress bar sinkronisasi */}
+      {isSyncing && (
+        <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <RefreshCcw size={14} className="text-primary dark:text-white animate-spin" />
+                <span className="font-medium dark:text-white">
+                  {syncProgress.currentShop}
+                </span>
+              </div>
+              <span className="text-gray-600 dark:text-gray-400">
+                {syncProgress.processed}/{syncProgress.total}
+              </span>
+            </div>
+            <Progress 
+              value={(syncProgress.processed / syncProgress.total) * 100} 
+              className="h-1"
+            />
+          </div>
+        </div>
+      )}
       {documentBulkProgress.total > 0 && (
         <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
           <div className="flex flex-col gap-1.5">
@@ -2487,29 +2541,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Tambahkan progress bar jika sedang sync */}
-      {isSyncing && (
-        <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <RefreshCcw size={14} className="text-primary dark:text-white animate-spin" />
-                <span className="font-medium dark:text-white">
-                  {syncProgress.currentShop}
-                </span>
-              </div>
-              <span className="text-gray-600 dark:text-gray-400">
-                {syncProgress.processed}/{syncProgress.total}
-              </span>
-            </div>
-            <Progress 
-              value={(syncProgress.processed / syncProgress.total) * 100} 
-              className="h-1"
-            />
-          </div>
-        </div>
-      )}
-
       <Dialog open={isSyncSummaryOpen} onOpenChange={setIsSyncSummaryOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col dark:bg-gray-800 dark:border-gray-700">
           <DialogHeader className="px-6 py-4 border-b dark:border-gray-700">
@@ -2623,27 +2654,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
       </AlertDialog>
 
       {/* Tambahkan progress bar untuk bulk accept jika sedang berjalan */}
-      {bulkAcceptProgress.total > 0 && (
-        <div className="mt-2 mb-2 p-2 bg-white dark:bg-gray-800 border rounded-lg shadow-sm">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <CheckCircle size={14} className="text-green-500 animate-pulse" />
-                <span className="font-medium dark:text-white">
-                  Menerima Pembatalan: {bulkAcceptProgress.currentOrder}
-                </span>
-              </div>
-              <span className="text-gray-600 dark:text-gray-400">
-                {bulkAcceptProgress.processed}/{bulkAcceptProgress.total}
-              </span>
-            </div>
-            <Progress 
-              value={(bulkAcceptProgress.processed / bulkAcceptProgress.total) * 100} 
-              className="h-1"
-            />
-          </div>
-        </div>
-      )}
+      
     </div>
   );
 }
