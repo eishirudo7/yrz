@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon, MessageCircle, RefreshCw } from "lucide-react"
+import { CalendarIcon, CheckCircle, RefreshCw, AlertCircle, RotateCcw, TrendingUp } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { cn } from "@/lib/utils"
@@ -57,7 +57,7 @@ function formatDate(timestamp: number): string {
 interface OrderStatusCardProps {
   title: string
   count: number
-  icon: 'pending' | 'process' | 'shipping' | 'cancel' | 'total' | 'failed'
+  icon: 'pending' | 'process' | 'shipping' | 'cancel' | 'total' | 'failed' | 'completed' | 'confirm' | 'return'
   onClick: () => void
   isActive: boolean
 }
@@ -77,6 +77,12 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
         return <ShoppingCart className="w-5 h-5" />
       case 'failed':
         return <XOctagon className="w-5 h-5" />
+      case 'completed':
+        return <CheckCircle className="w-5 h-5" />
+      case 'confirm':
+        return <AlertCircle className="w-5 h-5" />
+      case 'return':
+        return <RotateCcw className="w-5 h-5" />
       default:
         return null
     }
@@ -96,6 +102,12 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
         return 'bg-purple-500 text-white'
       case 'failed':
         return 'bg-orange-500 text-white'
+      case 'completed':
+        return 'bg-emerald-500 text-white'
+      case 'confirm':
+        return 'bg-cyan-500 text-white'
+      case 'return':
+        return 'bg-violet-500 text-white'
       default:
         return 'bg-background'
     }
@@ -110,17 +122,17 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
       }`}
       onClick={onClick}
     >
-      <div className="p-4">
+      <div className="p-2.5">
         <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className={`text-sm font-medium ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>
+          <div className="space-y-0.5">
+            <p className={`text-xs font-medium ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>
               {title}
             </p>
-            <p className={`text-2xl font-bold tracking-tight ${isActive ? 'text-white' : ''}`}>
+            <p className={`text-xl font-bold tracking-tight ${isActive ? 'text-white' : ''}`}>
               {count}
             </p>
           </div>
-          <div className={`p-2.5 rounded-xl ${
+          <div className={`p-1.5 rounded-lg ${
             isActive 
               ? 'bg-white/20' 
               : `bg-background ${
@@ -129,7 +141,10 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
                   icon === 'shipping' ? 'text-green-500' :
                   icon === 'cancel' ? 'text-red-500' :
                   icon === 'total' ? 'text-purple-500' :
-                  'text-orange-500'
+                  icon === 'failed' ? 'text-orange-500' :
+                  icon === 'confirm' ? 'text-cyan-500' :
+                  icon === 'completed' ? 'text-emerald-500' :
+                  'text-violet-500'
                 }`
           }`}>
             {getIcon()}
@@ -197,7 +212,9 @@ export default function OrdersPage() {
     error: ordersError,
     syncMissingEscrowData,
     syncingEscrow,
-    syncProgress
+    syncProgress,
+    adsData,
+    totalAdsSpend
   } = useOrders(selectedDateRange)
   const [visibleOrders, setVisibleOrders] = useState<Order[]>([])
   const [page, setPage] = useState(1)
@@ -256,6 +273,12 @@ export default function OrdersPage() {
           return order.order_status === 'PROCESSED'
         case 'shipping':
           return order.order_status === 'SHIPPED'
+        case 'completed':
+          return order.order_status === 'COMPLETED'
+        case 'confirm':
+          return order.order_status === 'TO_CONFIRM_RECEIVE'
+        case 'return':
+          return order.order_status === 'TO_RETURN'
         case 'cancel':
           return order.order_status === 'CANCELLED'
         case 'total':
@@ -414,12 +437,18 @@ export default function OrdersPage() {
           acc.total++
           break
         case 'COMPLETED':
+          acc.completed++
           acc.total++
           break
         case 'IN_CANCEL':
           acc.total++
           break
         case 'TO_CONFIRM_RECEIVE':
+          acc.confirm++
+          acc.total++
+          break
+        case 'TO_RETURN':
+          acc.return++
           acc.total++
           break
         case 'CANCELLED':
@@ -434,7 +463,10 @@ export default function OrdersPage() {
     shipping: 0,
     cancel: 0,
     total: 0,
-    failed: 0
+    failed: 0,
+    completed: 0,
+    confirm: 0,
+    return: 0
   })
 
   // Dapatkan daftar unik toko dari orders
@@ -443,7 +475,7 @@ export default function OrdersPage() {
   // Tambahkan fungsi untuk menghitung ringkasan toko
   const getShopsSummary = useCallback((): ShopSummary[] => {
     const summary = orders.reduce((acc: { [key: string]: ShopSummary }, order) => {
-      if (!['PROCESSED', 'SHIPPED', 'COMPLETED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE'].includes(order.order_status)) {
+      if (!['PROCESSED', 'SHIPPED', 'COMPLETED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE', 'TO_RETURN'].includes(order.order_status)) {
         return acc
       }
 
@@ -582,6 +614,12 @@ export default function OrdersPage() {
           return order.order_status === 'PROCESSED';
         case 'shipping':
           return order.order_status === 'SHIPPED';
+        case 'completed':
+          return order.order_status === 'COMPLETED';
+        case 'confirm':
+          return order.order_status === 'TO_CONFIRM_RECEIVE';
+        case 'return':
+          return order.order_status === 'TO_RETURN';
         case 'cancel':
           return order.order_status === 'CANCELLED';
         case 'total':
@@ -596,6 +634,51 @@ export default function OrdersPage() {
     });
 
     return filteredOrdersForOmset.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
+  }, [orders, activeFilter, selectedShops]);
+
+  // Menghitung total escrow (pendapatan bersih) berdasarkan filter yang aktif
+  const getFilteredEscrow = useMemo(() => {
+    const filteredOrdersForEscrow = orders.filter(order => {
+      if (!activeFilter) return true;
+      
+      if (activeFilter === 'failed') {
+        return order.cancel_reason === 'Failed Delivery';
+      }
+      
+      switch (activeFilter) {
+        case 'pending':
+          return order.order_status === 'UNPAID';
+        case 'process':
+          return order.order_status === 'PROCESSED';
+        case 'shipping':
+          return order.order_status === 'SHIPPED';
+        case 'completed':
+          return order.order_status === 'COMPLETED';
+        case 'confirm':
+          return order.order_status === 'TO_CONFIRM_RECEIVE';
+        case 'return':
+          return order.order_status === 'TO_RETURN';
+        case 'cancel':
+          return order.order_status === 'CANCELLED';
+        case 'total':
+          if (order.cancel_reason === 'Failed Delivery') return false;
+          return !['CANCELLED'].includes(order.order_status);
+        default:
+          return true;
+      }
+    }).filter(order => {
+      if (selectedShops.length === 0) return true;
+      return selectedShops.includes(order.shop_name);
+    });
+
+    return filteredOrdersForEscrow.reduce((sum, order) => {
+      // Jika escrow_amount_after_adjustment ada, tambahkan ke sum
+      if (order.escrow_amount_after_adjustment !== undefined && 
+          order.escrow_amount_after_adjustment !== null) {
+        return sum + parseFloat(order.escrow_amount_after_adjustment.toString());
+      }
+      return sum;
+    }, 0);
   }, [orders, activeFilter, selectedShops]);
 
   if (ordersLoading) {
@@ -748,26 +831,64 @@ export default function OrdersPage() {
   if (ordersError) return <div className="container mx-auto p-4 text-red-500">{ordersError}</div>
 
   return (
-    <div className="w-full p-4 sm:p-6 space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-        <Card className="col-span-2">
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-muted-foreground">
-                  Total Omset
-                </p>
-                <p className="text-2xl font-bold text-green-600">
+    <div className="w-full p-4 sm:p-6 space-y-4">
+      <div className="grid grid-cols-3 gap-4 mb-2">
+        <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <div className="p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                Total Omset
+              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xl font-bold text-green-700 dark:text-green-400 truncate pr-2">
                   Rp {getFilteredOmset.toLocaleString('id-ID')}
                 </p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-green-50">
-                <Wallet className="w-5 h-5 text-green-600" />
+                <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-800/40 flex-shrink-0">
+                  <Wallet className="w-4 h-4 text-green-600 dark:text-green-400" />
+                </div>
               </div>
             </div>
           </div>
         </Card>
+        
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <div className="p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                Total Bersih (Escrow)
+              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xl font-bold text-blue-700 dark:text-blue-400 truncate pr-2">
+                  Rp {getFilteredEscrow.toLocaleString('id-ID')}
+                </p>
+                <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-800/40 flex-shrink-0">
+                  <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+        
+        <Card className="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+          <div className="p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-purple-800 dark:text-purple-300">
+                Total Iklan
+              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
+                  Rp {totalAdsSpend.toLocaleString('id-ID')}
+                </p>
+                <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0">
+                  <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
 
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-2">
         <OrderStatusCard
           title="Total"
           count={orderStats.total}
@@ -795,6 +916,27 @@ export default function OrdersPage() {
           icon="shipping"
           onClick={() => setActiveFilter(activeFilter === 'shipping' ? null : 'shipping')}
           isActive={activeFilter === 'shipping'}
+        />
+        <OrderStatusCard
+          title="Diterima"
+          count={orderStats.confirm}
+          icon="confirm"
+          onClick={() => setActiveFilter(activeFilter === 'confirm' ? null : 'confirm')}
+          isActive={activeFilter === 'confirm'}
+        />
+        <OrderStatusCard
+          title="Pengembalian"
+          count={orderStats.return}
+          icon="return"
+          onClick={() => setActiveFilter(activeFilter === 'return' ? null : 'return')}
+          isActive={activeFilter === 'return'}
+        />
+        <OrderStatusCard
+          title="Selesai"
+          count={orderStats.completed}
+          icon="completed"
+          onClick={() => setActiveFilter(activeFilter === 'completed' ? null : 'completed')}
+          isActive={activeFilter === 'completed'}
         />
         <OrderStatusCard
           title="Dibatalkan"

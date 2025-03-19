@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { DateRange } from 'react-day-picker'
-import { getEscrowDetail } from '@/app/services/shopeeService'
+import { getEscrowDetail, getAdsDailyPerformance } from '@/app/services/shopeeService'
 import { saveEscrowDetail } from '@/app/services/databaseOperations'
 
 export interface Order {
@@ -21,9 +21,17 @@ export interface Order {
   escrow_amount_after_adjustment?: number
 }
 
+export interface AdsData {
+  shopId: number
+  shopName: string
+  totalSpend: number
+}
+
 export function useOrders(dateRange: DateRange | undefined) {
   const [orders, setOrders] = useState<Order[]>([])
   const [ordersWithoutEscrow, setOrdersWithoutEscrow] = useState<Order[]>([])
+  const [adsData, setAdsData] = useState<AdsData[]>([])
+  const [totalAdsSpend, setTotalAdsSpend] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncingEscrow, setSyncingEscrow] = useState(false)
@@ -123,6 +131,52 @@ export function useOrders(dateRange: DateRange | undefined) {
     }
   }
 
+  // Fungsi untuk mengambil data iklan
+  const fetchAdsData = async (startDate: string, endDate: string) => {
+    try {
+      // Debug: log tanggal input
+      console.log("Input ke fetchAdsData:", startDate, endDate);
+      
+      // Cek apakah tanggal mulai dan akhir sama, jika sama gunakan tanggal yang sama untuk keduanya
+      const useStartDate = startDate === endDate ? endDate : startDate;
+      
+      // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
+      const formattedStartDate = useStartDate.split('-').reverse().join('-');
+      const formattedEndDate = endDate.split('-').reverse().join('-');
+      
+      // Debug: log tanggal yang dikirim ke API
+      console.log("Dikirim ke API ads:", formattedStartDate, formattedEndDate);
+      
+      // Panggil API untuk mendapatkan data iklan
+      const response = await fetch(`/api/ads?start_date=${formattedStartDate}&end_date=${formattedEndDate}&_timestamp=${Date.now()}`);
+      
+      if (!response.ok) {
+        throw new Error(`Gagal mengambil data iklan`);
+      }
+      
+      const adsResult = await response.json();
+      
+      // Simpan data toko jika ada
+      if (adsResult && adsResult.ads_data) {
+        setAdsData(adsResult.ads_data.map((ad: any) => ({
+          shopId: ad.shop_id,
+          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
+          totalSpend: parseFloat(ad.cost.replace(/[^0-9.-]+/g, '')) || 0
+        })));
+      }
+      
+      // Ambil total_cost langsung dari API response
+      if (adsResult && adsResult.total_cost) {
+        // Konversi dari string format (Rp. X.XXX) ke angka
+        const totalCost = adsResult.total_cost;
+        setTotalAdsSpend(totalCost);
+        console.log("Total pengeluaran iklan:", adsResult.total_cost);
+      }
+    } catch (e) {
+      console.error("Error saat mengambil data iklan:", e);
+    }
+  };
+
   useEffect(() => {
     // Penting: Set loading ke true setiap kali dateRange berubah
     setLoading(true)
@@ -133,15 +187,25 @@ export function useOrders(dateRange: DateRange | undefined) {
         const fromDate = dateRange?.from || new Date()
         const toDate = dateRange?.to || fromDate
         
+        console.log("Date range dari picker:", fromDate, toDate);
+        
         // Set waktu ke awal dan akhir hari
         const startDate = new Date(fromDate)
         const endDate = new Date(toDate)
         startDate.setHours(0, 0, 0, 0)
         endDate.setHours(23, 59, 59, 999)
         
+        console.log("Tanggal setelah set jam:", startDate, endDate);
+        
         // Konversi ke UNIX timestamp (seconds)
         const startTimestamp = Math.floor(startDate.getTime() / 1000)
         const endTimestamp = Math.floor(endDate.getTime() / 1000)
+        
+        // Format tanggal untuk API iklan (YYYY-MM-DD)
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+        
+        console.log("Tanggal format ISO:", startDateStr, endDateStr);
         
         let allOrders: Order[] = []
         let page = 0
@@ -178,6 +242,17 @@ export function useOrders(dateRange: DateRange | undefined) {
         console.log("Pesanan tanpa data escrow:", ordersWithNullEscrow.length)
         setOrdersWithoutEscrow(ordersWithNullEscrow)
         setOrders(allOrders)
+        
+        // Ambil data iklan jika ada shopId
+        if (startDateStr && endDateStr) {
+          // Jika date range adalah untuk hari yang sama, gunakan tanggal yang sama
+          const useStartDate = dateRange?.from && dateRange?.to && 
+                              dateRange.from.toDateString() === dateRange.to.toDateString() 
+                              ? endDateStr : startDateStr;
+          
+          await fetchAdsData(useStartDate, endDateStr);
+        }
+        
       } catch (e) {
         console.error("Error saat mengambil data:", e)
         setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data')
@@ -188,11 +263,13 @@ export function useOrders(dateRange: DateRange | undefined) {
     }
 
     fetchOrders()
-  }, [dateRange]) // Pastikan dateRange ada di dependency array
+  }, [dateRange])
 
   return { 
     orders, 
     ordersWithoutEscrow, 
+    adsData,
+    totalAdsSpend,
     loading, 
     error, 
     syncMissingEscrowData, 
