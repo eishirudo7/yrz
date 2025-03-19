@@ -12,7 +12,7 @@ import {
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Impor ikon-ikon yang diperlukan
-import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info } from 'lucide-react'
+import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info, X } from 'lucide-react'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { OrderDetails } from './OrderDetails'
@@ -357,6 +357,35 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
     selectedCouriers: [],
     paymentType: 'all'
   });
+
+  // Tambahkan state terpisah untuk input pencarian
+  const [searchInput, setSearchInput] = useState("");
+  
+  // Gunakan debouncing untuk menunda pembaruan searchTerm
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTableState(prev => ({
+        ...prev,
+        searchTerm: searchInput
+      }));
+    }, 300); // Menunda eksekusi selama 300ms
+    
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  
+  // Fungsi untuk menangani input pencarian
+  const handleSearchInput = (value: string) => {
+    setSearchInput(value);
+  };
+  
+  // Fungsi untuk membersihkan input
+  const clearSearch = () => {
+    setSearchInput("");
+    setTableState(prev => ({
+      ...prev,
+      searchTerm: ""
+    }));
+  };
 
   // Konsolidasikan semua derived data dalam satu useMemo
   const derivedData = useMemo(() => {
@@ -1667,7 +1696,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                   data-form-type="other"
                   name="search-input"
                 />
-                <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <Search size={16} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
               </div>
 
               {/* Tombol Filter untuk Mobile */}
@@ -1743,9 +1772,9 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                 <Input
                   type="text"
                   placeholder="Cari username pesanan atau no resi..."
-                  value={tableState.searchTerm}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="h-8 text-xs pl-8"
+                  value={searchInput}
+                  onChange={(e) => handleSearchInput(e.target.value)}
+                  className="h-8 text-xs pl-8 pr-8"
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
@@ -1754,6 +1783,17 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                   name="search-input-desktop"
                 />
                 <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                
+                {/* Tombol X untuk clear input */}
+                {searchInput && (
+                  <button
+                    onClick={clearSearch}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label="Hapus pencarian"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
               <Popover>
                 <PopoverTrigger asChild>
@@ -1801,7 +1841,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                   Proses Semua
                 </span>
                 {derivedData.readyToShipCount > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold">
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
                     {derivedData.readyToShipCount}
                   </span>
                 )}
@@ -1957,15 +1997,17 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               filteredOrders.map((order: OrderItem, index: number) => (
                 <TableRow 
                   key={`${order.order_sn}`} 
-                  className={
-                    order.order_status === "IN_CANCEL" 
+                  className={`
+                    ${order.order_status === "IN_CANCEL" 
                       ? 'bg-red-100 dark:bg-red-900/50' 
                       : order.order_status === "CANCELLED"
                         ? 'bg-gray-300 dark:bg-gray-800' 
                         : index % 2 === 0 
                           ? 'bg-muted dark:bg-gray-800/50' 
                           : 'bg-gray-100/20 dark:bg-gray-900'
-                  }
+                    }
+                    hover:bg-primary/10 dark:hover:bg-primary/20 hover:shadow-sm transition-colors
+                  `}
                 >
                   <TableCell className={`p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
                     <div className="flex justify-center">
@@ -2196,7 +2238,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-700 dark:hover:bg-blue-800"
             >
               Proses Semua
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-primary-foreground/20 text-primary-foreground text-[10px] font-medium">
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-white/20 text-white dark:bg-white/20 dark:text-white text-[10px] font-medium">
                 {derivedData.readyToShipCount}
               </span>
             </AlertDialogAction>
