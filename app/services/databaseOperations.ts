@@ -261,30 +261,32 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
     });
   }
 
-  export async function saveEscrowDetail(shopId: number, orderData: any): Promise<void> {
+  export async function saveEscrowDetail(shopId: number, responseData: any): Promise<void> {
     try {
-      console.log(`Menyimpan detail escrow untuk order_sn: ${orderData.order_sn}`);
-      
-      if (!orderData || !orderData.order_sn) {
+      // Pastikan data valid
+      if (!responseData || !responseData.order_sn) {
         throw new Error('Data escrow tidak valid');
       }
       
+      // Ekstrak data dari order_income
+      const orderIncome = responseData.order_income || {};
+      
       const escrowData = {
-        order_sn: orderData.order_sn,
+        order_sn: responseData.order_sn,
         shop_id: shopId,
-        escrow_amount: orderData.escrow_amount || null,
-        buyer_total_amount: orderData.buyer_total_amount || null,
-        original_price: orderData.original_price || null,
-        seller_discount: orderData.seller_discount || null,
-        shopee_discount: orderData.shopee_discount || null,
-        voucher_from_seller: orderData.voucher_from_seller || null,
-        commission_fee: orderData.commission_fee || null,
-        service_fee: orderData.service_fee || null,
-        seller_transaction_fee: orderData.seller_transaction_fee || null,
-        actual_shipping_fee: orderData.actual_shipping_fee || null,
-        buyer_payment_method: orderData.buyer_payment_method || null,
+        escrow_amount: orderIncome.escrow_amount || null,
+        buyer_total_amount: orderIncome.buyer_total_amount || null,
+        original_price: orderIncome.original_price || null,
+        seller_discount: orderIncome.seller_discount || null,
+        shopee_discount: orderIncome.shopee_discount || null,
+        voucher_from_seller: orderIncome.voucher_from_seller || null,
+        commission_fee: orderIncome.commission_fee || null,
+        service_fee: orderIncome.service_fee || null,
+        seller_transaction_fee: orderIncome.seller_transaction_fee || null,
+        actual_shipping_fee: orderIncome.actual_shipping_fee || null,
+        buyer_payment_method: orderIncome.buyer_payment_method || null,
         updated_at: new Date().toISOString(),
-        escrow_amount_after_adjustment: orderData.escrow_amount_after_adjustment || 0
+        escrow_amount_after_adjustment: orderIncome.escrow_amount_after_adjustment || 0
       };
       
       await withRetry(async () => {
@@ -296,7 +298,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
           throw new Error(`Gagal menyimpan detail escrow: ${error.message}`);
         }
         
-        console.log(`Detail escrow berhasil disimpan untuk order_sn: ${orderData.order_sn}`);
+        console.log(`Detail escrow berhasil disimpan untuk order_sn: ${responseData.order_sn}`);
       }, 3, 1000);
       
     } catch (error) {

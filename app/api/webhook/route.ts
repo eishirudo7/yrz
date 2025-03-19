@@ -209,17 +209,17 @@ async function handleOrder(data: any) {
     if (orderData.status === 'PROCESSED' || orderData.status === 'COMPLETED') {
       try {
         console.log(`Mengambil detail escrow untuk order: ${orderData.ordersn} dengan status ${orderData.status}`);
-        const escrowDetail = await withRetry(
+        const escrowResponse = await withRetry(
           () => getEscrowDetail(data.shop_id, orderData.ordersn),
           3,
           2000
         );
         
-        if (escrowDetail && !escrowDetail.error) {
-          await saveEscrowDetail(data.shop_id, escrowDetail.data || escrowDetail);
+        if (escrowResponse && escrowResponse.success && escrowResponse.data) {
+          await saveEscrowDetail(data.shop_id, escrowResponse.data);
           console.log(`Detail escrow berhasil disimpan untuk order: ${orderData.ordersn}`);
         } else {
-          console.error(`Gagal mendapatkan detail escrow: ${JSON.stringify(escrowDetail)}`);
+          console.error(`Gagal mendapatkan detail escrow: ${JSON.stringify(escrowResponse)}`);
         }
       } catch (error) {
         console.error(`Error saat mengambil dan menyimpan escrow detail: ${error}`);
