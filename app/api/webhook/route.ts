@@ -205,8 +205,8 @@ async function handleOrder(data: any) {
       shopName = shop?.shop_name || '';
     }
 
-    // Ambil dan simpan escrow detail jika status PROCESSED atau COMPLETED
-    if (orderData.status === 'PROCESSED' || orderData.status === 'COMPLETED') {
+    // Ambil dan simpan escrow detail jika status PROCESSED, COMPLETED, atau CANCELED
+    if (orderData.status === 'PROCESSED' || orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
       try {
         console.log(`Mengambil detail escrow untuk order: ${orderData.ordersn} dengan status ${orderData.status}`);
         const escrowResponse = await withRetry(
