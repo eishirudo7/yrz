@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon, MessageCircle } from "lucide-react"
+import { CalendarIcon, MessageCircle, RefreshCw } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { cn } from "@/lib/utils"
@@ -149,6 +149,7 @@ function TableRowSkeleton() {
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-32" /></TableCell>
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-24" /></TableCell>
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-20" /></TableCell>
+      <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-20" /></TableCell>
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-16" /></TableCell>
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-32" /></TableCell>
       <TableCell className="p-1 h-[32px]"><Skeleton className="h-4 w-20" /></TableCell>
@@ -189,7 +190,15 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchType, setSearchType] = useState("order_sn")
 
-  const { orders, loading: ordersLoading, error: ordersError } = useOrders(selectedDateRange)
+  const { 
+    orders, 
+    ordersWithoutEscrow, 
+    loading: ordersLoading, 
+    error: ordersError,
+    syncMissingEscrowData,
+    syncingEscrow,
+    syncProgress
+  } = useOrders(selectedDateRange)
   const [visibleOrders, setVisibleOrders] = useState<Order[]>([])
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
@@ -617,15 +626,16 @@ export default function OrdersPage() {
           <Table>
             <TableHeader>
               <TableRow className="dark:border-gray-700">
-                <TableHead className="font-bold uppercase text-xs">#</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Toko</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Tanggal</TableHead>
-                <TableHead className="font-bold uppercase text-xs">No. Pesanan</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Username</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Harga</TableHead>
-                <TableHead className="font-bold uppercase text-xs">SKU (Qty)</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Kurir</TableHead>
-                <TableHead className="font-bold uppercase text-xs">Status</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white w-10 text-center whitespace-nowrap">#</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[80px] sm:min-w-[100px]">Toko</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[120px]">Tanggal</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">No. Pesanan</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Username</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Harga</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Escrow Final</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">SKU (Qty)</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">Kurir</TableHead>
+                <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -697,6 +707,11 @@ export default function OrdersPage() {
                       </TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                         Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
+                      </TableCell>
+                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                        {order.escrow_amount_after_adjustment !== undefined && order.escrow_amount_after_adjustment !== null
+                          ? `Rp ${parseInt(order.escrow_amount_after_adjustment.toString()).toLocaleString('id-ID')}`
+                          : 'Rp -'}
                       </TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty}</TableCell>
                       <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
@@ -1035,31 +1050,48 @@ export default function OrdersPage() {
         </div>
       </Card>
      
-      <div className="flex items-center gap-2 md:col-span-3">
-            
-            <div className={`flex gap-1 border rounded-md p-1 ${
-              isDarkMode 
-                ? "border-gray-700 bg-[#1a1a1a]" 
-                : "border-gray-200 bg-gray-50"
-            }`}>
-              <Button
-                variant={viewMode === 'chart' ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode('chart')}
-                className="h-8 px-4 text-xs"
-              >
-                Chart
-              </Button>
-              <Button
-                variant={viewMode === 'text' ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode('text')}
-                className="h-8 px-4 text-xs"
-              >
-                Ringkasan
-              </Button>
-            </div>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2 md:col-span-3">
+          <div className={`flex gap-1 border rounded-md p-1 ${
+            isDarkMode 
+              ? "border-gray-700 bg-[#1a1a1a]" 
+              : "border-gray-200 bg-gray-50"
+          }`}>
+            <Button
+              variant={viewMode === 'chart' ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode('chart')}
+              className="h-8 px-4 text-xs"
+            >
+              Chart
+            </Button>
+            <Button
+              variant={viewMode === 'text' ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode('text')}
+              className="h-8 px-4 text-xs"
+            >
+              Ringkasan
+            </Button>
           </div>
+        </div>
+        
+        {ordersWithoutEscrow.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={syncMissingEscrowData}
+            disabled={syncingEscrow}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
+            {syncingEscrow 
+              ? `Sinkronisasi Escrow (${syncProgress.completed}/${syncProgress.total})` 
+              : `Sinkronisasi Data Escrow (${ordersWithoutEscrow.length})`
+            }
+          </Button>
+        )}
+      </div>
        
       {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}
       {viewMode === 'chart' ? (
@@ -1215,6 +1247,7 @@ export default function OrdersPage() {
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">No. Pesanan</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Username</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Harga</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Escrow Final</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">SKU (Qty)</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">Kurir</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Status</TableHead>
@@ -1302,6 +1335,11 @@ export default function OrdersPage() {
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      {order.escrow_amount_after_adjustment !== undefined && order.escrow_amount_after_adjustment !== null
+                        ? `Rp ${parseInt(order.escrow_amount_after_adjustment.toString()).toLocaleString('id-ID')}`
+                        : 'Rp -'}
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty}</TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">

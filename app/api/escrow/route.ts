@@ -14,19 +14,26 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Panggil API Shopee langsung tanpa pemrosesan tambahan
+    // Konversi shopId ke number dan validasi
     const shopIdNumber = parseInt(shopId, 10);
-    const response = await getEscrowDetail(shopIdNumber, orderSn);
+    if (isNaN(shopIdNumber)) {
+      return NextResponse.json(
+        { success: false, message: 'Parameter shop_id harus berupa angka' },
+        { status: 400 }
+      );
+    }
     
-    // Kembalikan respons mentah dari Shopee
+    // Panggil API Shopee melalui service
+    const result = await getEscrowDetail(shopIdNumber, orderSn);
+    
+    // Kembalikan respons yang terstruktur
     return NextResponse.json({
       success: true,
-      message: 'Berhasil mendapatkan respons dari Shopee API',
-      raw_response: response
+      data: result
     });
     
   } catch (error: any) {
-    console.error('Error dalam API getEscrow raw:', error);
+    console.error('Error dalam API getEscrow:', error);
     return NextResponse.json(
       { 
         success: false, 

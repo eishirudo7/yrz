@@ -1332,17 +1332,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
     return Array.from(new Set(orders.map(order => order.shop_name))).sort();
   }, [orders]);
 
-  // Tambah daftar kurir yang tersedia
-  const availableCouriers = useMemo(() => {
-    return Array.from(new Set(orders.map(order => order.shipping_carrier).filter(Boolean))).sort();
-  }, [orders]);
-
-  // Update fungsi handleChatClick
-  const handleChatClick = (userId: number, shopId: number, orderSn: string, event: React.MouseEvent) => {
-    // Fungsi ini tidak lagi diperlukan jika menggunakan ChatButton
-    event.stopPropagation(); // Tetap pertahankan ini untuk mencegah trigger handleUsernameClick
-  };
-
+  
+  
   // Tambahkan state untuk dialog laporan
   const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
   const [printReport, setPrintReport] = useState<{
@@ -2040,6 +2031,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">No. Pesanan</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Username</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Harga</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Escrow Final</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">SKU (Qty)</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">Kurir</TableHead>
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Status</TableHead>
@@ -2131,6 +2123,9 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                   </TableCell>
                   <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                     Rp {(order.total_amount || 0).toLocaleString('id-ID')}
+                  </TableCell>
+                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                    Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
                   </TableCell>
                   <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty || '-'}</TableCell>
                   <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
