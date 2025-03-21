@@ -37,12 +37,14 @@ export async function GET(req: NextRequest, res: NextResponse) {
                 const performance = await getAdsDailyPerformance(shop.shop_id, safeStartDate, safeEndDate);
 
                 const shopCost = performance.reduce((sum: any, day: { expense: any; }) => sum + day.expense, 0);
-                totalCost += shopCost;
+                const shopCostWithTax = shopCost * 1.11;
+                totalCost += shopCostWithTax;
 
                 adsData.push({
                     shop_id: shop.shop_id,
                     shop_name: shop.shop_name,
-                    cost: formatCurrency(shopCost)
+                    cost: formatCurrency(shopCostWithTax),
+                    raw_cost: shopCostWithTax
                 });
             } catch (error) {
                 console.error(`Terjadi kesalahan saat mengambil performa iklan untuk toko ${shop.shop_name}: ${error}`);
@@ -52,7 +54,8 @@ export async function GET(req: NextRequest, res: NextResponse) {
         console.log(`Pengambilan performa iklan selesai. Total toko: ${adsData.length}`);
         return NextResponse.json({
             ads_data: adsData,
-            total_cost: formatCurrency(totalCost * 1.11)
+            total_cost: formatCurrency(totalCost),
+            raw_total_cost: totalCost
         }, { status: 200 });
 
     } catch (error) {

@@ -25,6 +25,7 @@ export interface AdsData {
   shopId: number
   shopName: string
   totalSpend: number
+  cost_formatted: string
 }
 
 export function useOrders(dateRange: DateRange | undefined) {
@@ -138,7 +139,7 @@ export function useOrders(dateRange: DateRange | undefined) {
       console.log("Input ke fetchAdsData:", startDate, endDate);
       
       // Cek apakah tanggal mulai dan akhir sama, jika sama gunakan tanggal yang sama untuk keduanya
-      const useStartDate = startDate === endDate ? endDate : startDate;
+      const useStartDate = startDate;
       
       // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
       const formattedStartDate = useStartDate.split('-').reverse().join('-');
@@ -161,16 +162,17 @@ export function useOrders(dateRange: DateRange | undefined) {
         setAdsData(adsResult.ads_data.map((ad: any) => ({
           shopId: ad.shop_id,
           shopName: ad.shop_name || `Shop ${ad.shop_id}`,
-          totalSpend: parseFloat(ad.cost.replace(/[^0-9.-]+/g, '')) || 0
+          totalSpend: ad.raw_cost,
+          cost_formatted: ad.cost
         })));
       }
       
       // Ambil total_cost langsung dari API response
-      if (adsResult && adsResult.total_cost) {
-        // Konversi dari string format (Rp. X.XXX) ke angka
-        const totalCost = adsResult.total_cost;
+      if (adsResult && adsResult.raw_total_cost) {
+        // Gunakan raw_total_cost yang sudah dalam bentuk angka
+        const totalCost = adsResult.raw_total_cost;
         setTotalAdsSpend(totalCost);
-        console.log("Total pengeluaran iklan:", adsResult.total_cost);
+        console.log("Total pengeluaran iklan:", adsResult.total_cost, "(Rp)", adsResult.raw_total_cost, "(angka)");
       }
     } catch (e) {
       console.error("Error saat mengambil data iklan:", e);
@@ -206,6 +208,10 @@ export function useOrders(dateRange: DateRange | undefined) {
         const endDateStr = endDate.toISOString().split('T')[0];
         
         console.log("Tanggal format ISO:", startDateStr, endDateStr);
+        
+        // Simpan format tanggal untuk digunakan oleh fetchAdsDataAsync
+        const adsStartDate = startDateStr;
+        const adsEndDate = endDateStr;
         
         let allOrders: Order[] = []
         let page = 0
@@ -243,26 +249,51 @@ export function useOrders(dateRange: DateRange | undefined) {
         setOrdersWithoutEscrow(ordersWithNullEscrow)
         setOrders(allOrders)
         
-        // Ambil data iklan jika ada shopId
-        if (startDateStr && endDateStr) {
-          // Jika date range adalah untuk hari yang sama, gunakan tanggal yang sama
-          const useStartDate = dateRange?.from && dateRange?.to && 
-                              dateRange.from.toDateString() === dateRange.to.toDateString() 
-                              ? endDateStr : startDateStr;
-          
-          await fetchAdsData(useStartDate, endDateStr);
-        }
+        // Setelah selesai mengambil data pesanan, atur loading ke false
+        setLoading(false)
         
       } catch (e) {
         console.error("Error saat mengambil data:", e)
         setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data')
-      } finally {
-        console.log("Loading selesai")
         setLoading(false)
       }
     }
+    
+    // Fungsi terpisah untuk mengambil data iklan
+    async function fetchAdsDataAsync() {
+      if (!dateRange?.from || !dateRange?.to) return;
+      
+      // Buat ulang format tanggal dengan pola yang sama persis seperti di fetchOrders
+      const fromDate = dateRange?.from || new Date()
+      const toDate = dateRange?.to || fromDate
+      
+      // Set waktu ke awal dan akhir hari
+      const startDate = new Date(fromDate)
+      const endDate = new Date(toDate)
+      startDate.setHours(0, 0, 0, 0)
+      endDate.setHours(23, 59, 59, 999)
+      
+      // Format tanggal untuk API iklan (YYYY-MM-DD)
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      console.log("Tanggal untuk ads di fetchAdsDataAsync:", startDateStr, endDateStr);
+      
+      // Ambil data iklan secara asynchronous - untuk hari yang sama, gunakan endDateStr untuk kedua parameter
+      if (fromDate.toDateString() === toDate.toDateString()) {
+        fetchAdsData(endDateStr, endDateStr).catch(err => {
+          console.error("Error saat mengambil data iklan secara async:", err)
+        });
+      } else {
+        fetchAdsData(startDateStr, endDateStr).catch(err => {
+          console.error("Error saat mengambil data iklan secara async:", err)
+        });
+      }
+    }
 
-    fetchOrders()
+    // Jalankan fetchOrders dan fetchAdsDataAsync secara terpisah
+    fetchOrders();
+    fetchAdsDataAsync();
   }, [dateRange])
 
   return { 

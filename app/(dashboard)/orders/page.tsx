@@ -9,7 +9,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon, CheckCircle, RefreshCw, AlertCircle, RotateCcw, TrendingUp } from "lucide-react"
+import { CalendarIcon, CheckCircle, RefreshCw, AlertCircle, RotateCcw, TrendingUp, CreditCard, Wallet, AlertTriangle } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { cn } from "@/lib/utils"
@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Card, CardHeader, CardContent } from "@/components/ui/card"
-import { Package, Clock, Truck, XCircle, ShoppingCart, XOctagon, Search, X, Wallet, ChevronDown } from "lucide-react"
+import { Package, Clock, Truck, XCircle, ShoppingCart, XOctagon, Search, X, ChevronDown } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Store } from "lucide-react"
@@ -44,6 +44,7 @@ import { SKUSalesChart } from "./components/SKUSalesChart"
 import { ShopOrderChart } from "./components/ShopOrderChart"
 import { useTheme } from "next-themes"
 import ChatButton from '@/components/ChatButton'
+import ProfitCalculator from './components/ProfitCalculator'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -57,7 +58,7 @@ function formatDate(timestamp: number): string {
 interface OrderStatusCardProps {
   title: string
   count: number
-  icon: 'pending' | 'process' | 'shipping' | 'cancel' | 'total' | 'failed' | 'completed' | 'confirm' | 'return'
+  icon: 'pending' | 'process' | 'shipping' | 'cancel' | 'total' | 'failed' | 'completed' | 'confirm' | 'return' | 'fake'
   onClick: () => void
   isActive: boolean
 }
@@ -83,6 +84,8 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
         return <AlertCircle className="w-5 h-5" />
       case 'return':
         return <RotateCcw className="w-5 h-5" />
+      case 'fake':
+        return <AlertTriangle className="w-5 h-5" />
       default:
         return null
     }
@@ -108,6 +111,8 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
         return 'bg-cyan-500 text-white'
       case 'return':
         return 'bg-violet-500 text-white'
+      case 'fake':
+        return 'bg-pink-500 text-white'
       default:
         return 'bg-background'
     }
@@ -125,10 +130,10 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
       <div className="p-2.5">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <p className={`text-xs font-medium ${isActive ? 'text-white/80' : 'text-muted-foreground'}`}>
+            <p className={`text-xs font-medium ${isActive ? 'text-white/80' : 'text-muted-foreground'} line-clamp-1`}>
               {title}
             </p>
-            <p className={`text-xl font-bold tracking-tight ${isActive ? 'text-white' : ''}`}>
+            <p className={`text-lg sm:text-xl font-bold tracking-tight ${isActive ? 'text-white' : ''}`}>
               {count}
             </p>
           </div>
@@ -255,43 +260,209 @@ export default function OrdersPage() {
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
 
-  // Optimisasi filtered orders dengan useMemo
-  const filteredOrders = useMemo(() => {
-    if (searchResults.length > 0) return searchResults
+  // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 50)
+  const isFakeOrder = (order: Order) => {
+    if (!order.sku_qty) return false;
     
+    const skuEntries = order.sku_qty.split(',').map(entry => entry.trim());
+    let totalQuantity = 0;
+    
+    skuEntries.forEach(entry => {
+      const match = entry.match(/(.*?)\s*\((\d+)\)/);
+      if (match) {
+        const [, , quantityStr] = match;
+        totalQuantity += parseInt(quantityStr);
+      }
+    });
+    
+    return totalQuantity > 50;
+  };
+
+  // Hitung jumlah pesanan berdasarkan status
+  const orderStats = orders.reduce((acc, order) => {
+    // Cek dulu apakah ini fake order
+    if (isFakeOrder(order)) {
+      acc.fake++;
+      return acc;
+    }
+    
+    if (order.cancel_reason === 'Failed Delivery') {
+      acc.failed++;
+    } else {
+      switch (order.order_status) {
+        case 'UNPAID':
+          acc.pending++;
+          break;
+        case 'PROCESSED':
+          acc.process++;
+          acc.total++;
+          break;
+        case 'SHIPPED':
+          acc.shipping++;
+          acc.total++;
+          break;
+        case 'COMPLETED':
+          if (order.escrow_amount_after_adjustment !== undefined && 
+              order.escrow_amount_after_adjustment !== null && 
+              order.escrow_amount_after_adjustment < 0) {
+            acc.return++;
+          } else {
+            acc.completed++;
+          }
+          acc.total++;
+          break;
+        case 'IN_CANCEL':
+          acc.total++;
+          break;
+        case 'TO_CONFIRM_RECEIVE':
+          acc.confirm++;
+          acc.total++;
+          break;
+        case 'TO_RETURN':
+          acc.return++;
+          acc.total++;
+          break;
+        case 'CANCELLED':
+          acc.cancel++;
+          break;
+      }
+    }
+    return acc;
+  }, {
+    pending: 0,
+    process: 0,
+    shipping: 0,
+    cancel: 0,
+    total: 0,
+    failed: 0,
+    completed: 0,
+    confirm: 0,
+    return: 0,
+    fake: 0
+  });
+
+  // Dapatkan daftar unik toko dari orders
+  const uniqueShops = Array.from(new Set(orders.map(order => order.shop_name))).sort()
+
+  // Optimalkan dengan useMemo untuk menghindari kalkulasi ulang yang tidak perlu
+  const filteredOrdersByShop = useMemo(() => {
     return orders.filter(order => {
-      if (!activeFilter) return true
-      
-      if (activeFilter === 'failed') {
-        return order.cancel_reason === 'Failed Delivery'
-      }
-      
-      switch (activeFilter) {
-        case 'pending':
-          return order.order_status === 'UNPAID'
-        case 'process':
-          return order.order_status === 'PROCESSED'
-        case 'shipping':
-          return order.order_status === 'SHIPPED'
-        case 'completed':
-          return order.order_status === 'COMPLETED'
-        case 'confirm':
-          return order.order_status === 'TO_CONFIRM_RECEIVE'
-        case 'return':
-          return order.order_status === 'TO_RETURN'
-        case 'cancel':
-          return order.order_status === 'CANCELLED'
-        case 'total':
-          if (order.cancel_reason === 'Failed Delivery') return false
-          return !['CANCELLED'].includes(order.order_status)
-        default:
-          return true
-      }
-    }).filter(order => {
       if (selectedShops.length === 0) return true
       return selectedShops.includes(order.shop_name)
     })
-  }, [searchResults, orders, activeFilter, selectedShops])
+  }, [orders, selectedShops])
+
+  // Hitung statistik berdasarkan pesanan yang sudah difilter berdasarkan toko
+  const filteredOrderStats = filteredOrdersByShop.reduce((acc, order) => {
+    // Cek dulu apakah ini fake order
+    if (isFakeOrder(order)) {
+      acc.fake++;
+      return acc;
+    }
+    
+    if (order.cancel_reason === 'Failed Delivery') {
+      acc.failed++;
+    } else {
+      switch (order.order_status) {
+        case 'UNPAID':
+          acc.pending++;
+          break;
+        case 'PROCESSED':
+          acc.process++;
+          acc.total++;
+          break;
+        case 'SHIPPED':
+          acc.shipping++;
+          acc.total++;
+          break;
+        case 'COMPLETED':
+          if (order.escrow_amount_after_adjustment !== undefined && 
+              order.escrow_amount_after_adjustment !== null && 
+              order.escrow_amount_after_adjustment < 0) {
+            acc.return++;
+          } else {
+            acc.completed++;
+          }
+          acc.total++;
+          break;
+        case 'IN_CANCEL':
+          acc.total++;
+          break;
+        case 'TO_CONFIRM_RECEIVE':
+          acc.confirm++;
+          acc.total++;
+          break;
+        case 'TO_RETURN':
+          acc.return++;
+          acc.total++;
+          break;
+        case 'CANCELLED':
+          acc.cancel++;
+          break;
+      }
+    }
+    return acc;
+  }, {
+    pending: 0,
+    process: 0,
+    shipping: 0,
+    cancel: 0,
+    total: 0,
+    failed: 0,
+    completed: 0,
+    confirm: 0,
+    return: 0,
+    fake: 0
+  })
+
+  // Optimalkan filtered orders dengan useMemo
+  const filteredOrders = useMemo(() => {
+    if (searchResults.length > 0) return searchResults;
+    
+    return filteredOrdersByShop.filter(order => {
+      if (!activeFilter) return true;
+      
+      if (activeFilter === 'fake') {
+        return isFakeOrder(order);
+      }
+      
+      if (activeFilter === 'failed') {
+        return order.cancel_reason === 'Failed Delivery';
+      }
+      
+      // Jika ini fake order, jangan tampilkan di filter lain
+      if (isFakeOrder(order)) return false;
+      
+      switch (activeFilter) {
+        case 'pending':
+          return order.order_status === 'UNPAID';
+        case 'process':
+          return order.order_status === 'PROCESSED';
+        case 'shipping':
+          return order.order_status === 'SHIPPED';
+        case 'completed':
+          return order.order_status === 'COMPLETED' && 
+            !(order.escrow_amount_after_adjustment !== undefined && 
+              order.escrow_amount_after_adjustment !== null && 
+              order.escrow_amount_after_adjustment < 0);
+        case 'confirm':
+          return order.order_status === 'TO_CONFIRM_RECEIVE';
+        case 'return':
+          return order.order_status === 'TO_RETURN' || 
+            (order.order_status === 'COMPLETED' && 
+             order.escrow_amount_after_adjustment !== undefined && 
+             order.escrow_amount_after_adjustment !== null && 
+             order.escrow_amount_after_adjustment < 0);
+        case 'cancel':
+          return order.order_status === 'CANCELLED';
+        case 'total':
+          if (order.cancel_reason === 'Failed Delivery') return false;
+          return !['CANCELLED'].includes(order.order_status);
+        default:
+          return true;
+      }
+    });
+  }, [searchResults, filteredOrdersByShop, activeFilter]);
 
   // Optimisasi fungsi format dengan useCallback
   // Tambahkan useEffect untuk memantau hasil pencarian
@@ -419,59 +590,6 @@ export default function OrdersPage() {
     setIsCalendarOpen(false)
   }
 
-  // Hitung jumlah pesanan berdasarkan status
-  const orderStats = orders.reduce((acc, order) => {
-    if (order.cancel_reason === 'Failed Delivery') {
-      acc.failed++
-    } else {
-      switch (order.order_status) {
-        case 'UNPAID':
-          acc.pending++
-          break
-        case 'PROCESSED':
-          acc.process++
-          acc.total++
-          break
-        case 'SHIPPED':
-          acc.shipping++
-          acc.total++
-          break
-        case 'COMPLETED':
-          acc.completed++
-          acc.total++
-          break
-        case 'IN_CANCEL':
-          acc.total++
-          break
-        case 'TO_CONFIRM_RECEIVE':
-          acc.confirm++
-          acc.total++
-          break
-        case 'TO_RETURN':
-          acc.return++
-          acc.total++
-          break
-        case 'CANCELLED':
-          acc.cancel++
-          break
-      }
-    }
-    return acc
-  }, {
-    pending: 0,
-    process: 0,
-    shipping: 0,
-    cancel: 0,
-    total: 0,
-    failed: 0,
-    completed: 0,
-    confirm: 0,
-    return: 0
-  })
-
-  // Dapatkan daftar unik toko dari orders
-  const uniqueShops = Array.from(new Set(orders.map(order => order.shop_name))).sort()
-
   // Tambahkan fungsi untuk menghitung ringkasan toko
   const getShopsSummary = useCallback((): ShopSummary[] => {
     const summary = orders.reduce((acc: { [key: string]: ShopSummary }, order) => {
@@ -598,88 +716,41 @@ export default function OrdersPage() {
     setIsOrderHistoryOpen(true);
   }
 
-  // Menghitung omset berdasarkan filter yang aktif
+  // Hitung omset dan escrow berdasarkan orders yang sudah difilter
   const getFilteredOmset = useMemo(() => {
-    const filteredOrdersForOmset = orders.filter(order => {
-      if (!activeFilter) return true;
-      
-      if (activeFilter === 'failed') {
-        return order.cancel_reason === 'Failed Delivery';
-      }
-      
-      switch (activeFilter) {
-        case 'pending':
-          return order.order_status === 'UNPAID';
-        case 'process':
-          return order.order_status === 'PROCESSED';
-        case 'shipping':
-          return order.order_status === 'SHIPPED';
-        case 'completed':
-          return order.order_status === 'COMPLETED';
-        case 'confirm':
-          return order.order_status === 'TO_CONFIRM_RECEIVE';
-        case 'return':
-          return order.order_status === 'TO_RETURN';
-        case 'cancel':
-          return order.order_status === 'CANCELLED';
-        case 'total':
-          if (order.cancel_reason === 'Failed Delivery') return false;
-          return !['CANCELLED'].includes(order.order_status);
-        default:
-          return true;
-      }
-    }).filter(order => {
-      if (selectedShops.length === 0) return true;
-      return selectedShops.includes(order.shop_name);
-    });
+    return filteredOrders.reduce((total, order) => {
+      // Skip pesanan yang dibatalkan atau gagal COD
+      if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery') 
+        return total
+        
+      return total + parseFloat(order.total_amount)
+    }, 0)
+  }, [filteredOrders])
 
-    return filteredOrdersForOmset.reduce((sum, order) => sum + parseFloat(order.total_amount), 0);
-  }, [orders, activeFilter, selectedShops]);
-
-  // Menghitung total escrow (pendapatan bersih) berdasarkan filter yang aktif
+  // Hitung total escrow (selisih) berdasarkan orders yang sudah difilter
   const getFilteredEscrow = useMemo(() => {
-    const filteredOrdersForEscrow = orders.filter(order => {
-      if (!activeFilter) return true;
-      
-      if (activeFilter === 'failed') {
-        return order.cancel_reason === 'Failed Delivery';
-      }
-      
-      switch (activeFilter) {
-        case 'pending':
-          return order.order_status === 'UNPAID';
-        case 'process':
-          return order.order_status === 'PROCESSED';
-        case 'shipping':
-          return order.order_status === 'SHIPPED';
-        case 'completed':
-          return order.order_status === 'COMPLETED';
-        case 'confirm':
-          return order.order_status === 'TO_CONFIRM_RECEIVE';
-        case 'return':
-          return order.order_status === 'TO_RETURN';
-        case 'cancel':
-          return order.order_status === 'CANCELLED';
-        case 'total':
-          if (order.cancel_reason === 'Failed Delivery') return false;
-          return !['CANCELLED'].includes(order.order_status);
-        default:
-          return true;
-      }
-    }).filter(order => {
-      if (selectedShops.length === 0) return true;
-      return selectedShops.includes(order.shop_name);
-    });
+    return filteredOrders.reduce((total, order) => {
+      // Skip pesanan yang dibatalkan atau gagal COD
+      if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery' || !order.escrow_amount_after_adjustment) 
+        return total
+        
+      return total + order.escrow_amount_after_adjustment
+    }, 0)
+  }, [filteredOrders])
 
-    return filteredOrdersForEscrow.reduce((sum, order) => {
-      // Jika escrow_amount_after_adjustment ada, tambahkan ke sum
-      if (order.escrow_amount_after_adjustment !== undefined && 
-          order.escrow_amount_after_adjustment !== null) {
-        return sum + parseFloat(order.escrow_amount_after_adjustment.toString());
-      }
-      return sum;
-    }, 0);
-  }, [orders, activeFilter, selectedShops]);
+  // Komponen untuk Profit Calculator
+  const profitCalculatorComponent = useMemo(() => (
+    <ProfitCalculator 
+      orders={filteredOrders}
+      escrowTotal={getFilteredEscrow}
+      adsSpend={{
+        ads_data: adsData,
+        total_cost: `Rp ${totalAdsSpend.toLocaleString('id-ID')}`,
+        raw_cost: totalAdsSpend
+      }}
+      dateRange={selectedDateRange}
+    />
+  ), [filteredOrders, getFilteredEscrow, totalAdsSpend, selectedDateRange])
 
   if (ordersLoading) {
     return (
@@ -832,7 +903,7 @@ export default function OrdersPage() {
 
   return (
     <div className="w-full p-4 sm:p-6 space-y-4">
-      <div className="grid grid-cols-3 gap-4 mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
           <div className="p-3">
             <div className="space-y-1">
@@ -844,7 +915,7 @@ export default function OrdersPage() {
                   Rp {getFilteredOmset.toLocaleString('id-ID')}
                 </p>
                 <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-800/40 flex-shrink-0">
-                  <Wallet className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <CreditCard className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
               </div>
             </div>
@@ -877,7 +948,7 @@ export default function OrdersPage() {
               </p>
               <div className="flex items-center justify-between">
                 <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
-                  Rp {totalAdsSpend.toLocaleString('id-ID')}
+                Rp {totalAdsSpend.toLocaleString('id-ID')}
                 </p>
                 <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0">
                   <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -886,76 +957,85 @@ export default function OrdersPage() {
             </div>
           </div>
         </Card>
+        
+        {profitCalculatorComponent}
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-10 gap-2">
         <OrderStatusCard
           title="Total"
-          count={orderStats.total}
+          count={filteredOrderStats.total}
           icon="total"
           onClick={() => setActiveFilter(activeFilter === 'total' ? null : 'total')}
           isActive={activeFilter === 'total'}
         />
         <OrderStatusCard
           title="Belum Dibayar"
-          count={orderStats.pending}
+          count={filteredOrderStats.pending}
           icon="pending"
           onClick={() => setActiveFilter(activeFilter === 'pending' ? null : 'pending')}
           isActive={activeFilter === 'pending'}
         />
         <OrderStatusCard
           title="Diproses"
-          count={orderStats.process}
+          count={filteredOrderStats.process}
           icon="process"
           onClick={() => setActiveFilter(activeFilter === 'process' ? null : 'process')}
           isActive={activeFilter === 'process'}
         />
         <OrderStatusCard
           title="Dikirim"
-          count={orderStats.shipping}
+          count={filteredOrderStats.shipping}
           icon="shipping"
           onClick={() => setActiveFilter(activeFilter === 'shipping' ? null : 'shipping')}
           isActive={activeFilter === 'shipping'}
         />
         <OrderStatusCard
           title="Diterima"
-          count={orderStats.confirm}
+          count={filteredOrderStats.confirm}
           icon="confirm"
           onClick={() => setActiveFilter(activeFilter === 'confirm' ? null : 'confirm')}
           isActive={activeFilter === 'confirm'}
         />
         <OrderStatusCard
           title="Pengembalian"
-          count={orderStats.return}
+          count={filteredOrderStats.return}
           icon="return"
           onClick={() => setActiveFilter(activeFilter === 'return' ? null : 'return')}
           isActive={activeFilter === 'return'}
         />
         <OrderStatusCard
           title="Selesai"
-          count={orderStats.completed}
+          count={filteredOrderStats.completed}
           icon="completed"
           onClick={() => setActiveFilter(activeFilter === 'completed' ? null : 'completed')}
           isActive={activeFilter === 'completed'}
         />
         <OrderStatusCard
           title="Dibatalkan"
-          count={orderStats.cancel}
+          count={filteredOrderStats.cancel}
           icon="cancel"
           onClick={() => setActiveFilter(activeFilter === 'cancel' ? null : 'cancel')}
           isActive={activeFilter === 'cancel'}
         />
         <OrderStatusCard
           title="COD Gagal"
-          count={orderStats.failed}
+          count={filteredOrderStats.failed}
           icon="failed"
           onClick={() => setActiveFilter(activeFilter === 'failed' ? null : 'failed')}
           isActive={activeFilter === 'failed'}
         />
+        <OrderStatusCard
+          title="Fake Order"
+          count={filteredOrderStats.fake}
+          icon="fake"
+          onClick={() => setActiveFilter(activeFilter === 'fake' ? null : 'fake')}
+          isActive={activeFilter === 'fake'}
+        />
       </div>
 
       <Card className="shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-2 ">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-2">
           <div>
             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
               <PopoverTrigger asChild>
@@ -983,7 +1063,7 @@ export default function OrdersPage() {
               </PopoverTrigger>
               <PopoverContent className="w-auto h-auto p-0" align="center">
                 <div className="space-y-3 p-3">
-                  <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
+                  <div className="grid grid-cols-2 xs:grid-cols-3 sm:flex sm:flex-wrap gap-2">
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -1117,7 +1197,7 @@ export default function OrdersPage() {
                           />
                           <label 
                             htmlFor={shop} 
-                            className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer w-full truncate"
                           >
                             {shop}
                           </label>
@@ -1130,12 +1210,12 @@ export default function OrdersPage() {
             </Popover>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-col sm:flex-row">
             <Select
               value={searchType}
               onValueChange={setSearchType}
             >
-              <SelectTrigger className="w-[140px] h-9">
+              <SelectTrigger className="w-full sm:w-[140px] h-9">
                 <SelectValue placeholder="Pilih Tipe" />
               </SelectTrigger>
               <SelectContent>
@@ -1192,8 +1272,8 @@ export default function OrdersPage() {
         </div>
       </Card>
      
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2 md:col-span-3">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div className="flex items-center gap-2">
           <div className={`flex gap-1 border rounded-md p-1 ${
             isDarkMode 
               ? "border-gray-700 bg-[#1a1a1a]" 
@@ -1224,12 +1304,12 @@ export default function OrdersPage() {
             size="sm"
             onClick={syncMissingEscrowData}
             disabled={syncingEscrow}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 mt-2 sm:mt-0"
           >
             <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
             {syncingEscrow 
-              ? `Sinkronisasi Escrow (${syncProgress.completed}/${syncProgress.total})` 
-              : `Sinkronisasi Data Escrow (${ordersWithoutEscrow.length})`
+              ? `Sync (${syncProgress.completed}/${syncProgress.total})` 
+              : `Sync Escrow (${ordersWithoutEscrow.length})`
             }
           </Button>
         )}
@@ -1237,13 +1317,13 @@ export default function OrdersPage() {
        
       {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}
       {viewMode === 'chart' ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           <OrderTrendChart orders={filteredOrders} />
           <SKUSalesChart orders={filteredOrders} />
           <ShopOrderChart orders={filteredOrders} />
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Top SKUs dengan desain yang dioptimalkan */}
           <Card className={`overflow-hidden ${isDarkMode ? "bg-[#121212] border-gray-800" : "bg-white border-gray-200"}`}>
             <CardHeader className={`py-2.5 px-4 flex flex-row items-center justify-between ${isDarkMode ? "text-white" : "text-gray-900"}`}>
@@ -1380,7 +1460,7 @@ export default function OrdersPage() {
       )}
 
       <div className="rounded-lg border shadow-sm overflow-x-auto">
-        <Table>
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow className="dark:border-gray-700">
               <TableHead className="font-bold uppercase text-xs text-black dark:text-white w-10 text-center whitespace-nowrap">#</TableHead>
