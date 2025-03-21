@@ -88,8 +88,19 @@ export default function ProfitCalculator({
     adsSpend: number,
     netProfit: number
   }}>({})
-  const [autoCalcAttempted, setAutoCalcAttempted] = useState(false)
+  const [autoCalculated, setAutoCalculated] = useState(false) // Tambahkan state untuk tracking kalkulasi otomatis
   
+  // Fungsi untuk mengecek apakah adsSpend valid/tersedia
+  const isAdsSpendAvailable = useCallback(() => {
+    if (typeof adsSpend === 'number' && adsSpend > 0) return true;
+    if (typeof adsSpend === 'string' && adsSpend.trim() !== '') return true;
+    if (typeof adsSpend === 'object' && adsSpend !== null) {
+      if ('raw_cost' in adsSpend && typeof adsSpend.raw_cost === 'number' && adsSpend.raw_cost > 0) return true;
+      if ('ads_data' in adsSpend && Array.isArray(adsSpend.ads_data) && adsSpend.ads_data.length > 0) return true;
+    }
+    return false;
+  }, [adsSpend]);
+
   // Prefetch SKU data when component mounts
   useEffect(() => {
     const prefetchSkuData = async () => {
@@ -106,78 +117,22 @@ export default function ProfitCalculator({
     prefetchSkuData();
   }, [orders, dataLoaded]);
   
-  // Efek untuk menghitung profit otomatis ketika data iklan tersedia
+  // Tambahkan useEffect baru untuk kalkulasi otomatis
   useEffect(() => {
-    const autoCalculateProfit = async () => {
-      // Pastikan semua syarat terpenuhi untuk perhitungan:
-      // 1. Ada orders dengan escrow
-      // 2. Escrow total > 0
-      // 3. Data iklan benar-benar tersedia (bukan hanya objek kosong)
-      // 4. Data sudah dimuat (dataLoaded = true)
-      // 5. Belum pernah mencoba perhitungan otomatis (autoCalcAttempted = false)
-      // 6. Tidak sedang dalam proses perhitungan (isCalculating = false)
-      
-      // Periksa orders dengan data escrow
-      const ordersWithEscrow = orders.filter(
-        order => order.escrow_amount_after_adjustment !== null && 
-                 order.escrow_amount_after_adjustment !== undefined
-      );
-      const hasValidOrders = ordersWithEscrow.length > 0;
-      const hasValidEscrow = escrowTotal > 0;
-      
-      // Periksa apakah adsSpend benar-benar memiliki data iklan
-      let hasAdsData = false;
-      
-      if (adsSpend !== undefined && adsSpend !== null) {
-        if (typeof adsSpend === 'object') {
-          // Periksa properti raw_cost (totalnya ada data)
-          if ('raw_cost' in adsSpend && typeof adsSpend.raw_cost === 'number' && adsSpend.raw_cost > 0) {
-            hasAdsData = true;
-          }
-          // Atau periksa apakah ada ads_data dengan panjang > 0
-          else if ('ads_data' in adsSpend && Array.isArray((adsSpend as any).ads_data) && (adsSpend as any).ads_data.length > 0) {
-            hasAdsData = true;
-          }
-        } else if (typeof adsSpend === 'number' && adsSpend > 0) {
-          hasAdsData = true;
-        }
-      }
-      
-      console.log("Status perhitungan otomatis:", {
-        hasValidOrders,
-        ordersWithEscrowCount: ordersWithEscrow.length,
-        hasValidEscrow,
-        escrowValue: escrowTotal,
-        hasAdsData,
-        adsSpendDetail: typeof adsSpend === 'object' ? 
-          ('raw_cost' in adsSpend ? `raw_cost: ${adsSpend.raw_cost}` : 
-           'ads_data' in adsSpend ? `ads_data length: ${(adsSpend as any).ads_data?.length}` : 'unknown format') : 
-          adsSpend,
-        dataLoaded,
-        autoCalcAttempted,
-        isCalculating
-      });
-      
-      // Hanya hitung otomatis jika semua kriteria terpenuhi
-      if (hasValidOrders && hasValidEscrow && hasAdsData && dataLoaded && !autoCalcAttempted && !isCalculating) {
-        setAutoCalcAttempted(true);
-        // Tunggu sebentar untuk memastikan data sepenuhnya termuat
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Tambah waktu tunggu untuk keamanan
-        console.log("Menghitung profit secara otomatis...");
-        await calculateTotalProfit();
-      }
-    };
-    
-    autoCalculateProfit();
-  }, [orders, escrowTotal, adsSpend, dataLoaded, autoCalcAttempted, isCalculating]);
-  
-  // Reset flag autoCalcAttempted ketika dateRange berubah
-  useEffect(() => {
-    if (dateRange) {
-      // Reset flag otomatis ketika rentang tanggal berubah
-      setAutoCalcAttempted(false);
+    // Cek apakah memenuhi kondisi untuk kalkulasi otomatis
+    if (
+      !autoCalculated && // Belum pernah kalkulasi otomatis
+      dataLoaded && // Data SKU sudah dimuat
+      orders.length > 0 && // Ada order 
+      escrowTotal > 0 && // Ada escrow
+      isAdsSpendAvailable() && // Ada data iklan
+      !isCalculating // Tidak sedang menghitung
+    ) {
+      // Jalankan kalkulasi otomatis
+      calculateTotalProfit();
+      setAutoCalculated(true); // Tandai sudah kalkulasi otomatis
     }
-  }, [dateRange]);
+  }, [dataLoaded, orders, escrowTotal, adsSpend, isCalculating, autoCalculated, isAdsSpendAvailable]);
   
   // Fungsi untuk mendapatkan nilai adsSpend yang valid
   const getValidAdsSpend = (): number => {
