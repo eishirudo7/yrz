@@ -88,6 +88,7 @@ export default function ProfitCalculator({
     adsSpend: number,
     netProfit: number
   }}>({})
+  const [autoCalcAttempted, setAutoCalcAttempted] = useState(false)
   
   // Prefetch SKU data when component mounts
   useEffect(() => {
@@ -104,6 +105,79 @@ export default function ProfitCalculator({
     
     prefetchSkuData();
   }, [orders, dataLoaded]);
+  
+  // Efek untuk menghitung profit otomatis ketika data iklan tersedia
+  useEffect(() => {
+    const autoCalculateProfit = async () => {
+      // Pastikan semua syarat terpenuhi untuk perhitungan:
+      // 1. Ada orders dengan escrow
+      // 2. Escrow total > 0
+      // 3. Data iklan benar-benar tersedia (bukan hanya objek kosong)
+      // 4. Data sudah dimuat (dataLoaded = true)
+      // 5. Belum pernah mencoba perhitungan otomatis (autoCalcAttempted = false)
+      // 6. Tidak sedang dalam proses perhitungan (isCalculating = false)
+      
+      // Periksa orders dengan data escrow
+      const ordersWithEscrow = orders.filter(
+        order => order.escrow_amount_after_adjustment !== null && 
+                 order.escrow_amount_after_adjustment !== undefined
+      );
+      const hasValidOrders = ordersWithEscrow.length > 0;
+      const hasValidEscrow = escrowTotal > 0;
+      
+      // Periksa apakah adsSpend benar-benar memiliki data iklan
+      let hasAdsData = false;
+      
+      if (adsSpend !== undefined && adsSpend !== null) {
+        if (typeof adsSpend === 'object') {
+          // Periksa properti raw_cost (totalnya ada data)
+          if ('raw_cost' in adsSpend && typeof adsSpend.raw_cost === 'number' && adsSpend.raw_cost > 0) {
+            hasAdsData = true;
+          }
+          // Atau periksa apakah ada ads_data dengan panjang > 0
+          else if ('ads_data' in adsSpend && Array.isArray((adsSpend as any).ads_data) && (adsSpend as any).ads_data.length > 0) {
+            hasAdsData = true;
+          }
+        } else if (typeof adsSpend === 'number' && adsSpend > 0) {
+          hasAdsData = true;
+        }
+      }
+      
+      console.log("Status perhitungan otomatis:", {
+        hasValidOrders,
+        ordersWithEscrowCount: ordersWithEscrow.length,
+        hasValidEscrow,
+        escrowValue: escrowTotal,
+        hasAdsData,
+        adsSpendDetail: typeof adsSpend === 'object' ? 
+          ('raw_cost' in adsSpend ? `raw_cost: ${adsSpend.raw_cost}` : 
+           'ads_data' in adsSpend ? `ads_data length: ${(adsSpend as any).ads_data?.length}` : 'unknown format') : 
+          adsSpend,
+        dataLoaded,
+        autoCalcAttempted,
+        isCalculating
+      });
+      
+      // Hanya hitung otomatis jika semua kriteria terpenuhi
+      if (hasValidOrders && hasValidEscrow && hasAdsData && dataLoaded && !autoCalcAttempted && !isCalculating) {
+        setAutoCalcAttempted(true);
+        // Tunggu sebentar untuk memastikan data sepenuhnya termuat
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Tambah waktu tunggu untuk keamanan
+        console.log("Menghitung profit secara otomatis...");
+        await calculateTotalProfit();
+      }
+    };
+    
+    autoCalculateProfit();
+  }, [orders, escrowTotal, adsSpend, dataLoaded, autoCalcAttempted, isCalculating]);
+  
+  // Reset flag autoCalcAttempted ketika dateRange berubah
+  useEffect(() => {
+    if (dateRange) {
+      // Reset flag otomatis ketika rentang tanggal berubah
+      setAutoCalcAttempted(false);
+    }
+  }, [dateRange]);
   
   // Fungsi untuk mendapatkan nilai adsSpend yang valid
   const getValidAdsSpend = (): number => {
@@ -851,11 +925,11 @@ export default function ProfitCalculator({
                                 <TableHeader className="sticky top-0 bg-background z-10">
                                   <TableRow className="border-b border-primary/20">
                                     <TableHead className="w-8 py-1.5 text-center font-medium px-1">#</TableHead>
-                                    <TableHead className="py-1.5 font-medium px-1 w-[45%]">Toko</TableHead>
-                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[14%]">Escrow</TableHead>
-                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[14%]">Laba Kotor</TableHead>
-                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[14%]">Biaya Iklan</TableHead>
-                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[14%]">Profit</TableHead>
+                                    <TableHead className="py-1.5 font-medium px-1 w-[30%]">Toko</TableHead>
+                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[17%]">Escrow</TableHead>
+                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[17%]">Laba Kotor</TableHead>
+                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[17%]">Biaya Iklan</TableHead>
+                                    <TableHead className="py-1.5 text-right font-medium px-1 w-[19%]">Profit</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>

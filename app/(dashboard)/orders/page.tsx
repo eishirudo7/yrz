@@ -9,7 +9,36 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon, CheckCircle, RefreshCw, AlertCircle, RotateCcw, TrendingUp, CreditCard, Wallet, AlertTriangle } from "lucide-react"
+import { 
+  Calendar as CalendarIcon, 
+  CheckCircle, 
+  RefreshCw, 
+  AlertCircle, 
+  RotateCcw, 
+  TrendingUp,
+  MegaphoneIcon,
+  CreditCard, 
+  Wallet, 
+  AlertTriangle,
+  Package, 
+  Clock, 
+  Truck, 
+  XCircle, 
+  ShoppingCart, 
+  ShoppingBag,
+  Search, 
+  X, 
+  ChevronDown,
+  Store,
+  BarChart3,
+  FileText,
+  DollarSign,
+  ClipboardList,
+  CheckSquare,
+  PackageCheck,
+  PackageX,
+  Ban
+} from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { cn } from "@/lib/utils"
@@ -23,10 +52,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Card, CardHeader, CardContent } from "@/components/ui/card"
-import { Package, Clock, Truck, XCircle, ShoppingCart, XOctagon, Search, X, ChevronDown } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Store } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -69,19 +96,19 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
       case 'pending':
         return <Clock className="w-5 h-5" />
       case 'process':
-        return <Package className="w-5 h-5" />
+        return <PackageCheck className="w-5 h-5" />
       case 'shipping':
         return <Truck className="w-5 h-5" />
       case 'cancel':
-        return <XCircle className="w-5 h-5" />
+        return <Ban className="w-5 h-5" />
       case 'total':
-        return <ShoppingCart className="w-5 h-5" />
+        return <ShoppingBag className="w-5 h-5" />
       case 'failed':
-        return <XOctagon className="w-5 h-5" />
+        return <PackageX className="w-5 h-5" />
       case 'completed':
-        return <CheckCircle className="w-5 h-5" />
+        return <CheckSquare className="w-5 h-5" />
       case 'confirm':
-        return <AlertCircle className="w-5 h-5" />
+        return <ClipboardList className="w-5 h-5" />
       case 'return':
         return <RotateCcw className="w-5 h-5" />
       case 'fake':
@@ -94,25 +121,25 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
   const getActiveColors = () => {
     switch (icon) {
       case 'pending':
-        return 'bg-yellow-500 text-white'
+        return 'bg-amber-500 text-white'
       case 'process':
-        return 'bg-blue-500 text-white'
+        return 'bg-blue-600 text-white'
       case 'shipping':
-        return 'bg-green-500 text-white'
+        return 'bg-teal-600 text-white'
       case 'cancel':
-        return 'bg-red-500 text-white'
+        return 'bg-rose-600 text-white'
       case 'total':
-        return 'bg-purple-500 text-white'
+        return 'bg-indigo-600 text-white'
       case 'failed':
-        return 'bg-orange-500 text-white'
+        return 'bg-orange-600 text-white'
       case 'completed':
-        return 'bg-emerald-500 text-white'
+        return 'bg-emerald-600 text-white'
       case 'confirm':
-        return 'bg-cyan-500 text-white'
+        return 'bg-sky-600 text-white'
       case 'return':
-        return 'bg-violet-500 text-white'
+        return 'bg-violet-600 text-white'
       case 'fake':
-        return 'bg-pink-500 text-white'
+        return 'bg-fuchsia-600 text-white'
       default:
         return 'bg-background'
     }
@@ -141,15 +168,16 @@ function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusC
             isActive 
               ? 'bg-white/20' 
               : `bg-background ${
-                  icon === 'pending' ? 'text-yellow-500' :
-                  icon === 'process' ? 'text-blue-500' :
-                  icon === 'shipping' ? 'text-green-500' :
-                  icon === 'cancel' ? 'text-red-500' :
-                  icon === 'total' ? 'text-purple-500' :
-                  icon === 'failed' ? 'text-orange-500' :
-                  icon === 'confirm' ? 'text-cyan-500' :
-                  icon === 'completed' ? 'text-emerald-500' :
-                  'text-violet-500'
+                  icon === 'pending' ? 'text-amber-500' :
+                  icon === 'process' ? 'text-blue-600' :
+                  icon === 'shipping' ? 'text-teal-600' :
+                  icon === 'cancel' ? 'text-rose-600' :
+                  icon === 'total' ? 'text-indigo-600' :
+                  icon === 'failed' ? 'text-orange-600' :
+                  icon === 'confirm' ? 'text-sky-600' :
+                  icon === 'completed' ? 'text-emerald-600' :
+                  icon === 'return' ? 'text-violet-600' :
+                  'text-fuchsia-600'
                 }`
           }`}>
             {getIcon()}
@@ -556,8 +584,14 @@ export default function OrdersPage() {
 
   // Kembalikan handleApplyDate ke versi asli
   const handleApplyDate = () => {
-    setSelectedDateRange(date)
-    setIsCalendarOpen(false)
+    // Jika date.from ada tapi date.to tidak ada, set date.to sama dengan date.from
+    const finalDateRange = {
+      from: date?.from,
+      to: date?.to || date?.from // Gunakan date.from jika date.to tidak ada
+    };
+    
+    setSelectedDateRange(finalDateRange as DateRange);
+    setIsCalendarOpen(false);
   }
 
   const handlePresetDate = (days: number) => {
@@ -915,7 +949,7 @@ export default function OrdersPage() {
                   Rp {getFilteredOmset.toLocaleString('id-ID')}
                 </p>
                 <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-800/40 flex-shrink-0">
-                  <CreditCard className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
                 </div>
               </div>
             </div>
@@ -951,7 +985,7 @@ export default function OrdersPage() {
                 Rp {totalAdsSpend.toLocaleString('id-ID')}
                 </p>
                 <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0">
-                  <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <MegaphoneIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
             </div>
@@ -1138,7 +1172,7 @@ export default function OrdersPage() {
                   <div className="flex justify-end border-t pt-3">
                     <Button 
                       onClick={handleApplyDate}
-                      disabled={!date?.from || !date?.to}
+                      disabled={!date?.from}
                     >
                       Terapkan
                     </Button>
@@ -1283,16 +1317,18 @@ export default function OrdersPage() {
               variant={viewMode === 'chart' ? "default" : "ghost"}
               size="sm"
               onClick={() => setViewMode('chart')}
-              className="h-8 px-4 text-xs"
+              className="h-8 px-4 text-xs flex items-center gap-2"
             >
+              <BarChart3 className="w-3.5 h-3.5" />
               Chart
             </Button>
             <Button
               variant={viewMode === 'text' ? "default" : "ghost"}
               size="sm"
               onClick={() => setViewMode('text')}
-              className="h-8 px-4 text-xs"
+              className="h-8 px-4 text-xs flex items-center gap-2"
             >
+              <FileText className="w-3.5 h-3.5" />
               Ringkasan
             </Button>
           </div>

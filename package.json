@@ -69,6 +69,7 @@
   },
   "devDependencies": {
     "@shadcn/ui": "^0.0.4",
+    "@types/jest": "^29.5.14",
     "@types/json-stable-stringify": "^1.0.36",
     "@types/luxon": "^3.4.2",
     "@types/node": "^20",
