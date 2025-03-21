@@ -28,6 +28,19 @@ export interface AdsData {
   cost_formatted: string
 }
 
+// Tambahkan fungsi helper untuk format tanggal
+const formatDateToYYYYMMDD = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDateToDDMMYYYY = (dateStr: string) => {
+  // dateStr dalam format YYYY-MM-DD
+  return dateStr.split('-').reverse().join('-');
+};
+
 export function useOrders(dateRange: DateRange | undefined) {
   const [orders, setOrders] = useState<Order[]>([])
   const [ordersWithoutEscrow, setOrdersWithoutEscrow] = useState<Order[]>([])
@@ -142,8 +155,8 @@ export function useOrders(dateRange: DateRange | undefined) {
       const useStartDate = startDate;
       
       // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
-      const formattedStartDate = useStartDate.split('-').reverse().join('-');
-      const formattedEndDate = endDate.split('-').reverse().join('-');
+      const formattedStartDate = formatDateToDDMMYYYY(useStartDate);
+      const formattedEndDate = formatDateToDDMMYYYY(endDate);
       
       // Debug: log tanggal yang dikirim ke API
       console.log("Dikirim ke API ads:", formattedStartDate, formattedEndDate);
@@ -203,9 +216,9 @@ export function useOrders(dateRange: DateRange | undefined) {
         const startTimestamp = Math.floor(startDate.getTime() / 1000)
         const endTimestamp = Math.floor(endDate.getTime() / 1000)
         
-        // Format tanggal untuk API iklan (YYYY-MM-DD)
-        const startDateStr = startDate.toISOString().split('T')[0];
-        const endDateStr = endDate.toISOString().split('T')[0];
+        // Format tanggal untuk API iklan (YYYY-MM-DD) - gunakan fungsi baru
+        const startDateStr = formatDateToYYYYMMDD(startDate);
+        const endDateStr = formatDateToYYYYMMDD(endDate);
         
         console.log("Tanggal format ISO:", startDateStr, endDateStr);
         
@@ -273,9 +286,9 @@ export function useOrders(dateRange: DateRange | undefined) {
       startDate.setHours(0, 0, 0, 0)
       endDate.setHours(23, 59, 59, 999)
       
-      // Format tanggal untuk API iklan (YYYY-MM-DD)
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
+      // Format tanggal untuk API iklan (YYYY-MM-DD) - gunakan fungsi baru
+      const startDateStr = formatDateToYYYYMMDD(startDate);
+      const endDateStr = formatDateToYYYYMMDD(endDate);
       
       console.log("Tanggal untuk ads di fetchAdsDataAsync:", startDateStr, endDateStr);
       

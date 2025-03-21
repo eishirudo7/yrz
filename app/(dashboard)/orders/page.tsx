@@ -288,7 +288,7 @@ export default function OrdersPage() {
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
 
-  // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 50)
+  // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 20 dan escrow < 200000)
   const isFakeOrder = (order: Order) => {
     if (!order.sku_qty) return false;
     
@@ -303,7 +303,11 @@ export default function OrdersPage() {
       }
     });
     
-    return totalQuantity > 50;
+    // Periksa jika kuantitas > 20 dan escrow final < 200000
+    return totalQuantity > 20 && 
+           order.escrow_amount_after_adjustment !== undefined && 
+           order.escrow_amount_after_adjustment !== null && 
+           order.escrow_amount_after_adjustment < 200000;
   };
 
   // Hitung jumlah pesanan berdasarkan status
