@@ -449,9 +449,9 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
                 axisLine={false}
                 fontSize={12}
                 tickMargin={8}
-                interval={timeframe === 'hour' ? calculateHourInterval(data.length) : 0}
+                interval={timeframe === 'hour' ? calculateHourInterval(data.length) : (data.length > 15 ? Math.ceil(data.length / 10) : 0)}
                 minTickGap={20}
-                padding={{ left: 5, right: 5 }}
+                padding={{ left: 10, right: 10 }}
                 tick={{ fill: chartColors.label }}
               />
               <YAxis
