@@ -605,6 +605,10 @@ export default function ProfitCalculator({
   
   const windowWidth = window.innerWidth;
   
+  useEffect(() => {
+    console.log("ProfitCalculator menerima adsSpend:", adsSpend);
+  }, [adsSpend]);
+  
   return (
     <Card className="bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 h-full">
       <div className="p-3">

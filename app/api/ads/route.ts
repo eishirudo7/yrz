@@ -8,17 +8,25 @@ export async function GET(req: NextRequest, res: NextResponse) {
     let start_date = searchParams.get("start_date");
     let end_date = searchParams.get("end_date");
 
+    // Dapatkan tanggal hari ini dalam zona waktu Jakarta
+    const today = new Date();
+    const jakartaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+    const todayFormatted = jakartaTime.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    }).split('/').join('-');
+
     if (!start_date || !end_date) {
-        const today = new Date();
-        const jakartaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
-        const defaultDate = jakartaTime.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        }).split('/').join('-');
-        start_date = defaultDate;
-        end_date = defaultDate;
-        console.log(`Menggunakan tanggal default: ${defaultDate}`);
+        start_date = todayFormatted;
+        end_date = todayFormatted;
+        console.log(`Menggunakan tanggal default: ${todayFormatted}`);
+    }
+
+    // Validasi: Jika end_date lebih dari tanggal hari ini, gunakan tanggal hari ini
+    if (end_date > todayFormatted) {
+        console.log(`End date ${end_date} lebih dari tanggal hari ini. Menggunakan tanggal hari ini: ${todayFormatted}`);
+        end_date = todayFormatted;
     }
 
     // Pastikan start_date dan end_date adalah string

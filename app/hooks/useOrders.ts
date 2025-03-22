@@ -170,9 +170,23 @@ export function useOrders(dateRange: DateRange | undefined) {
       
       const adsResult = await response.json();
       
+      // Debug: log hasil respons API
+      console.log("Respons dari API ads:", adsResult);
+      console.log("Struktur ads_data:", adsResult.ads_data);
+      console.log("Tipe ads_data:", Array.isArray(adsResult.ads_data) ? "Array" : typeof adsResult.ads_data);
+      console.log("Jumlah item dalam ads_data:", adsResult.ads_data ? adsResult.ads_data.length : 0);
+      
       // Simpan data toko jika ada
       if (adsResult && adsResult.ads_data) {
         setAdsData(adsResult.ads_data.map((ad: any) => ({
+          shopId: ad.shop_id,
+          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
+          totalSpend: ad.raw_cost,
+          cost_formatted: ad.cost
+        })));
+        
+        // Debug: log hasil konversi ads_data
+        console.log("AdsData setelah konversi:", adsResult.ads_data.map((ad: any) => ({
           shopId: ad.shop_id,
           shopName: ad.shop_name || `Shop ${ad.shop_id}`,
           totalSpend: ad.raw_cost,
