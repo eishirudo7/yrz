@@ -155,6 +155,37 @@ export async function GET(req: NextRequest, res: NextResponse) {
         return endDate.getDate() === lastDayOfMonth;
     }
 
+    // Fungsi untuk menunggu dengan waktu tertentu
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Fungsi untuk mengambil data iklan dengan retry
+    async function fetchAdsWithRetry(shopId: number, startDate: string, endDate: string, maxRetries = 3, retryDelay = 2000) {
+        let retries = 0;
+        
+        while (retries < maxRetries) {
+            try {
+                const performance = await getAdsDailyPerformance(shopId, startDate, endDate);
+                
+                // Cek jika terjadi rate limit
+                if (performance?.error === 'ads.rate_limit.exceed_api') {
+                    retries++;
+                    console.log(`Rate limit terdeteksi untuk toko ID ${shopId}, retry ke-${retries}/${maxRetries} setelah ${retryDelay}ms`);
+                    await sleep(retryDelay);
+                    continue;
+                }
+                
+                return performance;
+            } catch (error) {
+                retries++;
+                if (retries >= maxRetries) throw error;
+                console.log(`Error pada request untuk toko ID ${shopId}, retry ke-${retries}/${maxRetries} setelah ${retryDelay}ms`);
+                await sleep(retryDelay);
+            }
+        }
+        
+        throw new Error(`Gagal mengambil data setelah ${maxRetries} percobaan`);
+    }
+
     try {
         const shops = await getAllShops();
         
@@ -164,7 +195,8 @@ export async function GET(req: NextRequest, res: NextResponse) {
                 console.log(`Mengambil performa iklan untuk toko ${shop.shop_name} (ID: ${shop.shop_id})`);
                 console.log(`Parameter request: shop_id=${shop.shop_id}, start_date=${safeStartDate}, end_date=${safeEndDate}`);
                 
-                const performance = await getAdsDailyPerformance(shop.shop_id, safeStartDate, safeEndDate);
+                // Gunakan fungsi dengan retry
+                const performance = await fetchAdsWithRetry(Number(shop.shop_id), safeStartDate, safeEndDate);
                 
                 console.log(`Response dari API untuk toko ${shop.shop_name}:`, 
                     typeof performance === 'object' ? JSON.stringify(performance).substring(0, 200) + '...' : performance);

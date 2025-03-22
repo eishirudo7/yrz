@@ -288,6 +288,9 @@ export default function OrdersPage() {
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
 
+  // Tambahkan state untuk menampilkan/menyembunyikan detail iklan
+  const [showAdsDetails, setShowAdsDetails] = useState(false);
+
   // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 20 dan escrow < 200000)
   const isFakeOrder = (order: Order) => {
     if (!order.sku_qty) return false;
@@ -340,8 +343,8 @@ export default function OrdersPage() {
             acc.return++;
           } else {
             acc.completed++;
+            acc.total++;
           }
-          acc.total++;
           break;
         case 'IN_CANCEL':
           acc.total++;
@@ -352,7 +355,6 @@ export default function OrdersPage() {
           break;
         case 'TO_RETURN':
           acc.return++;
-          acc.total++;
           break;
         case 'CANCELLED':
           acc.cancel++;
@@ -414,8 +416,8 @@ export default function OrdersPage() {
             acc.return++;
           } else {
             acc.completed++;
+            acc.total++;
           }
-          acc.total++;
           break;
         case 'IN_CANCEL':
           acc.total++;
@@ -426,7 +428,6 @@ export default function OrdersPage() {
           break;
         case 'TO_RETURN':
           acc.return++;
-          acc.total++;
           break;
         case 'CANCELLED':
           acc.cancel++;
@@ -489,6 +490,11 @@ export default function OrdersPage() {
           return order.order_status === 'CANCELLED';
         case 'total':
           if (order.cancel_reason === 'Failed Delivery') return false;
+          if (order.order_status === 'TO_RETURN') return false;
+          if (order.order_status === 'COMPLETED' && 
+              order.escrow_amount_after_adjustment !== undefined && 
+              order.escrow_amount_after_adjustment !== null && 
+              order.escrow_amount_after_adjustment < 0) return false;
           return !['CANCELLED'].includes(order.order_status);
         default:
           return true;
@@ -790,6 +796,11 @@ export default function OrdersPage() {
     />
   ), [filteredOrders, getFilteredEscrow, totalAdsSpend, selectedDateRange])
 
+  // Fungsi untuk menampilkan/menyembunyikan detail iklan
+  const toggleAdsDetails = () => {
+    setShowAdsDetails(!showAdsDetails);
+  }
+
   if (ordersLoading) {
     return (
       <div className="w-full p-4 sm:p-6 space-y-6">
@@ -988,9 +999,40 @@ export default function OrdersPage() {
                 <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
                 Rp {totalAdsSpend.toLocaleString('id-ID')}
                 </p>
-                <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0">
-                  <MegaphoneIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-700/60 transition-colors">
+                      <MegaphoneIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-60 p-0" align="end">
+                    <div className="flex items-center justify-between px-3 py-2 border-b">
+                      <h3 className="text-xs font-semibold">Detail Iklan</h3>
+                      <span className="text-[10px] text-muted-foreground">{selectedDateRange?.from && format(selectedDateRange.from, "dd MMM", { locale: id })} - {selectedDateRange?.to && format(selectedDateRange.to, "dd MMM", { locale: id })}</span>
+                    </div>
+                    <div className="max-h-[180px] overflow-y-auto">
+                      {adsData.length === 0 ? (
+                        <p className="text-muted-foreground text-center py-2 text-xs">Tidak ada data iklan</p>
+                      ) : (
+                        <div className="divide-y">
+                          {[...adsData]
+                            .sort((a, b) => b.totalSpend - a.totalSpend)
+                            .map((ad) => (
+                              <div key={ad.shopId} className="px-3 py-1.5 hover:bg-muted/50">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-xs">{ad.shopName.split(' ')[0]}</span>
+                                  <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">
+                                    Rp {ad.totalSpend.toLocaleString('id-ID')}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </div>
