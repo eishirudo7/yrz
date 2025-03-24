@@ -3,10 +3,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Wallet, RefreshCw, List, Search, CreditCard, DollarSign, Eye, BarChart3, CalendarIcon, ListIcon, Tag } from 'lucide-react'
+import { Wallet, RefreshCw, List, Search, CreditCard, DollarSign, Eye, BarChart3, CalendarIcon, ListIcon, Tag, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
 import { type Order } from '@/app/hooks/useOrders'
 import ProfitabilitySettingsDialog from './ProfitabilitySettingsDialog'
+import DownloadReportButton from './ExcelExporter'
 import {
   Dialog,
   DialogContent,
@@ -423,23 +424,8 @@ export default function ProfitCalculator({
     setProfitDetails([]);
     
     try {
-      // Filter orders dengan escrow
-      const ordersWithEscrow = orders.filter(
-        order => order.escrow_amount_after_adjustment !== null && 
-                 order.escrow_amount_after_adjustment !== undefined
-      );
-      
-      // Reset state skuProfitData untuk memastikan data lama tidak digunakan
-      setSkuProfitData({});
-      
-      // Tunggu sebentar untuk memastikan state diupdate
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Ambil data baru
-      await fetchAllSkuData(ordersWithEscrow);
-      
-      // Tunggu sebentar untuk memastikan state sudah diupdate dengan data baru
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Gunakan orders langsung karena sudah difilter dari page.tsx
+      await fetchAllSkuData(orders);
       
       setDataLoaded(true);
       
@@ -448,7 +434,7 @@ export default function ProfitCalculator({
       let allDetails: ProfitDetailItem[] = [];
       
       // Proses perhitungan pesanan
-      for (const order of ordersWithEscrow) {
+      for (const order of orders) {
         const result = calculateOrderProfit(order);
         profit += result.profit;
         allDetails = [...allDetails, ...result.details];
@@ -546,7 +532,7 @@ export default function ProfitCalculator({
       console.log("Shop profit data setelah inisialisasi:", shopProfits);
       
       // Kalkulasi profit dari orders per toko
-      for (const order of ordersWithEscrow) {
+      for (const order of orders) {
         if (!order.shop_id) continue;
         
         const result = calculateOrderProfit(order);
@@ -619,6 +605,16 @@ export default function ProfitCalculator({
             </p>
             <div className="flex-shrink-0">
               <div className="flex items-center gap-1">
+                <DownloadReportButton
+                  orders={orders}
+                  escrowTotal={escrowTotal}
+                  adsSpend={adsSpend}
+                  profitDetails={profitDetails}
+                  shopProfitData={shopProfitData}
+                  calculateTotalProfit={calculateTotalProfit}
+                  dateRange={dateRange}
+                />
+                
                 <Button
                   variant="outline"
                   size="icon"

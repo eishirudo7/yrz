@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Calculator } from 'lucide-react'
+import { Card, CardContent, CardTitle } from '@/components/ui/card'
 
 interface ProfitabilitySettingsDialogProps {
   defaultOpen?: boolean
@@ -35,11 +36,48 @@ export default function ProfitabilitySettingsDialog({
 }: ProfitabilitySettingsDialogProps) {
   const [open, setOpen] = useState(defaultOpen)
   const [skus, setSkus] = useState<any[]>([])
+  const [allSkus, setAllSkus] = useState<any[]>([]) // Menyimpan semua data SKU
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
   
+  // Tambahkan state untuk kalkulator margin
+  const [receivedAmount, setReceivedAmount] = useState<string>('')
+  const [costAmount, setCostAmount] = useState<string>('')
+  const [calculatedMargin, setCalculatedMargin] = useState<string>('')
+  
+  // Fungsi untuk menghitung margin
+  const calculateMargin = () => {
+    if (!receivedAmount || !costAmount) return
+    
+    const received = parseFloat(receivedAmount)
+    const cost = parseFloat(costAmount)
+    
+    if (cost <= 0 || received <= 0) return
+    
+    if (cost > received) {
+      setCalculatedMargin('0.00') // Hindari margin negatif
+      return
+    }
+    
+    // Rumus margin: (harga jual - modal) / harga jual * 100
+    const margin = ((received - cost) / received) * 100
+    setCalculatedMargin(margin.toFixed(2))
+  }
+  
+  // Gunakan useEffect dengan debounce untuk perhitungan margin yang lebih konsisten
+  useEffect(() => {
+    const debounceTimeout = setTimeout(() => {
+      calculateMargin()
+    }, 300) // Tunggu 300ms setelah perubahan terakhir
+    
+    return () => {
+      clearTimeout(debounceTimeout)
+    }
+  }, [receivedAmount, costAmount])
+  
+  // Fungsi untuk mengambil data dari database
   const fetchSkus = async () => {
     setLoading(true)
     try {
@@ -52,18 +90,15 @@ export default function ProfitabilitySettingsDialog({
         query = query.ilike('item_sku', `%${searchTerm}%`)
       }
       
-      if (activeTab === 'with-cost') {
-        query = query.not('cost_price', 'is', null)
-      } else if (activeTab === 'with-margin') {
-        query = query.not('margin_percentage', 'is', null)
-      } else if (activeTab === 'incomplete') {
-        query = query.or('cost_price.is.null,margin_percentage.is.null')
-      }
-      
       const { data, error } = await query.limit(100) // Batasi untuk performa
       
       if (error) throw error
-      setSkus(data || [])
+      
+      // Simpan semua data
+      setAllSkus(data || [])
+      
+      // Filter data sesuai dengan tab yang aktif
+      filterSkusByActiveTab(data || [])
     } catch (error) {
       console.error('Error fetching SKUs:', error)
       toast.error('Gagal mengambil data SKU')
@@ -71,6 +106,31 @@ export default function ProfitabilitySettingsDialog({
       setLoading(false)
     }
   }
+  
+  // Fungsi untuk filter data berdasarkan tab aktif
+  const filterSkusByActiveTab = (data: any[] = allSkus) => {
+    if (!data || data.length === 0) {
+      setSkus([])
+      return
+    }
+    
+    let filteredData = [...data]
+    
+    if (activeTab === 'with-cost') {
+      filteredData = filteredData.filter(sku => sku.cost_price !== null)
+    } else if (activeTab === 'with-margin') {
+      filteredData = filteredData.filter(sku => sku.margin_percentage !== null)
+    } else if (activeTab === 'incomplete') {
+      filteredData = filteredData.filter(sku => sku.cost_price === null && sku.margin_percentage === null)
+    }
+    
+    setSkus(filteredData)
+  }
+  
+  // Effect untuk menjalankan filter saat tab berubah
+  useEffect(() => {
+    filterSkusByActiveTab()
+  }, [activeTab])
   
   const syncSkus = async () => {
     setSyncing(true)
@@ -165,12 +225,12 @@ export default function ProfitabilitySettingsDialog({
     }
   };
   
-  // Fetch data when dialog opens
+  // Fetch data when dialog opens or search changes
   useEffect(() => {
     if (open) {
       fetchSkus()
     }
-  }, [open, activeTab])
+  }, [open, searchTerm])
   
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -201,6 +261,50 @@ export default function ProfitabilitySettingsDialog({
               <TabsTrigger value="incomplete" className="text-xs py-1 px-0">Belum</TabsTrigger>
             </TabsList>
           </Tabs>
+          
+          {/* Kalkulator Margin - Compact */}
+          <div className="w-full mb-2">
+            <Card className="p-1 border-dashed border-muted">
+              <div className="flex items-center gap-1 px-1 py-1">
+                <Calculator className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs font-medium mr-1">Kalkulator Margin:</span>
+                <div className="flex items-center gap-1 flex-1">
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      placeholder="Harga Jual (Rp)"
+                      value={receivedAmount}
+                      onChange={(e) => {
+                        setReceivedAmount(e.target.value)
+                      }}
+                      className="h-7 text-xs w-full"
+                      min="0"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      placeholder="Modal (Rp)"
+                      value={costAmount}
+                      onChange={(e) => {
+                        setCostAmount(e.target.value)
+                      }}
+                      className="h-7 text-xs w-full"
+                      min="0"
+                    />
+                  </div>
+                  <div className="w-[70px]">
+                    <Input
+                      readOnly
+                      value={calculatedMargin ? `${calculatedMargin}%` : ''}
+                      placeholder="Margin"
+                      className="h-7 text-xs bg-muted text-right font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
           
           <div className="flex gap-2 w-full">
             <div className="relative flex-1">

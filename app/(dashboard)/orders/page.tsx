@@ -495,7 +495,7 @@ export default function OrdersPage() {
               order.escrow_amount_after_adjustment !== undefined && 
               order.escrow_amount_after_adjustment !== null && 
               order.escrow_amount_after_adjustment < 0) return false;
-          return !['CANCELLED'].includes(order.order_status);
+          return !['CANCELLED', 'UNPAID'].includes(order.order_status);
         default:
           return true;
       }
@@ -774,13 +774,13 @@ export default function OrdersPage() {
   // Hitung total escrow (selisih) berdasarkan orders yang sudah difilter
   const getFilteredEscrow = useMemo(() => {
     return filteredOrders.reduce((total, order) => {
-      // Skip pesanan yang dibatalkan atau gagal COD
-      if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery' || !order.escrow_amount_after_adjustment) 
-        return total
-        
-      return total + order.escrow_amount_after_adjustment
-    }, 0)
-  }, [filteredOrders])
+      if (!order.escrow_amount_after_adjustment || 
+          order.order_status === 'UNPAID' || 
+          order.order_status === 'CANCELLED' || 
+          order.cancel_reason === 'Failed Delivery') return total;
+      return total + order.escrow_amount_after_adjustment;
+    }, 0);
+  }, [filteredOrders]);
 
   // Komponen untuk Profit Calculator
   const profitCalculatorComponent = useMemo(() => (
@@ -985,6 +985,9 @@ export default function OrdersPage() {
                   <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
               </div>
+              <div className="text-xs text-blue-600 dark:text-blue-400">
+                {getFilteredOmset > 0 ? ((getFilteredOmset - getFilteredEscrow) / getFilteredOmset * 100).toFixed(1) : '0'}% biaya admin
+              </div>
             </div>
           </div>
         </Card>
@@ -997,7 +1000,7 @@ export default function OrdersPage() {
               </p>
               <div className="flex items-center justify-between">
                 <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
-                Rp {totalAdsSpend.toLocaleString('id-ID')}
+                  Rp {totalAdsSpend.toLocaleString('id-ID')}
                 </p>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -1033,6 +1036,9 @@ export default function OrdersPage() {
                     </div>
                   </PopoverContent>
                 </Popover>
+              </div>
+              <div className="text-xs text-purple-600 dark:text-purple-400">
+                {getFilteredEscrow > 0 ? (totalAdsSpend / getFilteredEscrow * 100).toFixed(1) : '0'}% dari escrow
               </div>
             </div>
           </div>

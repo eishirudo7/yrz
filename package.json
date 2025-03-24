@@ -40,6 +40,8 @@
     "date-fns": "^3.6.0",
     "date-fns-tz": "^3.2.0",
     "dayjs": "^1.11.13",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "framer-motion": "latest",
     "immer": "^10.1.1",
     "ioredis": "^5.4.1",
@@ -69,6 +71,7 @@
   },
   "devDependencies": {
     "@shadcn/ui": "^0.0.4",
+    "@types/file-saver": "^2.0.7",
     "@types/jest": "^29.5.14",
     "@types/json-stable-stringify": "^1.0.36",
     "@types/luxon": "^3.4.2",
