@@ -12,7 +12,7 @@ import {
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Impor ikon-ikon yang diperlukan
-import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info, X } from 'lucide-react'
+import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info, X, AlertTriangle } from 'lucide-react'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { OrderDetails } from './OrderDetails'
@@ -46,6 +46,36 @@ function formatDate(timestamp: number): string {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+// Fungsi untuk mengecek apakah timestamp adalah hari ini (waktu Jakarta)
+function isToday(timestamp: number): boolean {
+  if (!timestamp || timestamp === 0) return false;
+  
+  const today = new Date();
+  const jakartaOffset = 7 * 60; // GMT+7 dalam menit
+  
+  // Menyesuaikan tanggal saat ini ke zona waktu Jakarta
+  const jakartaToday = new Date(today.getTime() + (jakartaOffset * 60 * 1000));
+  const jakartaDate = new Date(jakartaToday).setHours(0, 0, 0, 0);
+  
+  // Mengubah timestamp menjadi tanggal dalam zona waktu Jakarta
+  const shipDate = new Date(timestamp * 1000);
+  const shipDateOnly = new Date(shipDate).setHours(0, 0, 0, 0);
+  
+  return jakartaDate === shipDateOnly;
+}
+
+// Fungsi untuk mengecek apakah pesanan telah melewati batas waktu pengiriman
+function isOverdue(timestamp: number): boolean {
+  if (!timestamp || timestamp === 0) return false;
+  
+  // Mendapatkan waktu saat ini dalam detik (UNIX timestamp)
+  const now = Math.floor(Date.now() / 1000);
+  
+  // Jika timestamp (ship_by_date) lebih kecil dari waktu sekarang,
+  // berarti sudah melewati batas waktu
+  return timestamp < now;
 }
 
 type OrdersDetailTableProps = {
@@ -2078,6 +2108,21 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                     }}
                   >
                     <div className="flex items-center gap-1.5">
+                      <div className="w-4 flex justify-center">
+                        {order.ship_by_date && isOverdue(order.ship_by_date) && 
+                          (order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && (
+                          <span title="Pesanan melewati batas waktu pengiriman">
+                            <AlertTriangle size={14} className="text-red-500" />
+                          </span>
+                        )}
+                        {order.ship_by_date && isToday(order.ship_by_date) && 
+                          (order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && 
+                          !isOverdue(order.ship_by_date) && (
+                          <span title="Batas pengiriman hari ini">
+                            <AlertCircle size={14} className="text-amber-500" />
+                          </span>
+                        )}
+                      </div>
                       <span>{order.order_sn}</span>
                       {order.cod && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
