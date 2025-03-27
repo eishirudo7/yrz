@@ -2109,19 +2109,22 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
                   >
                     <div className="flex items-center gap-1.5">
                       <div className="w-4 flex justify-center">
-                        {order.ship_by_date && isOverdue(order.ship_by_date) && 
-                          (order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && (
-                          <span title="Pesanan melewati batas waktu pengiriman">
-                            <AlertTriangle size={14} className="text-red-500" />
-                          </span>
+                        {/* Jika perlu menampilkan ikon untuk READY_TO_SHIP dan days_to_ship > 0, tambahkan kondisi di sini */}
+                        {(order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && order.ship_by_date && (
+                          <>
+                            {order.ship_by_date && isOverdue(order.ship_by_date) && (
+                              <span title="Pesanan melewati batas waktu pengiriman">
+                                <AlertTriangle size={14} className="text-red-500" />
+                              </span>
+                            )}
+                            {order.ship_by_date && isToday(order.ship_by_date) && !isOverdue(order.ship_by_date) && (
+                              <span title="Batas pengiriman hari ini">
+                                <AlertCircle size={14} className="text-amber-500" />
+                              </span>
+                            )}
+                          </>
                         )}
-                        {order.ship_by_date && isToday(order.ship_by_date) && 
-                          (order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && 
-                          !isOverdue(order.ship_by_date) && (
-                          <span title="Batas pengiriman hari ini">
-                            <AlertCircle size={14} className="text-amber-500" />
-                          </span>
-                        )}
+                        {/* Jangan menampilkan apapun di sini jika tidak ada ikon yang perlu ditampilkan */}
                       </div>
                       <span>{order.order_sn}</span>
                       {order.cod && (
