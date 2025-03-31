@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { JSONStringify } from 'json-with-bigint';
-
-import { shopeeApi } from '@/lib/shopeeConfig';
-import { supabase } from '@/lib/supabase';
+import { sendMessage } from '@/app/services/shopeeService';
 
 export async function POST(req: NextRequest) {
   const currentTime = new Date().toISOString();
@@ -12,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { toId, messageType = 'text', content, shopId } = body;
-    console.log('Data yang diterima di server:', { toId, messageType, content, shopId }); // Tambahkan log di sini
+    console.log('Data yang diterima di server:', { toId, messageType, content, shopId });
 
     // Pastikan toId dan shopId adalah number
     const parsedToId = Number(toId);
@@ -32,43 +30,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'content tidak valid untuk messageType yang dipilih' }, { status: 400 });
     }
 
-    // Ambil akses token dari shopee_tokens
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('shopee_tokens')
-      .select('access_token')
-      .eq('shop_id', parsedShopId)
-      .single();
-
-    if (tokenError || !tokenData) {
-      return NextResponse.json({ success: false, error: 'Gagal mengambil akses token' }, { status: 500 });
-    }
-
-    const accessToken = tokenData.access_token;
-
-    const result = await shopeeApi.sendMessage(parsedShopId, accessToken, parsedToId, messageType, content);
-    
-    // Log hasil dari API Shopee
-    console.log('Hasil dari API Shopee:', result);
-
-    // Periksa keberhasilan berdasarkan adanya 'response' dan 'message_id'
-    if (result.response && result.response.message_id) {
-      console.log('Pesan berhasil dikirim:', result.response);
+    try {
+      // Gunakan service function untuk mengirim pesan
+      const result = await sendMessage(parsedShopId, parsedToId, messageType, content);
       
-      // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
-      return new NextResponse(JSONStringify({
-        success: true,
-        data: {
-          ...result.response,
-          conversation_id: String(result.response.conversation_id) // Pastikan conversation_id adalah string
-        }
-      }), {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    } else {
-      console.error('Gagal mengirim pesan:', result.error || 'Tidak ada message_id dalam respons');
-      return NextResponse.json({ success: false, error: result.error || 'Gagal mengirim pesan' }, { status: 400 });
+      // Log hasil dari API Shopee
+      console.log('Hasil dari API Shopee:', result);
+  
+      // Periksa keberhasilan berdasarkan adanya 'response' dan 'message_id'
+      if (result.response && result.response.message_id) {
+        console.log('Pesan berhasil dikirim:', result.response);
+        
+        // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
+        return new NextResponse(JSONStringify({
+          success: true,
+          data: {
+            ...result.response,
+            conversation_id: String(result.response.conversation_id) // Pastikan conversation_id adalah string
+          }
+        }), {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+      } else {
+        console.error('Gagal mengirim pesan:', result.error || 'Tidak ada message_id dalam respons');
+        return NextResponse.json({ success: false, error: result.error || 'Gagal mengirim pesan' }, { status: 400 });
+      }
+    } catch (error) {
+      console.error('Error saat mengirim pesan:', error);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Terjadi kesalahan saat mengirim pesan',
+          details: (error as Error).message
+        }, 
+        { status: 500 }
+      );
     }
   } catch (error) {
     console.error('Error internal server:', error);

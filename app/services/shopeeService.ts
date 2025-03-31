@@ -1,26 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { JSONStringify, JSONParse } from 'json-with-bigint';
-
-
-// Implementasi baru getValidAccessToken yang menggunakan API route
-async function getValidAccessToken(shopId: number): Promise<string> {
-  try {
-    // Gunakan URL lengkap dengan base URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:10000';
-    const response = await fetch(`${baseUrl}/api/token?shop_id=${shopId}`);
-    const result = await response.json();
-    
-    if (!result.success) {
-      throw new Error(result.message || 'Gagal mendapatkan access token');
-    }
-    
-    return result.data.access_token;
-  } catch (error) {
-    console.error('Gagal mendapatkan access token untuk toko', shopId, error);
-    throw new Error(`Gagal mendapatkan access token untuk toko ${shopId}`);
-  }
-}
+import { getValidAccessToken } from '@/app/services/tokenManager';
+import { createClient } from "@/utils/supabase/server";
 
 export async function getShopInfo(shopId: number): Promise<any> {
     try {
@@ -52,21 +34,35 @@ export async function getShopInfo(shopId: number): Promise<any> {
 
 export async function getAllShops(): Promise<any[]> {
     try {
-        const { data, error } = await supabase
-                .from('shopee_tokens')
-                .select('*')
-                .eq('is_active', true);
-
-            if (error) throw error;
-            if (!data || data.length === 0) {
-                throw new Error("Gagal mengambil daftar toko aktif dari database");
-            }
-            return data;
-        } catch (error) {
-            console.error('Gagal mengambil daftar toko:', error);
-            throw new Error('Gagal mengambil daftar toko aktif dari database');
+        // Ambil user_id dari session saat ini (wajib)
+        const supabaseServer = await createClient();
+        const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
+        
+        // Jika tidak ada user yang login, kembalikan array kosong
+        if (userError || !user) {
+            console.warn('Tidak ada user yang terautentikasi');
+            return [];
         }
+        
+        // Query toko yang dimiliki oleh user yang sedang login
+        const { data, error } = await supabase
+            .from('shopee_tokens')
+            .select('*')
+            .eq('is_active', true)
+            .eq('user_id', user.id);
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            // Tidak ada toko yang ditemukan untuk user ini
+            return [];
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('Gagal mengambil daftar toko:', error);
+        throw new Error('Gagal mengambil daftar toko aktif dari database');
     }
+}
 
 export async function getRefreshCount(shopId: number): Promise<number> {
     try {
@@ -1550,5 +1546,129 @@ export async function getEscrowDetail(shopId: number, orderSn: string): Promise<
       message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
       request_id: ''
     };
+  }
+}
+
+export async function getConversationList(
+  shopId: number,
+  options: {
+    direction?: 'latest' | 'older',
+    type?: 'all' | 'pinned' | 'unread',
+    next_timestamp_nano?: number,
+    page_size?: number
+  } = {}
+): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+      throw new Error(`Tidak dapat menemukan toko dengan ID: ${shopId}`);
+    }
+
+    const result = await retryOperation(async () => {
+      return await shopeeApi.getConversationList(
+        shopId,
+        accessToken,
+        {
+          direction: options.direction || 'older',
+          type: options.type || 'all',
+          next_timestamp_nano: options.next_timestamp_nano,
+          page_size: options.page_size || 50
+        }
+      );
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`Error saat mengambil daftar percakapan untuk toko ${shopId}:`, error);
+    throw error;
+  }
+}
+
+export async function getMessages(
+  shopId: number,
+  conversationId: string,
+  options: {
+    offset?: string,
+    page_size?: number,
+    message_id_list?: number[]
+  } = {}
+): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+      throw new Error(`Tidak dapat menemukan toko dengan ID: ${shopId}`);
+    }
+
+    const result = await retryOperation(async () => {
+      return await shopeeApi.getMessages(
+        shopId,
+        accessToken,
+        conversationId,
+        {
+          offset: options.offset,
+          page_size: options.page_size || 25,
+          message_id_list: options.message_id_list
+        }
+      );
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`Error saat mengambil pesan untuk percakapan ${conversationId} di toko ${shopId}:`, error);
+    throw error;
+  }
+}
+
+export async function sendMessage(
+  shopId: number,
+  toId: number,
+  messageType: string,
+  content: any
+): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+      throw new Error(`Tidak dapat menemukan toko dengan ID: ${shopId}`);
+    }
+
+    const result = await retryOperation(async () => {
+      return await shopeeApi.sendMessage(
+        shopId,
+        accessToken,
+        toId,
+        messageType,
+        content
+      );
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`Error saat mengirim pesan ke pengguna ${toId} dari toko ${shopId}:`, error);
+    throw error;
+  }
+}
+
+export async function getOneConversation(
+  shopId: number,
+  conversationId: string
+): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+      throw new Error(`Tidak dapat menemukan toko dengan ID: ${shopId}`);
+    }
+
+    const result = await retryOperation(async () => {
+      return await shopeeApi.getOneConversation(
+        shopId,
+        accessToken,
+        conversationId
+      );
+    });
+
+    return result;
+  } catch (error) {
+    console.error(`Error saat mengambil data percakapan ${conversationId} untuk toko ${shopId}:`, error);
+    throw error;
   }
 }

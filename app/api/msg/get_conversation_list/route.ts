@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllShops } from '@/app/services/shopeeService';
-import { shopeeApi } from '@/lib/shopeeConfig';
-// Inisialisasi Supabase Client
-
-
+import { getAllShops, getConversationList } from '@/app/services/shopeeService';
 
 export async function GET(request: Request) {
   try {
@@ -25,9 +21,9 @@ export async function GET(request: Request) {
     const allConversations = await Promise.all(
       shopsResponse.map(async (shop) => {
         try {
-          const conversations = await shopeeApi.getConversationList(
+          // Gunakan service function alih-alih memanggil API langsung
+          const conversations = await getConversationList(
             shop.shop_id,
-            shop.access_token,
             {
               direction: 'older',
               type: 'all',

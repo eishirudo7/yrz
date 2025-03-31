@@ -15,7 +15,8 @@ import {
   ShoppingBag,
   Package,
   Zap,
-  RotateCcw
+  RotateCcw,
+  UserIcon
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,8 @@ import {
 } from "@/components/ui/tooltip"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession } from "next-auth/react"
+import { useMiniChat } from "@/contexts/MiniChatContext"
+import { Badge } from "@/components/ui/badge"
 
 export const navItems = [
   { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -42,17 +44,17 @@ export const navItems = [
   { href: '/keluhan', icon: AlertCircle, label: 'Keluhan' },
   { href: '/otp', icon: KeyRound, label: 'OTP' },
   { href: '/discounts', icon: Percent, label: 'Diskon' },
+  { href: '/profile', icon: UserIcon, label: 'Profil & Langganan' },
   { href: '/pengaturan', icon: Settings, label: 'Pengaturan' },
 ]
 export function Sidebar() {
   const pathname = usePathname()
-  const { status } = useSession()
+  const { state } = useMiniChat()
 
   const isActive = (path: string) => pathname === path
 
-  if (status !== "authenticated") {
-    return null
-  }
+  // Hitung jumlah akun yang memiliki pesan belum dibaca
+  const totalUnread = state.conversations.filter(conv => conv.unread_count > 0).length
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -72,10 +74,18 @@ export function Sidebar() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={`rounded-lg ${isActive(item.href) ? 'bg-muted' : ''}`}
+                    className={`rounded-lg relative ${isActive(item.href) ? 'bg-muted' : ''}`}
                     aria-label={item.label}
                   >
                     <item.icon className="size-5" />
+                    {item.href === '/webchat' && totalUnread > 0 && (
+                      <Badge 
+                        variant="destructive" 
+                        className="absolute -top-0.5 -right-0.5 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+                      >
+                        {totalUnread}
+                      </Badge>
+                    )}
                   </Button>
                 </Link>
               </TooltipTrigger>

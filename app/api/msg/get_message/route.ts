@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { shopeeApi } from '@/lib/shopeeConfig';
-import { supabase } from '@/lib/supabase';
-
-
-// Inisialisasi Supabase Client
+import { getMessages } from '@/app/services/shopeeService';
 
 export async function GET(request: Request) {
   try {
@@ -25,26 +21,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Nilai pageSize tidak valid. Harus antara 1 dan 60.' }, { status: 400 });
     }
 
-    // Ambil token berdasarkan shopId
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('shopee_tokens')
-      .select('access_token')
-      .eq('shop_id', shopId)
-      .single();
-
-    if (tokenError || !tokenData) {
-      return NextResponse.json({ error: 'Gagal mengambil token untuk toko yang dipilih' }, { status: 500 });
+    // Validasi shopId
+    if (isNaN(shopId) || shopId <= 0) {
+      return NextResponse.json({ error: 'Nilai shopId tidak valid.' }, { status: 400 });
     }
-    console.log(tokenData)
-
-    // Tambahkan log untuk memeriksa parameter
-    console.log('Parameter API Shopee:', {
-      shopId,
-      accessToken: tokenData.access_token,
-      conversationId,
-      offset,
-      pageSize
-    });
 
     // Pastikan offset adalah string jika ada
     let offsetParam = offset ? offset.toString() : undefined;
@@ -57,44 +37,54 @@ export async function GET(request: Request) {
       offsetParam = '0';
     }
 
-    // Gunakan ShopeeAPI untuk mendapatkan pesan
-    const messages = await shopeeApi.getMessages(
-      shopId,
-      tokenData.access_token,
-      conversationId,
-      { 
-        offset: offsetParam, 
-        page_size: pageSize,
-        message_id_list: messageIdList
+    // Gunakan service function untuk mendapatkan pesan
+    try {
+      const messages = await getMessages(
+        shopId,
+        conversationId,
+        { 
+          offset: offsetParam, 
+          page_size: pageSize,
+          message_id_list: messageIdList
+        }
+      );
+
+      // Penanganan khusus untuk kesalahan parameter
+      if (messages.error === 'param_error') {
+        console.error('Kesalahan parameter API Shopee:', messages);
+        return NextResponse.json(
+          { 
+            error: 'Kesalahan parameter API Shopee', 
+            message: messages.message,
+            request_id: messages.request_id 
+          }, 
+          { status: 400 }
+        );
       }
-    );
 
-    // Penanganan khusus untuk kesalahan parameter
-    if (messages.error === 'param_error') {
-      console.error('Kesalahan parameter API Shopee:', messages);
+      // Penanganan umum untuk kesalahan lainnya
+      if (messages.error) {
+        console.error('Kesalahan API Shopee:', messages);
+        return NextResponse.json(
+          { 
+            error: 'Kesalahan dari API Shopee', 
+            details: messages 
+          }, 
+          { status: messages.status || 500 }
+        );
+      }
+
+      return NextResponse.json(messages);
+    } catch (error) {
+      console.error('Error saat memanggil service getMessages:', error);
       return NextResponse.json(
         { 
-          error: 'Kesalahan parameter API Shopee', 
-          message: messages.message,
-          request_id: messages.request_id 
+          error: 'Terjadi kesalahan saat mengambil pesan', 
+          details: (error as Error).message 
         }, 
-        { status: 400 }
+        { status: 500 }
       );
     }
-
-    // Penanganan umum untuk kesalahan lainnya
-    if (messages.error) {
-      console.error('Kesalahan API Shopee:', messages);
-      return NextResponse.json(
-        { 
-          error: 'Kesalahan dari API Shopee', 
-          details: messages 
-        }, 
-        { status: messages.status || 500 }
-      );
-    }
-
-    return NextResponse.json(messages);
   } catch (error) {
     console.error('Error dalam mendapatkan pesan:', error);
     return NextResponse.json(

@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Loader2 } from "lucide-react";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -81,6 +82,7 @@ function isOverdue(timestamp: number): boolean {
 type OrdersDetailTableProps = {
   orders: OrderItem[]
   onOrderUpdate?: (orderSn: string, updates: Partial<OrderItem>) => void
+  isLoading?: boolean
 }
 
 type OrderStatus = "READY_TO_SHIP" | "PROCESSED" | "SHIPPED" | "CANCELLED" | "IN_CANCEL" | "TO_RETURN";
@@ -375,7 +377,9 @@ const FilterContent = React.memo(({
 
 FilterContent.displayName = 'FilterContent';
 
-export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTableProps) {
+export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDetailTableProps) {
+  // Di awal fungsi OrdersDetailTable
+
   // 3. Gabungkan state yang berkaitan
   const [tableState, setTableState] = useState<TableState>({
     searchTerm: "",
@@ -642,8 +646,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
     trackingNumber: string;
   }[]>([]);
 
-  // Tambahkan state untuk dialog failed orders
-  const [isFailedOrdersDialogOpen, setIsFailedOrdersDialogOpen] = useState(false);
 
   // Tambahkan interface untuk menyimpan blob
   interface ShopBlob {
@@ -2069,149 +2071,225 @@ export function OrdersDetailTable({ orders, onOrderUpdate }: OrdersDetailTablePr
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredOrders.length > 0 ? (
-              filteredOrders.map((order: OrderItem, index: number) => (
+            {isLoading ? (
+              // Skeleton loader untuk baris-baris tabel saat loading
+              [...Array(5)].map((_, index) => (
                 <TableRow 
-                  key={`${order.order_sn}`} 
-                  className={`
-                    ${order.order_status === "IN_CANCEL" 
-                      ? 'bg-red-100 dark:bg-red-900/50' 
-                      : order.order_status === "CANCELLED"
-                        ? 'bg-gray-300 dark:bg-gray-800' 
-                        : index % 2 === 0 
-                          ? 'bg-muted dark:bg-gray-800/50' 
-                          : 'bg-gray-100/20 dark:bg-gray-900'
-                    }
-                    hover:bg-primary/10 dark:hover:bg-primary/20 hover:shadow-sm transition-colors
-                  `}
+                  key={`skeleton-${index}`} 
+                  className={`${index % 2 === 0 ? 'bg-muted dark:bg-gray-800/50' : 'bg-gray-100/20 dark:bg-gray-900'}`}
                 >
+                  {/* Sel pertama (checkbox) */}
                   <TableCell className={`p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
                     <div className="flex justify-center">
-                      <Checkbox
-                        checked={tableState.selectedOrders.includes(order.order_sn)}
-                        disabled={!derivedData.isOrderCheckable(order)}
-                        onCheckedChange={(checked) => 
-                          handleSelectOrder(order.order_sn, checked as boolean)
-                        }
-                        className="h-4 w-4"
-                      />
+                      <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                     </div>
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center whitespace-nowrap">{index + 1}</TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap max-w-[80px] sm:max-w-none overflow-hidden text-ellipsis">{order.shop_name}</TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.pay_time)}</TableCell>
-                  <TableCell 
-                    className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap cursor-pointer hover:text-primary"
-                    onClick={() => {
-                      setSelectedOrderSn(order.order_sn)
-                      setIsDetailOpen(true)
-                    }}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-4 flex justify-center">
-                        {/* Jika perlu menampilkan ikon untuk READY_TO_SHIP dan days_to_ship > 0, tambahkan kondisi di sini */}
-                        {(order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && order.ship_by_date && (
-                          <>
-                            {order.ship_by_date && isOverdue(order.ship_by_date) && (
-                              <span title="Pesanan melewati batas waktu pengiriman">
-                                <AlertTriangle size={14} className="text-red-500" />
-                              </span>
-                            )}
-                            {order.ship_by_date && isToday(order.ship_by_date) && !isOverdue(order.ship_by_date) && (
-                              <span title="Batas pengiriman hari ini">
-                                <AlertCircle size={14} className="text-amber-500" />
-                              </span>
-                            )}
-                          </>
-                        )}
-                        {/* Jangan menampilkan apapun di sini jika tidak ada ikon yang perlu ditampilkan */}
-                      </div>
-                      <span>{order.order_sn}</span>
-                      {order.cod && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
-                          COD
-                        </span>
-                      )}
+                  
+                  {/* Nomor urut */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mx-auto" />
+                  </TableCell>
+                  
+                  {/* Nama toko */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Tanggal */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-14 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Nomor pesanan */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Username */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="flex">
+                      <div className="h-3 w-4 mr-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                     </div>
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-6 flex justify-center">
-                        {order.buyer_username && derivedData.usernameCounts[order.buyer_username] > 1 && (
-                          <span 
-                            className="inline-flex items-center justify-center w-4 h-4 bg-blue-100 text-blue-800 text-[10px] font-medium rounded-full dark:bg-blue-900 dark:text-blue-300"
-                            title={`Pembeli ini memiliki ${derivedData.usernameCounts[order.buyer_username]} pesanan`}
-                          >
-                            {derivedData.usernameCounts[order.buyer_username]}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center">
-                        <button
-                          onClick={() => handleUsernameClick(order.buyer_user_id)}
-                          className="hover:text-primary mr-2"
-                        >
-                          {order.buyer_username}
-                        </button>
-                        
-                        {/* Tombol Chat dengan ikon saja */}
-                        <ChatButton
-                          shopId={order.shop_id}
-                          toId={order.buyer_user_id}
-                          toName={order.buyer_username || "Pembeli"}
-                          toAvatar={order.buyer_avatar || ""} 
-                          shopName={order.shop_name}
-                          iconSize={14}
-                          iconOnly={true}
-                          orderId={order.order_sn}
-                          orderStatus={order.order_status} // Tambahkan orderStatus
-                        />
-                      </div>
-                    </div>
+                  
+                  {/* Harga */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                    Rp {(order.total_amount || 0).toLocaleString('id-ID')}
+                  
+                  {/* Escrow */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                    Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
+                  
+                  {/* SKU/Qty */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty || '-'}</TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                    {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
+                  
+                  {/* Kurir */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </TableCell>
-                  <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                    <StatusBadge 
-                      status={order.order_status as OrderStatus} 
-                      order={order}
-                      onProcess={handleProcessOrder}
-                      onCancellationAction={handleCancellationAction}
-                    />
+                  
+                  {/* Status */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </TableCell>
+                  
+                  {/* Tombol cetak */}
                   <TableCell className="text-center p-1 h-[32px]">
-                    <Button
-                      onClick={() => handleDownloadDocument(order)}
-                      disabled={isLoadingForOrder(order.order_sn) || order.document_status !== 'READY'}
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 p-0"
-                    >
-                      {isLoadingForOrder(order.order_sn) ? (
-                        <RefreshCcw size={12} className="animate-spin" />
-                      ) : order.is_printed ? (
-                        <PrinterCheck size={12} className="text-green-500 hover:text-green-600" />
-                      ) : (
-                        <Printer size={12} className="text-primary hover:text-primary/80" />
-                      )}
-                    </Button>
+                    <div className="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse mx-auto" />
                   </TableCell>
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={11} className="text-center py-4 dark:text-gray-400">
-                  Tidak ada data untuk ditampilkan
-                </TableCell>
-              </TableRow>
+              // Konten tabel asli saat tidak loading
+              filteredOrders.length > 0 ? (
+                filteredOrders.map((order: OrderItem, index: number) => (
+                  <TableRow 
+                    key={`${order.order_sn}`} 
+                    className={`
+                      ${order.order_status === "IN_CANCEL" 
+                        ? 'bg-red-100 dark:bg-red-900/50' 
+                        : order.order_status === "CANCELLED"
+                          ? 'bg-gray-300 dark:bg-gray-800' 
+                          : index % 2 === 0 
+                            ? 'bg-muted dark:bg-gray-800/50' 
+                            : 'bg-gray-100/20 dark:bg-gray-900'
+                      }
+                      hover:bg-primary/10 dark:hover:bg-primary/20 hover:shadow-sm transition-colors
+                    `}
+                  >
+                    <TableCell className={`p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
+                      <div className="flex justify-center">
+                        <Checkbox
+                          checked={tableState.selectedOrders.includes(order.order_sn)}
+                          disabled={!derivedData.isOrderCheckable(order)}
+                          onCheckedChange={(checked) => 
+                            handleSelectOrder(order.order_sn, checked as boolean)
+                          }
+                          className="h-4 w-4"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center whitespace-nowrap">{index + 1}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap max-w-[80px] sm:max-w-none overflow-hidden text-ellipsis">{order.shop_name}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.pay_time)}</TableCell>
+                    <TableCell 
+                      className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap cursor-pointer hover:text-primary"
+                      onClick={() => {
+                        setSelectedOrderSn(order.order_sn)
+                        setIsDetailOpen(true)
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-4 flex justify-center">
+                          {/* Jika perlu menampilkan ikon untuk READY_TO_SHIP dan days_to_ship > 0, tambahkan kondisi di sini */}
+                          {(order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && order.ship_by_date && (
+                            <>
+                              {order.ship_by_date && isOverdue(order.ship_by_date) && (
+                                <span title="Pesanan melewati batas waktu pengiriman">
+                                  <AlertTriangle size={14} className="text-red-500" />
+                                </span>
+                              )}
+                              {order.ship_by_date && isToday(order.ship_by_date) && !isOverdue(order.ship_by_date) && (
+                                <span title="Batas pengiriman hari ini">
+                                  <AlertCircle size={14} className="text-amber-500" />
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {/* Jangan menampilkan apapun di sini jika tidak ada ikon yang perlu ditampilkan */}
+                        </div>
+                        <span>{order.order_sn}</span>
+                        {order.cod && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
+                            COD
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-6 flex justify-center">
+                          {order.buyer_username && derivedData.usernameCounts[order.buyer_username] > 1 && (
+                            <span 
+                              className="inline-flex items-center justify-center w-4 h-4 bg-blue-100 text-blue-800 text-[10px] font-medium rounded-full dark:bg-blue-900 dark:text-blue-300"
+                              title={`Pembeli ini memiliki ${derivedData.usernameCounts[order.buyer_username]} pesanan`}
+                            >
+                              {derivedData.usernameCounts[order.buyer_username]}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <button
+                            onClick={() => handleUsernameClick(order.buyer_user_id)}
+                            className="hover:text-primary mr-2"
+                          >
+                            {order.buyer_username}
+                          </button>
+                          
+                          {/* Tombol Chat dengan ikon saja */}
+                          <ChatButton
+                            shopId={order.shop_id}
+                            toId={order.buyer_user_id}
+                            toName={order.buyer_username || "Pembeli"}
+                            toAvatar={order.buyer_avatar || ""} 
+                            shopName={order.shop_name}
+                            iconSize={14}
+                            iconOnly={true}
+                            orderId={order.order_sn}
+                            orderStatus={order.order_status} // Tambahkan orderStatus
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      Rp {(order.total_amount || 0).toLocaleString('id-ID')}
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty || '-'}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <StatusBadge 
+                        status={order.order_status as OrderStatus} 
+                        order={order}
+                        onProcess={handleProcessOrder}
+                        onCancellationAction={handleCancellationAction}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center p-1 h-[32px]">
+                      <Button
+                        onClick={() => handleDownloadDocument(order)}
+                        disabled={isLoadingForOrder(order.order_sn) || order.document_status !== 'READY'}
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 p-0"
+                      >
+                        {isLoadingForOrder(order.order_sn) ? (
+                          <RefreshCcw size={12} className="animate-spin" />
+                        ) : order.is_printed ? (
+                          <PrinterCheck size={12} className="text-green-500 hover:text-green-600" />
+                        ) : (
+                          <Printer size={12} className="text-primary hover:text-primary/80" />
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-4 dark:text-gray-400">
+                    Tidak ada data untuk ditampilkan
+                  </TableCell>
+                </TableRow>
+              )
             )}
           </TableBody>
         </Table>

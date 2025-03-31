@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { getAllShops } from '@/app/services/shopeeService';
 
 interface MetricTarget {
   value: number;
@@ -66,14 +65,28 @@ export function useShops() {
     async function fetchShops() {
       try {
         setIsLoading(true);
-        const shopsData = await getAllShops();
+        
+        // Ganti pemanggilan getAllShops() dengan fetch ke API endpoint
+        const response = await fetch('/api/shops');
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Gagal mengambil daftar toko');
+        }
+        
+        const shopsData = result.data;
         setShops(shopsData);
         setIsLoading(false);
 
         // Setelah data toko dimuat, mulai memuat metrik
         fetchShopsPerformance(shopsData);
-      } catch (err) {
-        setError((err as Error).message);
+      } catch (err: unknown) {
+        console.error('Error fetching shops:', err);
+        setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data toko');
         setIsLoading(false);
       }
     }
@@ -104,7 +117,7 @@ export function useShops() {
           } else {
             console.error(`Gagal mengambil performa untuk toko ${shop.shop_id}:`, performanceData.message);
           }
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`Error mengambil performa untuk toko ${shop.shop_id}:`, error);
         }
       }

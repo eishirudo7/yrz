@@ -54,19 +54,19 @@ export default function OrderChangesPage() {
   const handleChatClick = async (order: Keluhan) => {
     setSelectedOrder(order)
     setIsDialogOpen(true)
-    if (order.msg_id && order.store_id) {
-      await fetchChats(order.msg_id.toString(), order.store_id)
+    if (order.msg_id && order.shop_id) {
+      await fetchChats(order.msg_id.toString(), order.shop_id)
     }
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (selectedOrder && selectedOrder.store_id && selectedOrder.user_id && selectedOrder.msg_id) {
+    if (selectedOrder && selectedOrder.shop_id && selectedOrder.userid && selectedOrder.msg_id) {
       try {
         await sendMessage({
-          toId: selectedOrder.user_id,
+          toId: parseInt(selectedOrder.userid),
           content: chatMessage,
-          shopId: parseInt(selectedOrder.store_id),
+          shopId: parseInt(selectedOrder.shop_id),
           conversationId: selectedOrder.msg_id.toString()
         })
         setChatMessage('')

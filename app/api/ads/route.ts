@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllShops, getAdsDailyPerformance } from '@/app/services/shopeeService';
+import { getAdsDailyPerformance, getAllShops } from '@/app/services/shopeeService';
 import { formatCurrency } from '@/utils/currencyFormatter';
 
 export async function GET(req: NextRequest, res: NextResponse) {
@@ -187,9 +187,30 @@ export async function GET(req: NextRequest, res: NextResponse) {
     }
 
     try {
-        const shops = await getAllShops();
+        // Gunakan getAllShops untuk mendapatkan daftar toko
+        let shops = [];
+        try {
+            shops = await getAllShops();
+            console.log(`Berhasil mengambil ${shops.length} toko dengan getAllShops()`);
+        } catch (shopError) {
+            console.error("Gagal mengambil daftar toko:", shopError);
+            return NextResponse.json({ 
+                error: "Gagal mengambil daftar toko",
+                details: shopError instanceof Error ? shopError.message : String(shopError)
+            }, { status: 500 });
+        }
         
-        // Ubah ke pengambilan data secara paralel menggunakan Promise.all
+        // Jika tidak ada toko, kembalikan array kosong
+        if (shops.length === 0) {
+            return NextResponse.json({
+                ads_data: [],
+                total_cost: formatCurrency(0),
+                raw_total_cost: 0,
+                message: "Belum ada toko"
+            }, { status: 200 });
+        }
+        
+        // 5. Ambil data iklan untuk setiap toko yang terverifikasi
         const adsDataPromises = shops.map(async (shop) => {
             try {
                 console.log(`Mengambil performa iklan untuk toko ${shop.shop_name} (ID: ${shop.shop_id})`);
@@ -197,9 +218,6 @@ export async function GET(req: NextRequest, res: NextResponse) {
                 
                 // Gunakan fungsi dengan retry
                 const performance = await fetchAdsWithRetry(Number(shop.shop_id), safeStartDate, safeEndDate);
-                
-                console.log(`Response dari API untuk toko ${shop.shop_name}:`, 
-                    typeof performance === 'object' ? JSON.stringify(performance).substring(0, 200) + '...' : performance);
                 
                 if (Array.isArray(performance)) {
                     const shopCost = performance.reduce((sum: any, day: { expense: any; }) => sum + day.expense, 0);

@@ -1,21 +1,19 @@
-import { withAuth } from "next-auth/middleware"
+import { type NextRequest } from 'next/server'
+import { updateSession } from '@/utils/supabase/middleware'
 
-export default withAuth({
-  pages: {
-    signIn: "/login",
-  },
-})
+export async function middleware(request: NextRequest) {
+  return await updateSession(request)
+}
 
 export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - login
-     * - api (semua API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
      */
-    '/((?!login|api|_next/static|_next/image|favicon.ico).*)'
-  ]
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 } 

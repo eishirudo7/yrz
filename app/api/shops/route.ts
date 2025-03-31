@@ -1,43 +1,46 @@
 // pages/api/shops/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
 
-import { getAllShops } from '@/app/services/shopeeService';
-
-type Shop = {
-  shop_id: number;
-  shop_name: string;
-};
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const shops = await getAllShops();
+    // Inisialisasi Supabase client
+    const supabase = await createClient();
     
-    if (shops && shops.length > 0) {
-      const simplifiedShops = shops.map((shop: any) => ({
-        shop_id: shop.shop_id,
-        shop_name: shop.shop_name,
-        is_active: shop.is_active,
-        access_token: shop.access_token
-      }));
-
+    // Ambil user dari session
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
       return NextResponse.json({
-        status: 'success',
-        message: 'Daftar toko berhasil diambil',
-        data: simplifiedShops
-      }, { status: 200 });
+        success: false,
+        message: 'Pengguna tidak terautentikasi'
+      }, { status: 401 });
     }
-
+    
+    // Ambil toko milik user
+    const { data: shops, error: shopsError } = await supabase
+      .from('shopee_tokens')
+      .select('shop_id, shop_name')
+      .eq('user_id', user.id)
+      .eq('is_active', true);
+    
+    if (shopsError) {
+      return NextResponse.json({
+        success: false,
+        message: 'Gagal mengambil data toko',
+        error: shopsError.message
+      }, { status: 500 });
+    }
+    
     return NextResponse.json({
-      status: 'error',
-      message: 'Data toko tidak ditemukan',
-      data: []
-    }, { status: 404 });
-
+      success: true,
+      data: shops || []
+    });
   } catch (error) {
-    console.error('Gagal mendapatkan daftar toko:', error);
+    console.error('Error fetching shops:', error);
     return NextResponse.json({
-      status: 'error',
-      message: 'Terjadi kesalahan saat mengambil daftar toko',
+      success: false,
+      message: 'Terjadi kesalahan saat mengambil data toko',
       error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

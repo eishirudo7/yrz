@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/client'
 import { DateRange } from 'react-day-picker'
-import { getEscrowDetail, getAdsDailyPerformance } from '@/app/services/shopeeService'
-import { saveEscrowDetail } from '@/app/services/databaseOperations'
 
 export interface Order {
   order_sn: string
@@ -84,8 +82,23 @@ export function useOrders(dateRange: DateRange | undefined) {
             const escrowResult = await response.json();
 
             if (escrowResult.success && escrowResult.data && escrowResult.data.success) {
-              // Simpan detail escrow ke database
-              await saveEscrowDetail(order.shop_id, escrowResult.data.data);
+              // Simpan detail escrow ke database menggunakan API endpoint baru
+              const saveResponse = await fetch('/api/escrow/save', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  shopId: order.shop_id,
+                  escrowData: escrowResult.data.data
+                })
+              });
+              
+              const saveResult = await saveResponse.json();
+              
+              if (!saveResult.success) {
+                throw new Error(saveResult.message || 'Gagal menyimpan data escrow');
+              }
               
               // Perbarui data pesanan dengan nilai escrow
               const updatedOrder = {
@@ -230,59 +243,39 @@ export function useOrders(dateRange: DateRange | undefined) {
         const startTimestamp = Math.floor(startDate.getTime() / 1000)
         const endTimestamp = Math.floor(endDate.getTime() / 1000)
         
-        // Format tanggal untuk API iklan (YYYY-MM-DD) - gunakan fungsi baru
+        // Format tanggal untuk API iklan (YYYY-MM-DD)
         const startDateStr = formatDateToYYYYMMDD(startDate);
         const endDateStr = formatDateToYYYYMMDD(endDate);
         
         console.log("Tanggal format ISO:", startDateStr, endDateStr);
         
-        // Simpan format tanggal untuk digunakan oleh fetchAdsDataAsync
-        const adsStartDate = startDateStr;
-        const adsEndDate = endDateStr;
+        // Gunakan API endpoint - hanya kirim tanggal awal dan akhir
+        const response = await fetch(
+          `/api/orders?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`
+        );
         
-        let allOrders: Order[] = []
-        let page = 0
-        const pageSize = 800
-        let hasMore = true
-        
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('orders_view')
-            .select('*')
-            .filter('create_time', 'gte', startTimestamp)
-            .filter('create_time', 'lte', endTimestamp)
-            .order('pay_time', { ascending: false })
-            .range(page * pageSize, (page + 1) * pageSize - 1)
-          
-          if (error) throw error
-          
-          if (data && data.length > 0) {
-            allOrders = [...allOrders, ...data]
-            page++
-          }
-          
-          // Jika data yang dikembalikan kurang dari pageSize, berarti sudah tidak ada lagi data
-          hasMore = data && data.length === pageSize
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Gagal mengambil data orders');
         }
         
-        console.log("Data berhasil diambil:", allOrders.length)
+        const result = await response.json();
         
-        // Periksa pesanan dengan escrow_amount_after_adjustment bernilai NULL
-        const ordersWithNullEscrow = allOrders.filter(
-          order => order.escrow_amount_after_adjustment === null
-        )
+        if (!result.success) {
+          throw new Error(result.message || 'Gagal mengambil data orders');
+        }
         
-        console.log("Pesanan tanpa data escrow:", ordersWithNullEscrow.length)
-        setOrdersWithoutEscrow(ordersWithNullEscrow)
-        setOrders(allOrders)
+        console.log("Data berhasil diambil:", result.data.length);
+        console.log("Pesanan tanpa data escrow:", result.ordersWithoutEscrow.length);
         
-        // Setelah selesai mengambil data pesanan, atur loading ke false
-        setLoading(false)
+        setOrders(result.data);
+        setOrdersWithoutEscrow(result.ordersWithoutEscrow);
         
       } catch (e) {
-        console.error("Error saat mengambil data:", e)
-        setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data')
-        setLoading(false)
+        console.error("Error saat mengambil data:", e);
+        setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data');
+      } finally {
+        setLoading(false);
       }
     }
     

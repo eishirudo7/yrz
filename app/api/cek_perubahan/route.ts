@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         const { data: keluhan, error: keluhanError } = await supabase
             .from('keluhan')
             .select('*')
-            .eq('user_id', parseInt(user_id));
+            .eq('userid', parseInt(user_id));
 
         if (keluhanError) {
             throw new Error(`Error saat cek keluhan: ${keluhanError.message}`);
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         const { data: perubahan, error: perubahanError } = await supabase
             .from('perubahan_pesanan')
             .select('*')
-            .eq('user_id', parseInt(user_id));
+            .eq('userid', parseInt(user_id));
 
         if (perubahanError) {
             throw new Error(`Error saat cek perubahan: ${perubahanError.message}`);

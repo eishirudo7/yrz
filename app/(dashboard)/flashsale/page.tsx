@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
-import { getAllShops } from '@/app/services/shopeeService';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -417,18 +416,33 @@ export default function FlashSalePage() {
     }
   };
 
-  // Mengambil daftar toko
+  // Tambahkan fungsi fetchShops
+  const fetchShops = async () => {
+    try {
+      const response = await fetch('/api/shops');
+      if (!response.ok) {
+        throw new Error('Failed to fetch shops');
+      }
+      const result = await response.json();
+      return result.data || []; // Akses properti data dari respons API
+    } catch (error) {
+      console.error('Error fetching shops:', error);
+      return [];
+    }
+  };
+
+  // Ganti fungsi fetchShops di useEffect
   useEffect(() => {
-    const fetchShops = async () => {
+    const getShops = async () => {
       try {
-        const shops = await getAllShops();
+        const shops = await fetchShops();
         if (shops && shops.length > 0) {
-          // Urutkan toko berdasarkan nama secara ascending
-          const sortedShops = shops.sort((a, b) => 
+          // Urutkan toko berdasarkan nama secara ascending dengan tipe eksplisit
+          const sortedShops = shops.sort((a: { shop_name: string }, b: { shop_name: string }) => 
             a.shop_name.localeCompare(b.shop_name, 'id', { sensitivity: 'base' })
           );
           setShops(sortedShops);
-          setSelectedShop(sortedShops[0].shop_id);
+          setSelectedShop(sortedShops[0].shop_id); // Pilih toko pertama sebagai default
         }
       } catch (error) {
         toast.error('Gagal mengambil daftar toko', {
@@ -437,7 +451,7 @@ export default function FlashSalePage() {
         console.error('Error fetching shops:', error);
       }
     };
-    fetchShops();
+    getShops();
   }, []);
 
   // Mengambil daftar flash sale ketika toko dipilih

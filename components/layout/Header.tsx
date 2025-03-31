@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { useTheme } from "next-themes" // Import useTheme
 import { CircleUser, Search, Menu, Sun, Moon, Bell, AlertCircle, CheckCircle, AlertTriangle, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { signOut, useSession } from "next-auth/react" // Tambahkan import ini
 import { useSSE } from "@/app/services/SSEService"
+import { createClient } from '@/utils/supabase/client'
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MobileSidebar } from "./mobile-sidebar"
@@ -13,7 +13,7 @@ import Image from "next/image"
 import logoGelap from "@/app/fonts/logogelap.png"
 import logoTerang from "@/app/fonts/logoterang.png"
 import Link from "next/link" // Import Link dari next/link
-import { cn } from "@/lib/utils"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Notification {
@@ -116,6 +116,7 @@ export function Header() {
   const [healthData, setHealthData] = useState<HealthCheckData | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [expandedShop, setExpandedShop] = useState<number | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     if (!lastMessage) return
@@ -239,16 +240,40 @@ export function Header() {
     setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
+  // Fungsi logout sederhana
   const handleLogout = async () => {
     try {
-      await signOut({ 
-        redirect: true,
-        callbackUrl: "/login"
-      })
+      // Panggil API logout
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (response.ok) {
+        // Redirect ke halaman login setelah berhasil logout
+        window.location.href = "/login"
+      } else {
+        console.error('Gagal logout')
+      }
     } catch (error) {
-      console.error('Logout error:', error)
+      console.error('Error during logout:', error)
     }
   }
+
+  useEffect(() => {
+    // Fetch user info when component mounts
+    const fetchUserInfo = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.email) {
+        setUserEmail(user.email);
+      }
+    };
+    
+    fetchUserInfo();
+  }, []);
 
   return (
     <header className="flex h-[53px] items-center justify-between gap-4 border-b bg-muted/40 px-4 lg:px-6">
@@ -611,12 +636,17 @@ export function Header() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel className="flex items-center">
-              My Account
-              {isMobile && (
-                <Button onClick={toggleTheme} variant="ghost" size="icon" className="ml-auto">
-                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
+            <DropdownMenuLabel className="flex flex-col">
+              <div className="flex items-center justify-between w-full">
+                <span>My Account</span>
+                {isMobile && (
+                  <Button onClick={toggleTheme} variant="ghost" size="icon" className="ml-auto">
+                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  </Button>
+                )}
+              </div>
+              {userEmail && (
+                <span className="text-xs text-muted-foreground mt-1">{userEmail}</span>
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

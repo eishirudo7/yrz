@@ -13,8 +13,9 @@ export interface PerubahanPesanan {
   status: string
   status_pesanan: string | null
   detail_perubahan: string | null
-  store_id: string | null
+  shop_id: string | null
   msg_id: string | null
+  userid: number | null
   user_id: number | null
 }
 
@@ -40,30 +41,80 @@ export function useUbahPesanan() {
   const [chats, setChats] = useState<Chat[]>([])
   const [isLoadingSend, setIsLoadingSend] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [userShopIds, setUserShopIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchPerubahanPesanan()
+    // Pertama, ambil daftar toko yang dimiliki user
+    fetchUserShops().then(() => {
+      // Setelah mendapatkan toko user, ambil perubahan pesanan
+      fetchPerubahanPesanan();
+    });
   }, [])
+
+  // Fungsi untuk mengambil daftar toko user
+  async function fetchUserShops() {
+    try {
+      // Gunakan API endpoint untuk mendapatkan toko milik user
+      const response = await fetch('/api/shops');
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Gagal mengambil daftar toko');
+      }
+      
+      // Simpan ID toko milik user
+      const shopIds = result.data.map((shop: any) => shop.shop_id.toString());
+      setUserShopIds(shopIds);
+      
+      return shopIds;
+    } catch (error: unknown) {
+      console.error('Error fetching user shops:', error);
+      setError(error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil data toko');
+      return [];
+    }
+  }
 
   async function fetchPerubahanPesanan() {
     try {
-      setLoading(true)
+      setLoading(true);
+      
+      // Jika belum ada data toko user, ambil dulu
+      let shops = userShopIds;
+      if (shops.length === 0) {
+        shops = await fetchUserShops();
+      }
+      
+      if (shops.length === 0) {
+        // Jika tetap tidak ada toko, kembalikan array kosong
+        setPerubahanPesanan([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Query dengan filter berdasarkan toko milik user
       const { data, error } = await supabase
         .from('perubahan_pesanan')
         .select('*')
+        .in('shop_id', shops)
         .order('created_at', { ascending: false })
-        .limit(20)
+        .limit(20);
       
-      if (error) throw error
+      if (error) throw error;
 
-      setPerubahanPesanan(data || [])
+      setPerubahanPesanan(data || []);
     } catch (error) {
-      setError('Terjadi kesalahan saat mengambil data perubahan pesanan')
-      console.error('Error:', error)
+      setError('Terjadi kesalahan saat mengambil data perubahan pesanan');
+      console.error('Error:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
+
+
 
   async function updateStatusPesanan(id: number, newStatus: string) {
     try {
@@ -162,8 +213,6 @@ export function useUbahPesanan() {
         throw new Error(response.data.error || 'Terjadi kesalahan saat mengambil pesan');
       }
       
-
-
       const formattedChats: Chat[] = response.data.response.messages.map((msg: any) => {
         console.log('msg.from_shop_id:', msg.from_shop_id); // Log from_shop_id untuk setiap pesan
         
@@ -181,7 +230,6 @@ export function useUbahPesanan() {
       // Membalikkan urutan chat
       setChats(formattedChats.reverse());
       
-
       // Simpan informasi halaman berikutnya jika diperlukan
       // const nextOffset = response.data.response.page_result.next_offset;
     } catch (error) {
@@ -201,6 +249,7 @@ export function useUbahPesanan() {
     sendMessage,
     fetchChats,
     isLoadingSend,
-    sendError
+    sendError,
+    userShopIds
   }
 }

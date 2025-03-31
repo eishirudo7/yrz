@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createDiscount, getDiscountList,getAllShops, addDiscountItems } from '@/app/services/shopeeService';
+import { createDiscount, getDiscountList,getAllShops } from '@/app/services/shopeeService';
 
 // Tambahkan interface untuk tipe data shop
 interface ShopData {

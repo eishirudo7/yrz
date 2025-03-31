@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getAllShops } from '@/app/services/shopeeService';
 import { ReturnData } from '@/app/(dashboard)/return/page';
 
 interface Shop {
@@ -46,18 +45,31 @@ export function useReturns(): UseReturnsResult {
     seller_compensation_status: '',
   });
 
-  // Fetch daftar toko
+  // Fetch daftar toko dari API
   useEffect(() => {
     const fetchShops = async () => {
       try {
-        const shopsData = await getAllShops();
-        setShops(shopsData);
-        
-        if (!selectedShop && shopsData.length > 0) {
-          setSelectedShop(String(shopsData[0].shop_id));
+        // Gunakan API endpoint untuk mendapatkan toko milik user
+        const response = await fetch('/api/shops');
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: ${response.statusText}`);
         }
-      } catch (err) {
-        setError('Gagal mengambil daftar toko');
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Gagal mengambil daftar toko');
+        }
+        
+        // Set shops dari response API
+        setShops(result.data);
+        
+        // Pilih shop pertama sebagai default jika belum ada yang dipilih
+        if (!selectedShop && result.data.length > 0) {
+          setSelectedShop(String(result.data[0].shop_id));
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Gagal mengambil daftar toko');
         console.error('Error fetching shops:', err);
       }
     };

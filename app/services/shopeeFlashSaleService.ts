@@ -1,22 +1,5 @@
 import { shopeeApi } from '@/lib/shopeeConfig';
-
-async function getValidAccessToken(shopId: number): Promise<string> {
-  try {
-    // Gunakan URL lengkap dengan base URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:10000';
-    const response = await fetch(`${baseUrl}/api/token?shop_id=${shopId}`);
-    const result = await response.json();
-    
-    if (!result.success) {
-      throw new Error(result.message || 'Gagal mendapatkan access token');
-    }
-    
-    return result.data.access_token;
-  } catch (error) {
-    console.error('Gagal mendapatkan access token untuk toko', shopId, error);
-    throw new Error(`Gagal mendapatkan access token untuk toko ${shopId}`);
-  }
-}
+import { getValidAccessToken } from './tokenManager';
 export async function getFlashSaleTimeSlotId(
   shopId: number,
   startTime: number,

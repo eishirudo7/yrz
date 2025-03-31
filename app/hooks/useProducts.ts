@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { getAllShops } from '../services/shopeeService'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/client'
 
 export interface Product {
   item_id: number
@@ -156,6 +155,7 @@ interface ShopeeVariation {
 }
 
 export function useProducts() {
+  const supabase = createClient()
   const [isSyncing, setIsSyncing] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [shops, setShops] = useState<Shop[]>([])
@@ -163,49 +163,64 @@ export function useProducts() {
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
   const [stockPrices, setStockPrices] = useState<StockPrice[]>([]);
   const [isLoadingStockPrices, setIsLoadingStockPrices] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const loadShops = async () => {
+    if (isLoadingShops) return; // Hindari pemanggilan berulang
+    
     try {
       setIsLoadingShops(true)
-      const shopsData = await getAllShops()
-      setShops(shopsData)
+      const response = await fetch('/api/shops')
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Gagal memuat daftar toko')
+      }
+      
+      setShops(result.data)
+      return result.data;
     } catch (error) {
       toast.error('Gagal Memuat Toko', {
         description: 'Terjadi kesalahan saat memuat daftar toko',
       })
+      return [];
     } finally {
       setIsLoadingShops(false)
     }
   }
 
-  const loadProducts = async () => {
+  const loadProducts = async (shopData: Shop[] = shops) => {
+    if (isLoadingProducts) return; // Hindari pemanggilan berulang
+    
     try {
       setIsLoadingProducts(true)
       
-      // Ambil data token shop yang aktif
-      const { data: shopTokens, error: shopError } = await supabase
-        .from('shopee_tokens')
-        .select('shop_id, shop_name')
-        .eq('is_active', true)
+      // Gunakan shop_id dari parameter atau state shops
+      const shopIds = shopData.map(shop => shop.shop_id)
       
-      if (shopError) throw shopError
-
-      // Ambil items
+      if (shopIds.length === 0) {
+        setProducts([])
+        return
+      }
+      
+      console.log('Memuat produk untuk shops:', shopIds);
+      
+      // Ambil items dari Supabase dengan client authenticated
       const { data: items, error: itemsError } = await supabase
         .from('items')
         .select('*')
-        .in('shop_id', shopTokens?.map(token => token.shop_id) || [])
+        .in('shop_id', shopIds)
       
       if (itemsError) throw itemsError
-
-      // Transform data untuk menyesuaikan dengan interface Product
+      
+      // Transform data seperti biasa
       const productsWithShops = items?.map(item => ({
         ...item,
         image_id_list: item.image.image_id_list || [],
         image_url_list: item.image.image_url_list || [],
-        shopee_tokens: shopTokens?.filter(token => token.shop_id === item.shop_id) || []
+        shopee_tokens: shopData.filter(shop => shop.shop_id === item.shop_id)
       })) || []
-
+      
       setProducts(productsWithShops)
     } catch (error) {
       toast.error('Gagal Memuat Produk', {
@@ -216,9 +231,21 @@ export function useProducts() {
     }
   }
 
+  // Gunakan hanya satu useEffect untuk inisialisasi
   useEffect(() => {
-    loadProducts()
-  }, [])
+    const initialize = async () => {
+      if (isInitialized) return;
+      
+      const shopData = await loadShops();
+      if (shopData && shopData.length > 0) {
+        await loadProducts(shopData);
+      }
+      
+      setIsInitialized(true);
+    };
+    
+    initialize();
+  }, [isInitialized]);
 
   const syncProducts = async (shopIds: number[], onProgress?: (progress: number) => void) => {
     try {

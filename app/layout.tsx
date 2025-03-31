@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import { Toaster } from 'sonner';
 import { MiniChatProvider } from '@/contexts/MiniChatContext';
 import MiniChatContainer from '@/components/MiniChatContainer';
+import { UserDataProvider } from '@/contexts/UserDataContext'
+import { SSEProvider } from '@/app/services/SSEService';
 
 import type { Viewport } from 'next'
 
@@ -44,17 +46,21 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" className="h-full overflow-hidden">
       <body className={`h-full ${inter.className}`}>
-        <MiniChatProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            {children}
-          </ThemeProvider>
-          <MiniChatContainer />
-        </MiniChatProvider>
+        <UserDataProvider>
+          <SSEProvider>
+            <MiniChatProvider>
+              <ThemeProvider
+                attribute="class"
+                defaultTheme="system"
+                enableSystem
+                disableTransitionOnChange
+              >
+                {children}
+              </ThemeProvider>
+              <MiniChatContainer />
+            </MiniChatProvider>
+          </SSEProvider>
+        </UserDataProvider>
         <Toaster richColors expand={false} />
       </body>
     </html>

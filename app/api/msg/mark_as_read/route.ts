@@ -26,3 +26,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Terjadi kesalahan internal' }, { status: 500 });
   }
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { shopId, conversationId, lastReadMessageId } = body;
+
+    if (!shopId || !conversationId || !lastReadMessageId) {
+      return NextResponse.json({ error: 'Data tidak lengkap' }, { status: 400 });
+    }
+
+    const result = await readConversation(shopId, conversationId, lastReadMessageId);
+
+    return new NextResponse(JSONStringify(result), {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+  } catch (error) {
+    console.error('Kesalahan saat menandai pesan sebagai dibaca:', error);
+    return NextResponse.json({ error: 'Terjadi kesalahan internal' }, { status: 500 });
+  }
+}

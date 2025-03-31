@@ -6,15 +6,16 @@ export interface Keluhan {
   id: number
   id_pengguna: string
   nama_toko: string
-  jenis_keluhan: string // Ditambahkan
+  jenis_keluhan: string
   nomor_invoice: string
-  create_at: string | null // Diubah dari created_at
-  status_keluhan: string | null // Diubah dari status
-  deskripsi_keluhan: string | null // Ditambahkan
+  create_at: string | null
+  status_keluhan: string | null
+  deskripsi_keluhan: string | null
   status_pesanan: string | null
-  store_id: string | null
+  shop_id: string | null
   msg_id: string | null
   user_id: number | null
+  userid: string | null
   updated_at: string | null
 }
 
@@ -30,7 +31,7 @@ interface SendMessageParams {
   messageType?: 'text' | 'image' | 'sticker';
   content: string;
   shopId: number;
-  conversationId: string; // Tambahkan ini
+  conversationId: string;
 }
 
 export function useKeluhan() {
@@ -40,27 +41,76 @@ export function useKeluhan() {
   const [chats, setChats] = useState<Chat[]>([])
   const [isLoadingSend, setIsLoadingSend] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [userShopIds, setUserShopIds] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchKeluhan()
+    // Pertama, ambil daftar toko yang dimiliki user
+    fetchUserShops().then(() => {
+      // Setelah mendapatkan toko user, ambil data keluhan
+      fetchKeluhan();
+    });
   }, [])
+
+  // Fungsi untuk mengambil daftar toko user
+  async function fetchUserShops() {
+    try {
+      // Gunakan API endpoint untuk mendapatkan toko milik user
+      const response = await fetch('/api/shops');
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Gagal mengambil daftar toko');
+      }
+      
+      // Simpan ID toko milik user
+      const shopIds = result.data.map((shop: any) => shop.shop_id.toString());
+      setUserShopIds(shopIds);
+      
+      return shopIds;
+    } catch (error: unknown) {
+      console.error('Error fetching user shops:', error);
+      setError(error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil data toko');
+      return [];
+    }
+  }
 
   async function fetchKeluhan() {
     try {
-      setLoading(true)
+      setLoading(true);
+      
+      // Jika belum ada data toko user, ambil dulu
+      let shops = userShopIds;
+      if (shops.length === 0) {
+        shops = await fetchUserShops();
+      }
+      
+      if (shops.length === 0) {
+        // Jika tetap tidak ada toko, kembalikan array kosong
+        setKeluhan([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Query dengan filter berdasarkan toko milik user
       const { data, error } = await supabase
         .from('keluhan')
         .select('*')
-        .order('create_at', { ascending: false }) // Diubah dari created_at
-        .limit(20)
-      if (error) throw error
+        .in('shop_id', shops) // Menggunakan kolom yang benar sesuai dengan database
+        .order('create_at', { ascending: false })
+        .limit(20);
+      
+      if (error) throw error;
 
-      setKeluhan(data || [])
+      setKeluhan(data || []);
     } catch (error) {
-      setError('Terjadi kesalahan saat mengambil data keluhan')
-      console.error('Error:', error)
+      setError('Terjadi kesalahan saat mengambil data keluhan');
+      console.error('Error:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -75,12 +125,12 @@ export function useKeluhan() {
 
       // Memperbarui state lokal
       setKeluhan(prevState =>
-        prevState.map(order =>
-          order.id === id ? { ...order, status_keluhan: newStatus } : order
+        prevState.map(item =>
+          item.id === id ? { ...item, status_keluhan: newStatus } : item
         )
       )
     } catch (error) {
-      setError('Terjadi kesalahan saat memperbarui status pesanan')
+      setError('Terjadi kesalahan saat memperbarui status keluhan')
       console.error('Error:', error)
     }
   }
@@ -96,7 +146,7 @@ export function useKeluhan() {
 
       // Memperbarui state lokal dengan menghapus item yang dihapus
       setKeluhan(prevState =>
-        prevState.filter(order => order.id !== id)
+        prevState.filter(item => item.id !== id)
       )
     } catch (error) {
       setError('Terjadi kesalahan saat menghapus keluhan')
@@ -161,8 +211,6 @@ export function useKeluhan() {
         throw new Error(response.data.error || 'Terjadi kesalahan saat mengambil pesan');
       }
       
-
-
       const formattedChats: Chat[] = response.data.response.messages.map((msg: any) => {
         console.log('msg.from_shop_id:', msg.from_shop_id); // Log from_shop_id untuk setiap pesan
         
@@ -180,7 +228,6 @@ export function useKeluhan() {
       // Membalikkan urutan chat
       setChats(formattedChats.reverse());
       
-
       // Simpan informasi halaman berikutnya jika diperlukan
       // const nextOffset = response.data.response.page_result.next_offset;
     } catch (error) {
@@ -200,6 +247,7 @@ export function useKeluhan() {
     sendMessage,
     fetchChats,
     isLoadingSend,
-    sendError
+    sendError,
+    userShopIds
   }
 }
