@@ -76,12 +76,18 @@ export async function GET(req: NextRequest) {
     
     // Hitung data pesanan
     const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    // Konversi ke zona waktu Indonesia (WIB)
+    const jakartaOffset = 7 * 60; // WIB adalah UTC+7 (dalam menit)
+    const todayInWIB = new Date(today.getTime() + (today.getTimezoneOffset() + jakartaOffset) * 60000);
+    const todayStr = `${todayInWIB.getFullYear()}-${String(todayInWIB.getMonth() + 1).padStart(2, '0')}-${String(todayInWIB.getDate()).padStart(2, '0')}`;
     
     if (orders && orders.length > 0) {
       orders.forEach(order => {
-        const payDate = new Date(order.pay_time * 1000);
-        const payDateStr = `${payDate.getFullYear()}-${String(payDate.getMonth() + 1).padStart(2, '0')}-${String(payDate.getDate()).padStart(2, '0')}`;
+        const payTimestamp = order.pay_time * 1000;
+        const payDate = new Date(payTimestamp);
+        // Konversi waktu pembayaran ke zona waktu Indonesia (WIB)
+        const payDateInWIB = new Date(payDate.getTime() + (payDate.getTimezoneOffset() + jakartaOffset) * 60000);
+        const payDateStr = `${payDateInWIB.getFullYear()}-${String(payDateInWIB.getMonth() + 1).padStart(2, '0')}-${String(payDateInWIB.getDate()).padStart(2, '0')}`;
         
         const isSameDay = payDateStr === todayStr;
         
