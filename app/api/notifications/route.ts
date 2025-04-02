@@ -1,10 +1,8 @@
 import { createClient } from '@/utils/supabase/server';
-import { NextResponse } from 'next/server';
-import { PenaltyService } from '@/app/services/penaltyService';
-import { UpdateService } from '@/app/services/updateService';
-import { ViolationService } from '@/app/services/violationService';
-import { cookies } from 'next/headers';
+import { NextResponse, NextRequest } from 'next/server';
+
 import { getAllShops } from '@/app/services/shopeeService';
+import { checkRateLimit, createSSEConnection } from '@/app/services/serverSSEService';
 
 interface Notification {
   id: number;
@@ -18,77 +16,50 @@ interface Notification {
 }
 
 // GET - Ambil notifikasi
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const ip = req.ip || 'unknown';
+  
+  // Cek rate limiting
+  const rateLimitResult = checkRateLimit(ip);
+  
+  if (!rateLimitResult.allowed) {
+    return new Response('Too Many Requests', { status: 429 });
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
-    const shop_id = searchParams.get('shop_id');
-    const unread_only = searchParams.get('unread_only') === 'true';
-    
-    // Dapatkan daftar toko yang dimiliki user
-    const shops = await getAllShops();
-    const userShopIds = shops.map(shop => shop.shop_id);
-    
+    // Autentikasi user
     const supabase = await createClient();
-    let query = supabase
-      .from('shopee_notifications')
-      .select('*')
-      .in('notification_type', ['shop_penalty', 'shopee_update', 'item_violation'])
-      .in('shop_id', userShopIds)
-      .order('created_at', { ascending: false });
-
-    if (shop_id) {
-      if (!userShopIds.includes(parseInt(shop_id))) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-      query = query.eq('shop_id', shop_id);
-    }
-
-    if (unread_only) {
-      query = query.eq('read', false);
-    }
-
-    const { data: notifications, error } = await query;
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (error) {
-      console.error('Error fetching notifications:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!session || !session.user) {
+      return new Response('Unauthorized', { status: 401 });
     }
-
-    // Transform notifications berdasarkan tipenya
-    const transformedNotifications = (notifications as Notification[]).map(notification => {
-      switch (notification.notification_type) {
-        case 'shop_penalty':
-          return {
-            id: notification.id,
-            ...PenaltyService.createPenaltyNotification(notification.data),
-            shop_name: notification.shop_name
-          };
-        case 'shopee_update':
-          return {
-            ...UpdateService.createUpdateNotification({
-              ...notification,
-              id: notification.id
-            }),
-            shop_name: notification.shop_name
-          };
-        case 'item_violation':
-          return {
-            id: notification.id,
-            ...ViolationService.createViolationNotification(notification.data),
-            shop_name: notification.shop_name
-          };
-        default:
-          return null;
-      }
-    }).filter(Boolean);
     
-    return NextResponse.json(transformedNotifications);
+    const userId = session.user.id;
+    
+    // Ambil daftar toko yang dimiliki user
+    const { data: shops } = await supabase
+      .from('shopee_tokens')
+      .select('shop_id')
+      .eq('user_id', userId)
+      .eq('is_active', true);
+    
+    const shopIds = shops ? shops.map(shop => shop.shop_id) : [];
+    
+    // Buat koneksi SSE dengan informasi user dan toko
+    const stream = createSSEConnection(req, userId, shopIds);
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   } catch (error) {
-    console.error('Error in GET notifications:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' }, 
-      { status: 500 }
-    );
+    console.error('Error dalam membuat SSE connection:', error);
+    return new Response('Error', { status: 500 });
   }
 }
 

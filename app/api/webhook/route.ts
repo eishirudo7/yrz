@@ -7,17 +7,12 @@ import { redis } from '@/app/services/redis';
 import { PenaltyService } from '@/app/services/penaltyService';
 import { UpdateService } from '@/app/services/updateService';
 import { ViolationService } from '@/app/services/violationService';
-
-// Simpan semua koneksi SSE aktif
-const clients = new Set<ReadableStreamDefaultController>();
-
-const connectionAttempts = new Map<string, { count: number, firstAttempt: number }>();
+import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 
 export async function POST(req: NextRequest) {
   // Segera kirim respons 200
   const res = NextResponse.json({ received: true }, { status: 200 });
   
-
   // Proses data webhook secara asinkron
   const webhookData = await req.json();
   processWebhookData(webhookData).catch(error => {
@@ -25,105 +20,6 @@ export async function POST(req: NextRequest) {
   });
 
   return res;
-}
-
-export async function GET(req: NextRequest) {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  
-  // Cek dan update connection attempts
-  const attempts = connectionAttempts.get(ip) || { count: 0, firstAttempt: now };
-  
-  if (now - attempts.firstAttempt < 60000) { // Window 1 menit
-    if (attempts.count > 10) { // Maksimal 10 koneksi per menit
-      return new Response('Too Many Requests', { status: 429 });
-    }
-    connectionAttempts.set(ip, {
-      count: attempts.count + 1,
-      firstAttempt: attempts.firstAttempt
-    });
-  } else {
-    // Reset jika sudah lewat 1 menit
-    connectionAttempts.set(ip, { count: 1, firstAttempt: now });
-  }
-
-  try {
-    const stream = new ReadableStream({
-      start(controller) {
-        clients.add(controller);
-        
-        // Kirim data inisial ketika koneksi terbentuk
-        const initialData = {
-          type: 'connection_established',
-          timestamp: Date.now(),
-          message: 'Koneksi SSE berhasil dibuat'
-        };
-        
-        const event = [
-          `id: ${Date.now()}`,
-          `data: ${JSON.stringify(initialData)}`,
-          '\n'
-        ].join('\n');
-        
-        controller.enqueue(event);
-
-        // Set up heartbeat
-        const heartbeatInterval = setInterval(() => {
-          const heartbeat = {
-            type: 'heartbeat',
-            timestamp: Date.now()
-          };
-          
-          const heartbeatEvent = [
-            `id: ${Date.now()}`,
-            `data: ${JSON.stringify(heartbeat)}`,
-            '\n'
-          ].join('\n');
-          
-          controller.enqueue(heartbeatEvent);
-        }, 30000); // Kirim heartbeat setiap 30 detik
-
-        req.signal.addEventListener('abort', () => {
-          clearInterval(heartbeatInterval);
-          clients.delete(controller);
-        });
-      },
-      cancel(controller) {
-        clients.delete(controller);
-      }
-    });
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  } catch (error) {
-    console.error('Error dalam membuat SSE connection:', error);
-    return new Response('Error', { status: 500 });
-  }
-}
-
-export function sendEventToAll(data: any) {
-  const eventId = Date.now().toString();
-  const event = [
-    `id: ${eventId}`,
-    `retry: 10000`,
-    `data: ${JSON.stringify(data)}`,
-    '\n'
-  ].join('\n');
-
-  clients.forEach(client => {
-    try {
-      client.enqueue(event);
-    } catch (error) {
-      console.error('Error mengirim event:', error);
-      clients.delete(client);
-    }
-  });
 }
 
 async function processWebhookData(webhookData: any) {
@@ -147,6 +43,7 @@ async function processWebhookData(webhookData: any) {
     console.error('Error processing webhook data:', error);
   }
 }
+
 async function handleChat(data: any) {
   if (data.data.type === 'message') {
     const messageContent = data.data.content;
@@ -179,7 +76,7 @@ async function handleChat(data: any) {
     };
     
     console.log('Received chat message from Shopee', chatData);
-    sendEventToAll(chatData);
+    sendEventToShopOwners(chatData);
   }
 }
 
@@ -229,14 +126,15 @@ async function handleOrder(data: any) {
     if (orderData.status === 'READY_TO_SHIP') {
       // Kirim notifikasi dan cek auto-ship secara paralel
       const [_, autoShipResult] = await Promise.all([
-        sendEventToAll({
+        sendEventToShopOwners({
           type: 'new_order',
           order_sn: orderData.ordersn,
           status: orderData.status,
           buyer_name: orderData.buyer_username,
           total_amount: orderData.total_amount,
           sku: orderData.sku,
-          shop_name: shopName
+          shop_name: shopName,
+          shop_id: data.shop_id
         }),
         // Cek dan proses auto-ship
         (async () => {
@@ -395,7 +293,7 @@ async function handlePenalty(data: any) {
       shop_name: shopName
     };
     
-    sendEventToAll(notificationData);
+    sendEventToShopOwners(notificationData);
     
     await PenaltyService.handlePenalty({
       ...data,
@@ -427,7 +325,7 @@ async function handleUpdate(data: any) {
       shop_name: shopName
     };
     
-    sendEventToAll(notificationData);
+    sendEventToShopOwners(notificationData);
 
     await UpdateService.handleUpdate({
       ...data,
@@ -458,7 +356,7 @@ async function handleViolation(data: any) {
       shop_name: shopName
     };
     
-    sendEventToAll(notificationData);
+    sendEventToShopOwners(notificationData);
 
     await ViolationService.handleViolation({
       ...data,

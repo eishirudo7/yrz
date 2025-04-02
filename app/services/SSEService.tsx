@@ -28,7 +28,7 @@ class SSEService {
     if (this.eventSource) return;
 
     try {
-      const url = new URL('/api/webhook', window.location.origin);
+      const url = new URL('/api/notifications/sse', window.location.origin);
       this.eventSource = new EventSource(url.toString());
       
       return this.eventSource;

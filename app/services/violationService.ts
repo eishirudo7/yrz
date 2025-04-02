@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { sendEventToAll } from '@/app/api/webhook/route';
+import { sendEventToAll } from '@/app/services/serverSSEService';
 
 // Types
 export interface ViolationItemWebhook {

@@ -248,30 +248,38 @@ export const useDashboard = () => {
 
   // Fungsi untuk mengambil data iklan dari API
   const fetchAdsData = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || 'anonymous';
+    
+    // Tambahkan userId ke key untuk memisahkan cache per user
+    const USER_LAST_FETCH_KEY = `ads_last_fetch_time_${userId}`;
+    const USER_CACHED_ADS_DATA_KEY = `cached_ads_data_${userId}`;
+    
     const now = Date.now();
-    const lastFetch = Number(localStorage.getItem(LAST_FETCH_KEY)) || 0;
+    const lastFetch = Number(localStorage.getItem(USER_LAST_FETCH_KEY)) || 0;
 
     // Hapus data yang sudah lebih dari 24 jam
     if (now - lastFetch > MAX_AGE) {
-      localStorage.removeItem(LAST_FETCH_KEY);
-      localStorage.removeItem(CACHED_ADS_DATA_KEY);
+      localStorage.removeItem(USER_LAST_FETCH_KEY);
+      localStorage.removeItem(USER_CACHED_ADS_DATA_KEY);
     }
 
     if (now - lastFetch < FETCH_INTERVAL) {
       // Kembalikan data yang tersimpan di cache
-      const cachedData = localStorage.getItem(CACHED_ADS_DATA_KEY);
+      const cachedData = localStorage.getItem(USER_CACHED_ADS_DATA_KEY);
       return cachedData ? JSON.parse(cachedData) : null;
     }
 
     try {
-      localStorage.setItem(LAST_FETCH_KEY, now.toString());
+      localStorage.setItem(USER_LAST_FETCH_KEY, now.toString());
       const response = await fetch(`/api/ads?_timestamp=${now}`);
       if (!response.ok) {
         throw new Error('Gagal mengambil data iklan');
       }
       const data = await response.json();
       // Simpan data ke cache
-      localStorage.setItem(CACHED_ADS_DATA_KEY, JSON.stringify(data));
+      localStorage.setItem(USER_CACHED_ADS_DATA_KEY, JSON.stringify(data));
       return data;
     } catch (error) {
       console.error('Error saat mengambil data iklan:', error);
