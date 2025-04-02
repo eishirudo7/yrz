@@ -1207,7 +1207,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         }));
 
         try {
-          const response = await fetch('/api/orders/handle-cancellation', {
+          const response = await fetch('/api/handle-cancellation', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1321,7 +1321,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     try {
       toast.promise(
         async () => {
-          const response = await fetch('/api/orders/handle-cancellation', {
+          const response = await fetch('/api/handle-cancellation', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1587,7 +1587,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         }));
 
         try {
-          const response = await fetch('/api/orders/handle-cancellation', {
+          const response = await fetch('/api/handle-cancellation', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

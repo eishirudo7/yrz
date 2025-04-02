@@ -394,7 +394,7 @@ const MiniChat = React.memo(({
     try {
       setLoadingAction(action);
       
-      const response = await fetch('/api/orders/handle-cancellation', {
+      const response = await fetch('/api/handle-cancellation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
