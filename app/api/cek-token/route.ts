@@ -2,11 +2,6 @@ import { NextResponse } from 'next/server';
 import { getShopInfo } from '@/app/services/shopeeService';
 import { shopeeApi } from '@/lib/shopeeConfig';
 
-interface TokenCheckResult {
-    shop_id: number;
-    is_active: boolean;
-    message: string;
-}
 
 export async function POST(request: Request) {
     try {

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { useEffect, useState, useCallback } from 'react'
 import { DateRange } from 'react-day-picker'
+import { useUserData } from '@/contexts/UserDataContext'
+import { toast } from 'sonner'
 
 export interface Order {
   order_sn: string
@@ -39,7 +40,7 @@ const formatDateToDDMMYYYY = (dateStr: string) => {
   return dateStr.split('-').reverse().join('-');
 };
 
-export function useOrders(dateRange: DateRange | undefined) {
+export function useOrders(dateRange?: DateRange | undefined) {
   const [orders, setOrders] = useState<Order[]>([])
   const [ordersWithoutEscrow, setOrdersWithoutEscrow] = useState<Order[]>([])
   const [adsData, setAdsData] = useState<AdsData[]>([])
@@ -48,283 +49,162 @@ export function useOrders(dateRange: DateRange | undefined) {
   const [error, setError] = useState<string | null>(null)
   const [syncingEscrow, setSyncingEscrow] = useState(false)
   const [syncProgress, setSyncProgress] = useState({ completed: 0, total: 0 })
+  
+  // State untuk menyimpan parameter terakhir untuk refetch
+  const [lastDateRange, setLastDateRange] = useState<DateRange | undefined>(dateRange)
 
-  // Fungsi untuk mengambil dan menyimpan data escrow untuk pesanan yang belum memilikinya
-  const syncMissingEscrowData = async () => {
-    if (ordersWithoutEscrow.length === 0) {
-      console.log("Tidak ada pesanan yang memerlukan data escrow")
-      return
-    }
-    
-    setSyncingEscrow(true)
-    setSyncProgress({ completed: 0, total: ordersWithoutEscrow.length })
-    
-    // Membuat antrian pesanan untuk proses batch
-    const orderQueue = [...ordersWithoutEscrow]
-    const processedOrders: Order[] = []
+  const { userId } = useUserData()
+
+  const fetchOrders = useCallback(async (dateRangeToUse: DateRange | undefined = dateRange) => {
+    if (!dateRangeToUse?.from) return
     
     try {
-      // Proses batch dengan maksimal 10 pesanan per batch
-      const batchSize = 10
-      while (orderQueue.length > 0) {
-        const batch = orderQueue.splice(0, batchSize)
-        
-        // Proses setiap pesanan dalam batch secara paralel
-        await Promise.all(batch.map(async (order) => {
-          try {
-            if (!order.shop_id) {
-              console.warn(`Pesanan ${order.order_sn} tidak memiliki shop_id, melewati`)
-              return
-            }
-            
-            // Ambil detail escrow dari API Shopee melalui API endpoint kita
-            const response = await fetch(`/api/escrow?shop_id=${order.shop_id}&order_sn=${order.order_sn}`);
-            const escrowResult = await response.json();
+      setLoading(true)
+      setError(null)
+      
+      // Simpan parameter ini untuk refetch nanti
+      setLastDateRange(dateRangeToUse)
 
-            if (escrowResult.success && escrowResult.data && escrowResult.data.success) {
-              // Simpan detail escrow ke database menggunakan API endpoint baru
-              const saveResponse = await fetch('/api/escrow/save', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  shopId: order.shop_id,
-                  escrowData: escrowResult.data.data
-                })
-              });
-              
-              const saveResult = await saveResponse.json();
-              
-              if (!saveResult.success) {
-                throw new Error(saveResult.message || 'Gagal menyimpan data escrow');
-              }
-              
-              // Perbarui data pesanan dengan nilai escrow
-              const updatedOrder = {
-                ...order,
-                escrow_amount_after_adjustment: 
-                  escrowResult.data.data.order_income?.escrow_amount_after_adjustment || 0
-              };
-              
-              processedOrders.push(updatedOrder);
-            } else {
-              console.error(`Gagal mengambil escrow untuk pesanan ${order.order_sn}: ${
-                escrowResult.message || (escrowResult.data && escrowResult.data.message) || 'Tidak ada pesan error'
-              }`);
-            }
-          } catch (e) {
-            console.error(`Error saat memproses pesanan ${order.order_sn}:`, e)
-          }
+      // Konversi tanggal ke UNIX timestamp (dalam detik)
+      const startDate = dateRangeToUse.from
+      const endDate = dateRangeToUse.to || dateRangeToUse.from
+
+      startDate.setHours(0, 0, 0, 0)
+      endDate.setHours(23, 59, 59, 999)
+
+      const startTimestamp = Math.floor(startDate.getTime() / 1000)
+      const endTimestamp = Math.floor(endDate.getTime() / 1000)
+
+      // Gunakan API endpoint - hanya kirim tanggal awal dan akhir
+      const response = await fetch(
+        `/api/orders?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`
+      )
+
+      // Handle error response
+      if (!response.ok) {
+        if (response.status === 504) {
+          throw new Error('Request timeout. Silahkan coba kurangi rentang tanggal atau coba lagi nanti.');
+        }
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        setOrders(result.data || [])
+        setOrdersWithoutEscrow(result.ordersWithoutEscrow || [])
+      } else {
+        throw new Error(result.message || 'Terjadi kesalahan saat mengambil data pesanan')
+      }
+
+      // Ambil data iklan untuk rentang tanggal yang dipilih
+      await fetchAdsData(startTimestamp, endTimestamp)
+    } catch (err) {
+      console.error('Error fetching orders:', err)
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data pesanan')
+    } finally {
+      setLoading(false)
+    }
+  }, [dateRange])
+
+  // Fungsi refetch yang dapat dipanggil dari luar
+  const refetch = useCallback(() => {
+    return fetchOrders(lastDateRange);
+  }, [fetchOrders, lastDateRange]);
+
+  const fetchAdsData = async (startTimestamp: number, endTimestamp: number) => {
+    try {
+      const response = await fetch(
+        `/api/ads?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`
+      )
+
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          setAdsData(result.data || [])
           
-          // Perbarui progress
-          setSyncProgress(prev => ({
-            completed: prev.completed + 1,
-            total: prev.total
-          }))
-        }))
-        
-        // Delay antara batch untuk menghindari rate limiting
-        if (orderQueue.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          // Hitung total pengeluaran iklan
+          const totalSpend = result.data.reduce((total: number, item: AdsData) => total + item.totalSpend, 0)
+          setTotalAdsSpend(totalSpend)
         }
       }
-      
-      // Perbarui state orders dengan data escrow yang baru
-      if (processedOrders.length > 0) {
-        setOrders(prevOrders => {
-          const orderMap = new Map(prevOrders.map(order => [order.order_sn, order]))
-          
-          // Perbarui orders dengan data escrow baru
-          processedOrders.forEach(updatedOrder => {
-            orderMap.set(updatedOrder.order_sn, updatedOrder)
-          })
-          
-          return Array.from(orderMap.values())
-        })
+    } catch (err) {
+      console.error('Error fetching ads data:', err)
+      // Tidak perlu set error utama, karena ini hanya data pendukung
+    }
+  }
+
+  const syncMissingEscrowData = async () => {
+    if (syncingEscrow || ordersWithoutEscrow.length === 0) return
+
+    setSyncingEscrow(true)
+    setSyncProgress({ completed: 0, total: ordersWithoutEscrow.length })
+
+    let updatedOrders = [...orders]
+    const orderSns = ordersWithoutEscrow.map(order => order.order_sn)
+    let completed = 0
+
+    try {
+      const response = await fetch('/api/escrow/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ orderSns }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
         
-        // Perbarui ordersWithoutEscrow (kurangi yang sudah diproses)
-        const processedOrderSns = new Set(processedOrders.map(order => order.order_sn))
-        setOrdersWithoutEscrow(prevOrders => 
-          prevOrders.filter(order => !processedOrderSns.has(order.order_sn))
-        )
-        
-        console.log(`Berhasil menyinkronkan ${processedOrders.length} data escrow`)
+        if (result.success && result.data) {
+          // Perbarui data orders dengan data escrow yang baru
+          for (const updatedOrder of result.data) {
+            updatedOrders = updatedOrders.map(order => 
+              order.order_sn === updatedOrder.order_sn ? { ...order, ...updatedOrder } : order
+            )
+            completed++
+            setSyncProgress({ completed, total: ordersWithoutEscrow.length })
+          }
+          
+          setOrders(updatedOrders)
+          
+          // Filter kembali pesanan yang masih belum memiliki data escrow
+          const stillWithoutEscrow = updatedOrders.filter(
+            order => order.escrow_amount_after_adjustment === null || order.escrow_amount_after_adjustment === undefined
+          )
+          setOrdersWithoutEscrow(stillWithoutEscrow)
+          
+          toast.success(`Berhasil menyinkronkan ${completed} data escrow`)
+        } else {
+          throw new Error(result.message || 'Gagal menyinkronkan data escrow')
+        }
+      } else {
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
-    } catch (e) {
-      console.error("Error saat menyinkronkan data escrow:", e)
+    } catch (err) {
+      console.error('Error syncing escrow data:', err)
+      toast.error(err instanceof Error ? err.message : 'Gagal menyinkronkan data escrow')
     } finally {
       setSyncingEscrow(false)
     }
   }
 
-  // Fungsi untuk mengambil data iklan
-  const fetchAdsData = async (startDate: string, endDate: string) => {
-    try {
-      // Debug: log tanggal input
-      console.log("Input ke fetchAdsData:", startDate, endDate);
-      
-      // Cek apakah tanggal mulai dan akhir sama, jika sama gunakan tanggal yang sama untuk keduanya
-      const useStartDate = startDate;
-      
-      // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
-      const formattedStartDate = formatDateToDDMMYYYY(useStartDate);
-      const formattedEndDate = formatDateToDDMMYYYY(endDate);
-      
-      // Debug: log tanggal yang dikirim ke API
-      console.log("Dikirim ke API ads:", formattedStartDate, formattedEndDate);
-      
-      // Panggil API untuk mendapatkan data iklan
-      const response = await fetch(`/api/ads?start_date=${formattedStartDate}&end_date=${formattedEndDate}&_timestamp=${Date.now()}`);
-      
-      if (!response.ok) {
-        throw new Error(`Gagal mengambil data iklan`);
-      }
-      
-      const adsResult = await response.json();
-      
-      // Debug: log hasil respons API
-      console.log("Respons dari API ads:", adsResult);
-      console.log("Struktur ads_data:", adsResult.ads_data);
-      console.log("Tipe ads_data:", Array.isArray(adsResult.ads_data) ? "Array" : typeof adsResult.ads_data);
-      console.log("Jumlah item dalam ads_data:", adsResult.ads_data ? adsResult.ads_data.length : 0);
-      
-      // Simpan data toko jika ada
-      if (adsResult && adsResult.ads_data) {
-        setAdsData(adsResult.ads_data.map((ad: any) => ({
-          shopId: ad.shop_id,
-          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
-          totalSpend: ad.raw_cost,
-          cost_formatted: ad.cost
-        })));
-        
-        // Debug: log hasil konversi ads_data
-        console.log("AdsData setelah konversi:", adsResult.ads_data.map((ad: any) => ({
-          shopId: ad.shop_id,
-          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
-          totalSpend: ad.raw_cost,
-          cost_formatted: ad.cost
-        })));
-      }
-      
-      // Ambil total_cost langsung dari API response
-      if (adsResult && adsResult.raw_total_cost) {
-        // Gunakan raw_total_cost yang sudah dalam bentuk angka
-        const totalCost = adsResult.raw_total_cost;
-        setTotalAdsSpend(totalCost);
-        console.log("Total pengeluaran iklan:", adsResult.total_cost, "(Rp)", adsResult.raw_total_cost, "(angka)");
-      }
-    } catch (e) {
-      console.error("Error saat mengambil data iklan:", e);
-    }
-  };
-
   useEffect(() => {
-    // Penting: Set loading ke true setiap kali dateRange berubah
-    setLoading(true)
-    console.log("Loading dimulai, dateRange berubah:", dateRange)
-    
-    async function fetchOrders() {
-      try {
-        const fromDate = dateRange?.from || new Date()
-        const toDate = dateRange?.to || fromDate
-        
-        console.log("Date range dari picker:", fromDate, toDate);
-        
-        // Set waktu ke awal dan akhir hari
-        const startDate = new Date(fromDate)
-        const endDate = new Date(toDate)
-        startDate.setHours(0, 0, 0, 0)
-        endDate.setHours(23, 59, 59, 999)
-        
-        console.log("Tanggal setelah set jam:", startDate, endDate);
-        
-        // Konversi ke UNIX timestamp (seconds)
-        const startTimestamp = Math.floor(startDate.getTime() / 1000)
-        const endTimestamp = Math.floor(endDate.getTime() / 1000)
-        
-        // Format tanggal untuk API iklan (YYYY-MM-DD)
-        const startDateStr = formatDateToYYYYMMDD(startDate);
-        const endDateStr = formatDateToYYYYMMDD(endDate);
-        
-        console.log("Tanggal format ISO:", startDateStr, endDateStr);
-        
-        // Gunakan API endpoint - hanya kirim tanggal awal dan akhir
-        const response = await fetch(
-          `/api/orders?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`
-        );
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Gagal mengambil data orders');
-        }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-          throw new Error(result.message || 'Gagal mengambil data orders');
-        }
-        
-        console.log("Data berhasil diambil:", result.data.length);
-        console.log("Pesanan tanpa data escrow:", result.ordersWithoutEscrow.length);
-        
-        setOrders(result.data);
-        setOrdersWithoutEscrow(result.ordersWithoutEscrow);
-        
-      } catch (e) {
-        console.error("Error saat mengambil data:", e);
-        setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mengambil data');
-      } finally {
-        setLoading(false);
-      }
+    if (dateRange?.from) {
+      fetchOrders()
     }
-    
-    // Fungsi terpisah untuk mengambil data iklan
-    async function fetchAdsDataAsync() {
-      if (!dateRange?.from || !dateRange?.to) return;
-      
-      // Buat ulang format tanggal dengan pola yang sama persis seperti di fetchOrders
-      const fromDate = dateRange?.from || new Date()
-      const toDate = dateRange?.to || fromDate
-      
-      // Set waktu ke awal dan akhir hari
-      const startDate = new Date(fromDate)
-      const endDate = new Date(toDate)
-      startDate.setHours(0, 0, 0, 0)
-      endDate.setHours(23, 59, 59, 999)
-      
-      // Format tanggal untuk API iklan (YYYY-MM-DD) - gunakan fungsi baru
-      const startDateStr = formatDateToYYYYMMDD(startDate);
-      const endDateStr = formatDateToYYYYMMDD(endDate);
-      
-      console.log("Tanggal untuk ads di fetchAdsDataAsync:", startDateStr, endDateStr);
-      
-      // Ambil data iklan secara asynchronous - untuk hari yang sama, gunakan endDateStr untuk kedua parameter
-      if (fromDate.toDateString() === toDate.toDateString()) {
-        fetchAdsData(endDateStr, endDateStr).catch(err => {
-          console.error("Error saat mengambil data iklan secara async:", err)
-        });
-      } else {
-        fetchAdsData(startDateStr, endDateStr).catch(err => {
-          console.error("Error saat mengambil data iklan secara async:", err)
-        });
-      }
-    }
+  }, [dateRange, fetchOrders])
 
-    // Jalankan fetchOrders dan fetchAdsDataAsync secara terpisah
-    fetchOrders();
-    fetchAdsDataAsync();
-  }, [dateRange])
-
-  return { 
-    orders, 
-    ordersWithoutEscrow, 
+  return {
+    orders,
+    ordersWithoutEscrow,
+    loading,
+    error,
+    syncMissingEscrowData,
+    syncingEscrow,
+    syncProgress,
     adsData,
     totalAdsSpend,
-    loading, 
-    error, 
-    syncMissingEscrowData, 
-    syncingEscrow, 
-    syncProgress 
+    refetch // Ekspor fungsi refetch
   }
 } 

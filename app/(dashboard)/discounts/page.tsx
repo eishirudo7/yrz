@@ -215,9 +215,24 @@ export default function DiscountsPage() {
       const discountDetail = await response.json();
       
       // Hitung waktu untuk promo baru
+      const now = Date.now();
       const oldEndTime = discountDetail.data.end_time * 1000;
-      const newStartTime = oldEndTime + (60 * 1000);
-      const newEndTime = newStartTime + (179 * 24 * 60 * 60 * 1000) - (60 * 1000);
+      
+      // Logika waktu yang dimodifikasi:
+      // Jika diskon sudah berakhir (oldEndTime lebih kecil dari waktu sekarang), 
+      // gunakan waktu sekarang + 1 jam 1 menit sebagai waktu mulai (menggunakan waktu Indonesia/GMT+7)
+      // Jika diskon masih berjalan, gunakan waktu berakhir + 1 menit
+      const newStartTime = oldEndTime < now 
+        ? now + (60 * 60 * 1000) + (1 * 60 * 1000) // 1 jam 1 menit dari sekarang untuk diskon yang sudah berakhir
+        : oldEndTime + (60 * 1000); // 1 menit setelah berakhir untuk diskon yang masih berjalan
+      
+      // Jika diskon sudah berakhir, gunakan timezone Indonesia (GMT+7 = +7 jam)
+      // untuk memastikan waktu yang akurat sesuai waktu Indonesia
+      const adjustedNewStartTime = oldEndTime < now
+        ? new Date(newStartTime).getTime() // Tidak perlu penyesuaian karena Date.now() sudah dalam waktu lokal
+        : newStartTime;
+      
+      const newEndTime = adjustedNewStartTime + (179 * 24 * 60 * 60 * 1000) - (60 * 1000);
 
       // Siapkan data item
       const itemList = discountDetail.data.item_list.map((item: DiscountItem) => ({
@@ -240,7 +255,7 @@ export default function DiscountsPage() {
           shopId: shop.shop_id,
           discountData: {
             discount_name: discountDetail.data.discount_name,
-            start_time: Math.floor(newStartTime / 1000),
+            start_time: Math.floor(adjustedNewStartTime / 1000),
             end_time: Math.floor(newEndTime / 1000)
           }
         }
@@ -265,7 +280,7 @@ export default function DiscountsPage() {
         addItemsRequest,
         times: {
           oldEndTime,
-          newStartTime,
+          adjustedNewStartTime,
           newEndTime
         }
       });
@@ -637,7 +652,7 @@ export default function DiscountsPage() {
           <DialogHeader>
             <DialogTitle>Duplikasi Promo</DialogTitle>
             <DialogDescription>
-              Promo baru akan dibuat dengan pengaturan yang sama dan dijadwalkan setelah promo yang diduplikasi berakhir.
+              Promo baru akan dibuat dengan pengaturan dan produk yang sama.
             </DialogDescription>
           </DialogHeader>
 
@@ -744,7 +759,7 @@ export default function DiscountsPage() {
                     
                     <span className="text-slate-500">Waktu Mulai:</span>
                     <span className="font-medium">
-                      {new Date(previewData?.times.newStartTime).toLocaleString('id-ID', {
+                      {new Date(previewData?.times.adjustedNewStartTime).toLocaleString('id-ID', {
                         dateStyle: 'full',
                         timeStyle: 'short'
                       })}
@@ -761,6 +776,15 @@ export default function DiscountsPage() {
                     <span className="text-slate-500">Jumlah Produk:</span>
                     <span className="font-medium">
                       {previewData?.addItemsRequest.body.items.length} produk
+                    </span>
+
+                    <span className="text-slate-500">Status Promo Asli:</span>
+                    <span className="font-medium">
+                      {previewData?.times.oldEndTime < Date.now() ? (
+                        <span className="text-amber-600">Sudah berakhir</span>
+                      ) : (
+                        <span className="text-green-600">Masih berjalan</span>
+                      )}
                     </span>
                   </div>
                 </div>

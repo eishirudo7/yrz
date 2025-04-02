@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from "@/lib/supabase"
+import { createClient } from '@/utils/supabase/client'
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 
@@ -45,7 +45,7 @@ const processOrder = (order: OrderItem, summary: DashboardSummary) => {
 async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): Promise<any | null> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const { data, error } = await supabase.rpc('get_sku_qty_and_total_price', { 
+      const { data, error } = await createClient().rpc('get_sku_qty_and_total_price', { 
         order_sn_input: order_sn,
         shop_id_input: shop_id
       });
@@ -91,7 +91,7 @@ export const useDashboard = () => {
   const [error, setError] = useState<string | null>(null);
 
   const createOrderSubscription = () => {
-    return supabase
+    return createClient()
       .channel('orders')
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -208,7 +208,7 @@ export const useDashboard = () => {
   };
 
   const createLogisticSubscription = () => {
-    return supabase
+    return createClient()
       .channel('logistic-changes')
       .on(
         'postgres_changes',

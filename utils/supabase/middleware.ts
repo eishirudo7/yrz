@@ -85,12 +85,7 @@ export async function updateSession(request: NextRequest) {
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/api/auth') &&
-    !request.nextUrl.pathname.startsWith('/api/cek_perubahan') &&
-    !request.nextUrl.pathname.startsWith('/api/order_details') &&
-    !request.nextUrl.pathname.startsWith('/api/proses_order') &&
-    !request.nextUrl.pathname.startsWith('/api/flashsale') &&
-    !request.nextUrl.pathname.startsWith('/api/settings')
+    !request.nextUrl.pathname.startsWith('/api')
   ) {
     // Redirect jika tidak login
     const url = request.nextUrl.clone()

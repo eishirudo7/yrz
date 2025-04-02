@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
-
+import { createClient } from '@/utils/supabase/client';
+import { useUserData } from '@/contexts/UserDataContext';
 
 interface ShippingDocumentParams {
   order_sn: string;
@@ -30,6 +30,8 @@ export function useShippingDocument() {
     currentCarrier: '',
     currentShop: ''
   });
+  const supabase = createClient();
+  const { shops } = useUserData();
 
   const downloadDocument = async (
     shopId: number, 
@@ -41,6 +43,12 @@ export function useShippingDocument() {
         ...orderList.reduce((acc, order) => ({ ...acc, [order.order_sn]: true }), {})
       }));
       setError(null);
+
+      // Cek apakah toko ini milik user yang sedang login
+      const userShop = shops.find(shop => shop.shop_id === shopId);
+      if (!userShop) {
+        throw new Error('Toko tidak ditemukan atau Anda tidak memiliki akses ke toko ini');
+      }
 
       const queryParams = new URLSearchParams({
         shopId: shopId.toString(),

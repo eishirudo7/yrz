@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { unlistItems } from '@/app/services/shopeeService';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/utils/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Update status di database Supabase
     try {
+      const supabase = await createClient();
       // Update untuk setiap item berdasarkan unlist status masing-masing
       for (const item of items) {
         const { data: supabaseData, error: supabaseError } = await supabase

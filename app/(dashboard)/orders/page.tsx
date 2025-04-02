@@ -237,6 +237,11 @@ export default function OrdersPage() {
   const [isShopFilterOpen, setIsShopFilterOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchType, setSearchType] = useState("order_sn")
+  
+  // Tambahkan state untuk timeout handling
+  const [apiTimeout, setApiTimeout] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
+  const [timeoutDuration, setTimeoutDuration] = useState(30) // dalam detik
 
   const { 
     orders, 
@@ -247,7 +252,8 @@ export default function OrdersPage() {
     syncingEscrow,
     syncProgress,
     adsData,
-    totalAdsSpend
+    totalAdsSpend,
+    refetch // Tambahkan fungsi refetch dari useOrders jika tersedia, atau implementasikan di hook
   } = useOrders(selectedDateRange)
   const [visibleOrders, setVisibleOrders] = useState<Order[]>([])
   const [page, setPage] = useState(1)
@@ -290,6 +296,98 @@ export default function OrdersPage() {
 
   // Tambahkan state untuk menampilkan/menyembunyikan detail iklan
   const [showAdsDetails, setShowAdsDetails] = useState(false);
+
+  // Tambahkan useEffect untuk mendeteksi timeout
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    if (ordersLoading && !apiTimeout) {
+      // Atur timer untuk mendeteksi timeout setelah timeoutDuration detik
+      timeoutId = setTimeout(() => {
+        setApiTimeout(true);
+      }, timeoutDuration * 1000);
+    }
+    
+    // Jika tidak lagi loading, batalkan timer dan reset apiTimeout
+    if (!ordersLoading && apiTimeout) {
+      setApiTimeout(false);
+    }
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [ordersLoading, apiTimeout, timeoutDuration]);
+  
+  // Fungsi untuk mencoba lagi dengan timeout yang lebih lama
+  const handleRetryWithLongerTimeout = () => {
+    setRetryCount(prev => prev + 1);
+    setApiTimeout(false);
+    setTimeoutDuration(prev => prev + 30); // Tambah 30 detik setiap retry
+    
+    // Jika ada fungsi refetch di hook useOrders, panggil di sini
+    if (typeof refetch === 'function') {
+      refetch();
+    } else {
+      // Gunakan cara alternatif untuk mem-fetch ulang data
+      if (selectedDateRange?.from) {
+        setSelectedDateRange({
+          from: selectedDateRange.from,
+          to: selectedDateRange.to
+        }); // Trigger re-fetch dengan mengubah state
+      }
+    }
+  };
+
+  // Komponen UI untuk menampilkan pesan timeout
+  const TimeoutMessage = () => (
+    <div className="w-full p-6 flex flex-col items-center justify-center">
+      <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-6 max-w-lg w-full">
+        <div className="flex flex-col items-center text-center space-y-4">
+          <AlertCircle className="h-10 w-10 text-red-600 dark:text-red-400" />
+          <div>
+            <h3 className="text-lg font-semibold text-red-700 dark:text-red-400">
+              Request Timeout
+            </h3>
+            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+              Data pesanan membutuhkan waktu yang lama untuk dimuat. Rentang tanggal yang dipilih mungkin terlalu luas atau database sedang sibuk.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 mt-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDate({
+                  from: new Date(),
+                  to: new Date(),
+                });
+                setSelectedDateRange({
+                  from: new Date(),
+                  to: new Date(),
+                });
+                setApiTimeout(false);
+                setRetryCount(0);
+                setTimeoutDuration(30);
+              }}
+              className="border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/40"
+            >
+              Pilih Hari Ini
+            </Button>
+            <Button 
+              onClick={handleRetryWithLongerTimeout}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Coba Lagi ({timeoutDuration}s)
+            </Button>
+          </div>
+          {retryCount > 0 && (
+            <p className="text-xs text-red-500 dark:text-red-400">
+              Percobaan ke-{retryCount}. Setiap percobaan menambah waktu timeout 30 detik.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 20 dan escrow < 200000)
   const isFakeOrder = (order: Order) => {
@@ -802,6 +900,12 @@ export default function OrdersPage() {
   }
 
   if (ordersLoading) {
+    // Tampilkan pesan timeout jika terdeteksi timeout
+    if (apiTimeout) {
+      return <TimeoutMessage />;
+    }
+    
+    // Tampilkan loading UI normal
     return (
       <div className="w-full p-4 sm:p-6 space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -850,96 +954,9 @@ export default function OrdersPage() {
               ) : (
                 // Tampilkan data normal
                 <>
-                  {visibleOrders.map((order, index) => (
-                    <TableRow 
-                      key={order.order_sn}
-                      className={index % 2 === 0 ? 'bg-muted dark:bg-gray-800/50' : 'bg-gray-100/20 dark:bg-gray-900'}
-                    >
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center">{index + 1}</TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap max-w-[80px] sm:max-w-none overflow-hidden text-ellipsis">{order.shop_name}</TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.create_time)}</TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <span 
-                                className="cursor-pointer hover:underline hover:text-primary"
-                                onClick={() => handleOrderClick(order.order_sn)}
-                              >
-                                {order.order_sn}
-                              </span>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-80 p-0" align="start">
-                              {selectedOrderSn && selectedOrderSn === order.order_sn && (
-                                <OrderDetails 
-                                  orderSn={selectedOrderSn} 
-                                  isOpen={isDetailsOpen} 
-                                  onClose={handleCloseDetails} 
-                                />
-                              )}
-                            </PopoverContent>
-                          </Popover>
-                          {order.cod && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
-                              COD
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleUsernameClick(order.buyer_user_id ?? 0, order.buyer_username)}
-                            className="hover:text-primary"
-                          >
-                            {order.buyer_username}
-                          </button>
-                          
-                          <ChatButton
-                            shopId={order.shop_id ?? 0}
-                            toId={order.buyer_user_id ?? 0}
-                            toName={order.buyer_username || "Pembeli"}
-                            toAvatar={""}
-                            shopName={order.shop_name}
-                            iconSize={14}
-                            iconOnly={true}
-                            orderId={order.order_sn}
-                            orderStatus={order.order_status}
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
-                      </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        {order.escrow_amount_after_adjustment !== undefined && order.escrow_amount_after_adjustment !== null
-                          ? `Rp ${parseInt(order.escrow_amount_after_adjustment.toString()).toLocaleString('id-ID')}`
-                          : 'Rp -'}
-                      </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty}</TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
-                      </TableCell>
-                      <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          order.order_status === 'READY_TO_SHIP' ? 'bg-green-600 text-white' :
-                          order.order_status === 'PROCESSED' ? 'bg-blue-600 text-white' :
-                          order.order_status === 'SHIPPED' ? 'bg-indigo-600 text-white' :
-                          order.order_status === 'CANCELLED' ? 'bg-red-600 text-white' :
-                          order.order_status === 'IN_CANCEL' ? 'bg-yellow-600 text-white' :
-                          order.order_status === 'TO_RETURN' ? 'bg-purple-600 text-white' :
-                          'bg-gray-600 text-white'
-                        }`}>
-                          {order.order_status}
-                        </span>
-                      </TableCell>
-                    </TableRow>
+                  {[...Array(10)].map((_, i) => (
+                    <TableRowSkeleton key={`loading-skeleton-${i}`} />
                   ))}
-                  {hasMore && (
-                    Array(3).fill(0).map((_, i) => (
-                      <TableRowSkeleton key={`load-more-skeleton-${i}`} />
-                    ))
-                  )}
                 </>
               )}
             </TableBody>
@@ -948,7 +965,54 @@ export default function OrdersPage() {
       </div>
     )
   }
-  if (ordersError) return <div className="container mx-auto p-4 text-red-500">{ordersError}</div>
+  
+  // Menampilkan pesan error dengan opsi untuk mencoba lagi
+  if (ordersError) {
+    return (
+      <div className="w-full p-6 flex flex-col items-center justify-center">
+        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-6 max-w-lg w-full">
+          <div className="flex flex-col items-center text-center space-y-4">
+            <AlertCircle className="h-10 w-10 text-red-600 dark:text-red-400" />
+            <div>
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400">
+                Terjadi Kesalahan
+              </h3>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                {ordersError}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 mt-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setDate({
+                    from: new Date(),
+                    to: new Date(),
+                  });
+                  setSelectedDateRange({
+                    from: new Date(),
+                    to: new Date(),
+                  });
+                  setApiTimeout(false);
+                  setRetryCount(0);
+                  setTimeoutDuration(30);
+                }}
+                className="border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/40"
+              >
+                Pilih Hari Ini
+              </Button>
+              <Button 
+                onClick={handleRetryWithLongerTimeout}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Coba Lagi
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full p-4 sm:p-6 space-y-4">

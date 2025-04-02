@@ -8,7 +8,7 @@ interface Order {
   order_sn: string;
   shop_name: string;
   order_status: string;
-  total_amount: string;
+  total_amount: string | number;
   buyer_username: string;
   shipping_carrier: string;
   tracking_number: string;
@@ -70,34 +70,42 @@ export async function GET(req: NextRequest) {
     const pageSize = 800;
     let hasMore = true;
     
-    // Proses pagination di server
+    console.time('fetch_orders');
+    
+    // Proses pagination di server, kembali menggunakan orders_view
+    // untuk menghindari masalah dengan struktur fungsi RPC
     while (hasMore) {
-      const { data, error } = await supabase
-        .from('orders_view')
-        .select('*')
-        .filter('create_time', 'gte', parseInt(startTimestamp))
-        .filter('create_time', 'lte', parseInt(endTimestamp))
-        // Filter untuk hanya menampilkan pesanan dari toko milik user
-        .in('shop_id', userShopIds)
-        .order('pay_time', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-      
-      if (error) {
-        return NextResponse.json({
-          success: false,
-          message: error.message
-        }, { status: 500 });
+      try {
+        const { data, error } = await supabase
+          .from('orders_view')
+          .select('*')
+          .filter('create_time', 'gte', parseInt(startTimestamp))
+          .filter('create_time', 'lte', parseInt(endTimestamp))
+          .in('shop_id', userShopIds)
+          .order('pay_time', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) {
+          console.error('Error fetching orders:', error);
+          return NextResponse.json({
+            success: false,
+            message: error.message
+          }, { status: 500 });
+        }
+        
+        if (data && data.length > 0) {
+          allOrders = [...allOrders, ...data as Order[]];
+          page++;
+        }
+        
+        hasMore = data && data.length === pageSize;
+      } catch (err) {
+        console.error('Exception in fetch orders:', err);
+        throw err;
       }
-      
-      if (data && data.length > 0) {
-        // Cara yang lebih type-safe untuk menggabungkan data
-        allOrders = [...allOrders, ...data as Order[]];
-        page++;
-      }
-      
-      // Jika data yang dikembalikan kurang dari pageSize, berarti sudah tidak ada lagi data
-      hasMore = data && data.length === pageSize;
     }
+    
+    console.timeEnd('fetch_orders');
     
     // Hitung jumlah pesanan tanpa escrow
     const ordersWithNullEscrow = allOrders.filter(

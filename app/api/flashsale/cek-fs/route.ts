@@ -20,9 +20,43 @@ interface Shop {
   shop_name: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const shops = await getAllShops();
+    // Ambil parameter shopIds dari URL query
+    const url = new URL(request.url);
+    const shopIdsParam = url.searchParams.get('shopIds');
+    
+    // Mendapatkan daftar shop dari service atau dari parameter
+    let shops: Shop[] = [];
+    
+    if (shopIdsParam) {
+      // Gunakan shopIds dari parameter URL langsung
+      console.log('Menggunakan shopIds dari parameter:', shopIdsParam);
+      const shopIds = shopIdsParam.split(',').map(id => parseInt(id.trim(), 10));
+      
+      // Buat objek Shop langsung dari shopIds, tanpa perlu getAllShops()
+      shops = shopIds.map(shopId => ({
+        shop_id: shopId,
+        shop_name: `Shop ${shopId}` // Nama toko tidak penting untuk pemeriksaan ini
+      }));
+      console.log(`Menggunakan ${shops.length} toko dari parameter shopIds`);
+    } else {
+      // Jika tidak ada shopIds, ambil semua toko dari service
+      console.log('Tidak ada parameter shopIds, mengambil semua toko');
+      shops = await getAllShops();
+    }
+    
+    // Jika tidak ada toko yang ditemukan, kembalikan array kosong
+    if (!shops || shops.length === 0) {
+      console.log('Tidak ada toko yang ditemukan');
+      return NextResponse.json({ 
+        success: true, 
+        data: [],
+        message: 'Tidak ada toko yang ditemukan',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     let flashSaleIssues: Array<{
       shop_id: number;
       shop_name: string;
@@ -50,6 +84,9 @@ export async function GET() {
 
         if (!result.success || !result.data.flash_sale_list) continue;
 
+        // Update nama toko jika tersedia dari API
+        const shopName = result.data.shop_name || shop.shop_name;
+        
         const flashSales = result.data.flash_sale_list;
 
         // Menggunakan status type dari API
@@ -108,7 +145,7 @@ export async function GET() {
 
           flashSaleIssues.push({
             shop_id: shop.shop_id,
-            shop_name: shop.shop_name,
+            shop_name: shopName,
             issues: {
               inactive_current: currentInactive,
               no_active_flashsale: !hasActiveFlashsale,

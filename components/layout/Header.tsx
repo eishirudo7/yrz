@@ -69,6 +69,7 @@ interface HealthCheckData {
         status: string;
         return_solution: number;
         refund_amount: number;
+        shop_id: number;
         user: {
           username: string;
           email: string;
@@ -117,6 +118,7 @@ export function Header() {
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [expandedShop, setExpandedShop] = useState<number | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userShops, setUserShops] = useState<Array<{shop_id: number; shop_name: string}>>([]);
 
   useEffect(() => {
     if (!lastMessage) return
@@ -140,6 +142,7 @@ export function Header() {
 
   useEffect(() => {
     fetchNotifications()
+    fetchUserShops()
   }, [])
 
   useEffect(() => {
@@ -161,34 +164,132 @@ export function Header() {
     return timeSinceLastCheck > HEALTH_CHECK_INTERVAL;
   };
 
+  const fetchUserShops = async () => {
+    try {
+      console.log('Memulai fetchUserShops...');
+      const response = await fetch('/api/shops');
+      console.log('Response status dari /api/shops:', response.status);
+      
+      if (!response.ok) {
+        console.error('Response tidak OK:', response.status, response.statusText);
+        throw new Error('Gagal mengambil daftar toko');
+      }
+      
+      const data = await response.json();
+      console.log('Data dari /api/shops:', data);
+      
+      if (data && data.success === true && Array.isArray(data.data)) {
+        const shops = data.data.map((shop: any) => ({
+          shop_id: shop.shop_id,
+          shop_name: shop.shop_name
+        }));
+        console.log('Berhasil mendapatkan toko:', shops.length, 'toko');
+        setUserShops(shops);
+      } else {
+        console.error('Format data tidak sesuai yang diharapkan:', data);
+        setUserShops([]);
+      }
+    } catch (error) {
+      console.error('Error fetching user shops:', error);
+      setUserShops([]);
+    }
+  };
+
+  const handleRefreshClick = () => {
+    console.log('Tombol refresh diklik');
+    setLoadingHealth(true); // Set loading state terlebih dahulu
+    fetchUserShops().then(() => {
+      console.log('Melakukan health check setelah refresh toko');
+      fetchHealthCheck(true);
+    }).catch(error => {
+      console.error('Error refreshing:', error);
+      setLoadingHealth(false); // Pastikan loading state dimatikan jika terjadi error
+    });
+  };
+
   const fetchHealthCheck = async (force = false) => {
     try {
+      console.log('Memulai fetchHealthCheck, force =', force);
       if (!force && !shouldFetchHealthCheck()) {
         const cachedData = localStorage.getItem('health_check_data');
         if (cachedData) {
+          console.log('Menggunakan data cached');
           setHealthData(JSON.parse(cachedData));
           return;
         }
       }
 
-      setLoadingHealth(true);
-      const response = await fetch('/api/health');
-      const data = await response.json();
-      setHealthData(data);
+      // Hanya set loading state jika belum di-set sebelumnya
+      if (!loadingHealth) {
+        setLoadingHealth(true);
+      }
       
-      // Simpan data dan timestamp
-      localStorage.setItem('health_check_data', JSON.stringify(data));
-      localStorage.setItem(LAST_HEALTH_CHECK_KEY, Date.now().toString());
+      const shopIds = userShops.map(shop => shop.shop_id);
+      console.log('User shops tersedia:', userShops.length, 'toko');
+      console.log('ShopIds yang akan dikirim:', shopIds);
+      
+      if (shopIds.length === 0) {
+        console.log('Tidak ada toko yang ditemukan, tidak melakukan health check');
+        setHealthData({
+          success: true,
+          data: {
+            shop_health: {
+              flashSaleIssues: [],
+              discountIssues: {
+                shops_without_backup: [],
+                ending_soon: [],
+                expired_without_ongoing: []
+              },
+              returnIssues: [],
+              summary: {
+                totalIssues: 0,
+                criticalShops: []
+              }
+            },
+            openai: {
+              success: false,
+              message: 'Health check tidak dilakukan karena tidak ada toko'
+            }
+          },
+          message: 'Tidak ada toko untuk diperiksa'
+        });
+        setLoadingHealth(false);
+        return;
+      }
+      
+      console.log('Mengirim health check request dengan shopIds:', shopIds);
+      const response = await fetch('/api/health', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ shopIds })
+      });
+      
+      console.log('Response status dari /api/health:', response.status);
+      const responseData = await response.json();
+      console.log('Response data dari /api/health:', responseData);
+      
+      // Tambahkan delay kecil sebelum menghilangkan loading state
+      // untuk memastikan UI loading muncul dengan benar
+      setTimeout(() => {
+        setHealthData(responseData);
+        localStorage.setItem('health_check_data', JSON.stringify(responseData));
+        localStorage.setItem(LAST_HEALTH_CHECK_KEY, Date.now().toString());
+        console.log('Health check selesai dan data disimpan');
+        setLoadingHealth(false);
+      }, 500);
     } catch (error) {
       console.error('Error fetching health check:', error);
-    } finally {
       setLoadingHealth(false);
     }
   };
 
   useEffect(() => {
-    fetchHealthCheck();
-  }, []);
+    if (userShops.length > 0) {
+      fetchHealthCheck();
+    }
+  }, [userShops]);
 
   // Fungsi-fungsi handler
   const fetchNotifications = async () => {
@@ -469,10 +570,11 @@ export function Header() {
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    onClick={() => fetchHealthCheck(true)}
+                    onClick={handleRefreshClick}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    disabled={loadingHealth}
                   >
-                    Refresh
+                    {loadingHealth ? 'Memuat...' : 'Refresh'}
                   </Button>
                 </DropdownMenuLabel>
 
@@ -512,85 +614,114 @@ export function Header() {
                                 <span className="text-xs font-medium">Return Kritis</span>
                               </div>
                               <div className="space-y-2">
-                                {healthData.data.shop_health.returnIssues.map((returnIssue, index) => (
-                                  <div key={index} className="text-xs space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
-                                    <div className="flex justify-between">
-                                      <span className="font-medium">Return #{returnIssue.return_sn}</span>
-                                      <span className="text-muted-foreground">
-                                        {new Date(returnIssue.create_time * 1000).toLocaleDateString('id-ID')}
-                                      </span>
-                                    </div>
-                                    <div className="text-muted-foreground">
-                                      <p>Order: {returnIssue.order_sn}</p>
-                                      <p>Status: {returnIssue.status}</p>
-                                      <p>Alasan: {returnIssue.text_reason}</p>
-                                      <p>Refund: Rp {returnIssue.refund_amount.toLocaleString('id-ID')}</p>
-                                    </div>
-                                    {returnIssue.item.map((item, itemIndex) => (
-                                      <div key={itemIndex} className="ml-2 text-muted-foreground">
-                                        <p>• {item.name}</p>
-                                        <p className="ml-2">SKU: {item.item_sku}</p>
-                                        <p className="ml-2">Jumlah: {item.amount}</p>
-                                        <p className="ml-2">Refund: Rp {item.refund_amount.toLocaleString('id-ID')}</p>
+                                {healthData.data.shop_health.returnIssues.map((returnIssue, index) => {
+                                  // Cari nama toko dari shop_id jika tersedia
+                                  const shopInfo = userShops.find(shop => shop.shop_id === returnIssue.shop_id);
+                                  const shopName = shopInfo ? shopInfo.shop_name : returnIssue.user?.username || `Toko ${returnIssue.shop_id}`;
+                                  
+                                  return (
+                                    <div key={index} className="text-xs space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
+                                      <div className="flex justify-between">
+                                        <span className="font-medium">Return #{returnIssue.return_sn}</span>
+                                        <span className="text-muted-foreground">
+                                          {new Date(returnIssue.create_time * 1000).toLocaleDateString('id-ID')}
+                                        </span>
                                       </div>
-                                    ))}
-                                  </div>
-                                ))}
+                                      <div className="text-muted-foreground">
+                                        <p>Toko: {shopName}</p>
+                                        <p>Order: {returnIssue.order_sn}</p>
+                                        <p>Status: {returnIssue.status}</p>
+                                        <p>Alasan: {returnIssue.text_reason}</p>
+                                        <p>Refund: Rp {returnIssue.refund_amount.toLocaleString('id-ID')}</p>
+                                      </div>
+                                      {returnIssue.item.map((item, itemIndex) => (
+                                        <div key={itemIndex} className="ml-2 text-muted-foreground">
+                                          <p>• {item.name}</p>
+                                          <p className="ml-2">SKU: {item.item_sku}</p>
+                                          <p className="ml-2">Jumlah: {item.amount}</p>
+                                          <p className="ml-2">Refund: Rp {item.refund_amount.toLocaleString('id-ID')}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
 
                           {/* Existing Critical Shops */}
-                          {healthData.data.shop_health.summary.criticalShops.map((shop, index) => (
-                            <div 
-                              key={index} 
-                              className="p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-                              onClick={() => setExpandedShop(expandedShop === shop.shop_id ? null : shop.shop_id)}
-                            >
-                              <div className="flex items-center gap-2 mb-2">
-                                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                <span className="text-xs">{shop.shop_name}</span>
+                          {healthData.data.shop_health.summary.criticalShops.map((shop, index) => {
+                            // Cari nama toko yang sebenarnya berdasarkan shop_id
+                            const shopInfo = userShops.find(s => s.shop_id === shop.shop_id);
+                            const shopName = shopInfo ? shopInfo.shop_name : `Toko ${shop.shop_id}`;
+                            
+                            return (
+                              <div 
+                                key={index} 
+                                className="p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                                onClick={() => setExpandedShop(expandedShop === shop.shop_id ? null : shop.shop_id)}
+                              >
+                                <div className="flex items-center gap-2 mb-2">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                  <span className="text-xs">{shopName}</span>
+                                </div>
+                                <ul className="space-y-1">
+                                  {shop.issues.map((issue, i) => (
+                                    <li key={i} className="text-xs text-muted-foreground">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                                        {issue}
+                                      </div>
+                                      {issue === 'Tidak ada backup diskon' && expandedShop === shop.shop_id && (
+                                        <div className="mt-1 ml-3 space-y-1">
+                                          <p className="font-medium text-xs text-muted-foreground">Diskon aktif:</p>
+                                          {healthData.data.shop_health.discountIssues.shops_without_backup
+                                            .find(s => s.shop_id === shop.shop_id)
+                                            ?.ongoing_discounts.map((discount, j) => (
+                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                • {discount.discount_name} ({discount.start_time_formatted} - {discount.end_time_formatted})
+                                              </p>
+                                            ))
+                                          }
+                                        </div>
+                                      )}
+                                      
+                                      {/* Tambahkan tampilan untuk expired without ongoing */}
+                                      {issue === 'Diskon telah kedaluwarsa tanpa pengganti' && expandedShop === shop.shop_id && (
+                                        <div className="mt-1 ml-3 space-y-1">
+                                          <p className="font-medium text-xs text-muted-foreground">Diskon kedaluwarsa:</p>
+                                          {healthData.data.shop_health.discountIssues.expired_without_ongoing
+                                            .filter(s => s.shop_id === shop.shop_id)
+                                            .map((item, j) => (
+                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                • {item.discount.discount_name} ({item.discount.start_time_formatted} - {item.discount.end_time_formatted})
+                                              </p>
+                                            ))
+                                          }
+                                        </div>
+                                      )}
+                                      
+                                      {(issue.includes('Flash Sale aktif tidak memiliki produk') || 
+                                        issue.includes('Flash Sale mendatang tidak memiliki produk')) && 
+                                       expandedShop === shop.shop_id && (
+                                        <div className="mt-1 ml-3 space-y-1">
+                                          <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
+                                          {shop.details
+                                            .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
+                                            .map((detail, j) => (
+                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
+                                              </p>
+                                            ))
+                                          }
+                                        </div>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
                               </div>
-                              <ul className="space-y-1">
-                                {shop.issues.map((issue, i) => (
-                                  <li key={i} className="text-xs text-muted-foreground">
-                                    <div className="flex items-center gap-2">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                                      {issue}
-                                    </div>
-                                    {issue === 'Tidak ada backup diskon' && expandedShop === shop.shop_id && (
-                                      <div className="mt-1 ml-3 space-y-1">
-                                        <p className="font-medium text-xs text-muted-foreground">Diskon aktif:</p>
-                                        {healthData.data.shop_health.discountIssues.shops_without_backup
-                                          .find(s => s.shop_id === shop.shop_id)
-                                          ?.ongoing_discounts.map((discount, j) => (
-                                            <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                              • {discount.discount_name} ({discount.start_time_formatted} - {discount.end_time_formatted})
-                                            </p>
-                                          ))
-                                        }
-                                      </div>
-                                    )}
-                                    {(issue.includes('Flash Sale aktif tidak memiliki produk') || 
-                                      issue.includes('Flash Sale mendatang tidak memiliki produk')) && 
-                                     expandedShop === shop.shop_id && (
-                                      <div className="mt-1 ml-3 space-y-1">
-                                        <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
-                                        {shop.details
-                                          .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
-                                          .map((detail, j) => (
-                                            <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                              • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
-                                            </p>
-                                          ))
-                                        }
-                                      </div>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">

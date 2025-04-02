@@ -1,9 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -81,7 +80,7 @@ export default function ProfitabilitySettingsDialog({
   const fetchSkus = async () => {
     setLoading(true)
     try {
-      let query = supabase
+      let query = createClient()
         .from('sku_cost_margins')
         .select('*')
         .order('item_sku', { ascending: true })
@@ -135,7 +134,7 @@ export default function ProfitabilitySettingsDialog({
   const syncSkus = async () => {
     setSyncing(true)
     try {
-      const { data, error } = await supabase.rpc('populate_sku_cost_margins')
+      const { data, error } = await createClient().rpc('populate_sku_cost_margins')
       
       if (error) {
         if (error.message.includes('function') || error.message.includes('does not exist')) {
@@ -160,7 +159,7 @@ export default function ProfitabilitySettingsDialog({
   const createSkuMarginsTable = async () => {
     try {
       // Buat tabel sku_cost_margins
-      await supabase.rpc('create_sku_margins_table')
+      await createClient().rpc('create_sku_margins_table')
       return true
     } catch (error) {
       console.error('Error creating table:', error)
@@ -169,7 +168,7 @@ export default function ProfitabilitySettingsDialog({
       
       // Alternatif: menggunakan rpc khusus untuk membuat tabel
       try {
-        const { error: rpcError } = await supabase.rpc('setup_sku_margins_schema')
+        const { error: rpcError } = await createClient().rpc('setup_sku_margins_schema')
         if (rpcError) throw rpcError
         return true
       } catch (setupError) {
@@ -181,7 +180,7 @@ export default function ProfitabilitySettingsDialog({
   
   const updateSkuData = async (id: number, updates: any) => {
     try {
-      const { error } = await supabase
+      const { error } = await createClient()
         .from('sku_cost_margins')
         .update({
           ...updates,

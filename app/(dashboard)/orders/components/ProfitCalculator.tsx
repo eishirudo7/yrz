@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Wallet, RefreshCw, List, Search, CreditCard, DollarSign, Eye, BarChart3, CalendarIcon, ListIcon, Tag, FileSpreadsheet } from 'lucide-react'
@@ -204,7 +204,7 @@ export default function ProfitCalculator({
       if (allSkus.size === 0) return;
       
       // Query database sekali saja untuk semua SKU
-      const { data, error } = await supabase
+      const { data, error } = await createClient()
         .from('sku_cost_margins')
         .select('item_sku, cost_price, margin_percentage, is_using_cost');
       

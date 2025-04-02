@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createDiscount, getDiscountList,getAllShops } from '@/app/services/shopeeService';
+import { createDiscount, getDiscountList, getAllShops } from '@/app/services/shopeeService';
 
 // Tambahkan interface untuk tipe data shop
 interface ShopData {
@@ -35,6 +35,7 @@ interface ShopeeDiscountResponse {
   data: {
     discount_list: DiscountData[];
     more: boolean;
+    shop_name?: string;
   };
   request_id: string;
 }
@@ -84,17 +85,41 @@ export async function GET(req: NextRequest) {
     const status = (searchParams.get('status') || 'all').toLowerCase() as 'upcoming' | 'ongoing' | 'expired' | 'all';
     const pageSize = parseInt(searchParams.get('pageSize') || '10');
     const cursor = searchParams.get('cursor') || '';
+    
+    // Tambahkan parameter shopIds untuk fleksibilitas server-to-server
+    const shopIdsParam = searchParams.get('shopIds');
 
     console.log('Request parameters:', {
       shopId,
       status,
       pageSize,
-      cursor
+      cursor,
+      shopIdsParam
     });
 
     if (!shopId) {
-      const shops = await getAllShops() as ShopData[];
-      console.log('Daftar toko yang ditemukan:', shops);
+      // Tentukan daftar toko yang akan diproses
+      let shops: ShopData[] = [];
+      
+      if (shopIdsParam) {
+        // Gunakan daftar toko dari parameter shopIds
+        console.log('Menggunakan shopIds dari parameter:', shopIdsParam);
+        const shopIds = shopIdsParam.split(',').map(id => parseInt(id.trim(), 10));
+        
+        // Buat objek ShopData hanya dengan shop_id dan shop_name (minimal yang dibutuhkan)
+        shops = shopIds.map(id => ({
+          id: 0, // ID internal tidak penting
+          shop_id: id,
+          shop_name: `Shop ${id}` // Nama placeholder, akan diganti dari response API
+        }));
+        
+        console.log(`Menggunakan ${shops.length} toko dari parameter shopIds`);
+      } else {
+        // Ambil daftar toko dari getAllShops()
+        console.log('Tidak ada parameter shopIds, mengambil dari getAllShops()');
+        shops = await getAllShops() as ShopData[];
+        console.log('Daftar toko yang ditemukan:', shops);
+      }
 
       if (!shops || !shops.length) {
         return NextResponse.json(
@@ -115,8 +140,12 @@ export async function GET(req: NextRequest) {
         shops.map(async (shop: ShopData) => {
           console.log(`Request ke Shopee untuk toko ${shop.shop_name} (ID: ${shop.shop_id})`);
           const response = await getDiscountList(shop.shop_id, params) as ShopeeDiscountResponse;
-          console.log(`Response dari Shopee untuk toko ${shop.shop_name}:`, response);
+          console.log(`Response dari Shopee untuk toko ${shop.shop_id}:`, response.success ? 'success' : 'failed');
+          
           if (response.success && response.data && Array.isArray(response.data.discount_list)) {
+            // Jika response sukses, gunakan nama toko dari parameter karena API mungkin tidak mengembalikan shop_name
+            const shopName = shop.shop_name;
+            
             return {
               ...response,
               data: {
@@ -128,10 +157,10 @@ export async function GET(req: NextRequest) {
                   end_time_formatted: new Date(discount.end_time * 1000).toLocaleString('id-ID'),
                   source: discount.source,
                   status: discount.status,
-                  shop_name: shop.shop_name,
+                  shop_name: shopName,
                   shop_id: shop.shop_id
                 })),
-                shop_name: shop.shop_name,
+                shop_name: shopName,
                 shop_id: shop.shop_id
               }
             };
@@ -140,7 +169,7 @@ export async function GET(req: NextRequest) {
         })
       );
 
-      console.log('Semua response dari Shopee:', JSON.stringify(allDiscounts, null, 2));
+      console.log('Jumlah response dari Shopee:', allDiscounts.length);
 
       const combinedResult = {
         success: true,
@@ -157,7 +186,7 @@ export async function GET(req: NextRequest) {
         message: "Berhasil mengambil data diskon dari semua toko"
       };
 
-      console.log('Hasil akhir yang dikelompokkan per toko:', JSON.stringify(combinedResult, null, 2));
+      console.log('Hasil akhir: jumlah toko dengan data diskon:', combinedResult.data.length);
       
       return NextResponse.json(combinedResult);
     }
@@ -176,7 +205,7 @@ export async function GET(req: NextRequest) {
 
     const result = await getDiscountList(shopId, params);
 
-    console.log('Response dari Shopee:', JSON.stringify(result, null, 2));
+    console.log('Response dari Shopee:', result.success ? 'success' : 'failed');
 
     if (!result.success) {
       return NextResponse.json(

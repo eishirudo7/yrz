@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/utils/supabase/client'
 import { Order } from './useOrders'
+import { useUserData } from '@/contexts/UserDataContext'
 
 interface SearchParams {
   order_sn?: string
@@ -12,15 +13,26 @@ export function useOrderSearch() {
   const [searchResults, setSearchResults] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { shops } = useUserData()
 
   const searchOrders = async (params: SearchParams) => {
     setLoading(true)
     setError(null)
     
     try {
-      let query = supabase
+      // Dapatkan daftar shop_id dari toko yang dimiliki user
+      const userShopIds = shops.map(shop => shop.shop_id)
+      
+      // Jika user tidak memiliki toko, kembalikan array kosong
+      if (userShopIds.length === 0) {
+        setSearchResults([])
+        return
+      }
+
+      let query = createClient()
         .from('orders_view')
         .select('*')
+        .in('shop_id', userShopIds) // Batasi hanya untuk toko yang dimiliki user
       
       if (params.order_sn) {
         query = query.ilike('order_sn', `%${params.order_sn}%`)

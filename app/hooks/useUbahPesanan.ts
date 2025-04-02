@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from "@/lib/supabase"
+import { createClient } from "@/utils/supabase/client"
 import axios from 'axios'
 
 export interface PerubahanPesanan {
@@ -42,6 +42,7 @@ export function useUbahPesanan() {
   const [isLoadingSend, setIsLoadingSend] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [userShopIds, setUserShopIds] = useState<string[]>([]);
+  const supabase = createClient();
 
   useEffect(() => {
     // Pertama, ambil daftar toko yang dimiliki user
@@ -113,8 +114,6 @@ export function useUbahPesanan() {
       setLoading(false);
     }
   }
-
-
 
   async function updateStatusPesanan(id: number, newStatus: string) {
     try {

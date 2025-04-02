@@ -68,6 +68,7 @@ export interface ReturnIssue {
   status: string;
   return_solution: number;
   refund_amount: number;
+  shop_id: number;
   user: {
     username: string;
     email: string;
@@ -124,6 +125,7 @@ function processDiscountIssues(
   const updatedCriticalShops = [...existingCriticalShops];
   const processedShopIds = new Set(existingCriticalShops.map(shop => shop.shop_id));
 
+  // Proses shops_without_backup
   discountData.shops_without_backup.forEach((shop) => {
     if (processedShopIds.has(shop.shop_id)) {
       const existingShop = updatedCriticalShops.find(s => s.shop_id === shop.shop_id);
@@ -136,29 +138,121 @@ function processDiscountIssues(
         shop_name: shop.shop_name,
         issues: ['Tidak ada backup diskon']
       });
+      processedShopIds.add(shop.shop_id);
+    }
+  });
+
+  // Proses expired_without_ongoing
+  discountData.expired_without_ongoing.forEach((shop) => {
+    if (processedShopIds.has(shop.shop_id)) {
+      const existingShop = updatedCriticalShops.find(s => s.shop_id === shop.shop_id);
+      if (existingShop) {
+        existingShop.issues.push('Diskon telah kedaluwarsa tanpa pengganti');
+      }
+    } else {
+      updatedCriticalShops.push({
+        shop_id: shop.shop_id,
+        shop_name: shop.shop_name,
+        issues: ['Diskon telah kedaluwarsa tanpa pengganti']
+      });
+      processedShopIds.add(shop.shop_id);
     }
   });
 
   return updatedCriticalShops;
 }
 
-async function fetchHealthData() {
+async function fetchHealthData(shopIds?: number[]) {
   try {
-    const [flashSaleResponse, discountResponse] = await Promise.all([
-      fetch(API_ENDPOINTS.flashSale),
-      fetch(API_ENDPOINTS.discount)
-    ]);
-
-    const flashSaleData = await flashSaleResponse.json();
-    const discountData = await discountResponse.json();
-
-    if (!flashSaleData.success || !discountData.success) {
-      throw new Error('Gagal mengambil data dari API');
+    console.log('Fetching health data dengan shopIds:', shopIds);
+    
+    // Menambahkan parameter shopIds ke URL jika tersedia
+    let flashSaleUrl = API_ENDPOINTS.flashSale;
+    let discountUrl = API_ENDPOINTS.discount;
+    
+    if (shopIds && shopIds.length > 0) {
+      // Menambahkan shopIds sebagai query parameter
+      const shopIdsParam = shopIds.join(',');
+      flashSaleUrl += `?shopIds=${shopIdsParam}`;
+      discountUrl += `?shopIds=${shopIdsParam}`;
+      console.log('API URLs dengan shopIds:', { flashSaleUrl, discountUrl });
     }
-
+    
+    // Buat variabel default untuk data flash sale dan discount
+    let flashSaleData = {
+      success: true,
+      data: [],
+      timestamp: new Date().toISOString()
+    };
+    
+    let discountData = {
+      success: true,
+      data: {
+        shops_without_backup: [],
+        ending_soon: [],
+        expired_without_ongoing: []
+      },
+      message: 'Default data'
+    };
+    
+    try {
+      // Ambil data flash sale
+      const flashSaleResponse = await fetch(flashSaleUrl);
+      console.log('Flash sale response status:', flashSaleResponse.status);
+      
+      if (flashSaleResponse.ok) {
+        const fsData = await flashSaleResponse.json();
+        console.log('Flash sale data success:', fsData.success);
+        
+        if (fsData.success) {
+          flashSaleData = fsData;
+        }
+      } else {
+        console.error('Flash sale response tidak ok:', flashSaleResponse.status, flashSaleResponse.statusText);
+      }
+    } catch (fsError) {
+      console.error('Error fetching flash sale data:', fsError);
+    }
+    
+    try {
+      // Ambil data discount
+      const discountResponse = await fetch(discountUrl);
+      console.log('Discount response status:', discountResponse.status);
+      
+      if (discountResponse.ok) {
+        const dcData = await discountResponse.json();
+        console.log('Discount data success:', dcData.success);
+        
+        if (dcData.success) {
+          discountData = dcData;
+        }
+      } else {
+        console.error('Discount response tidak ok:', discountResponse.status, discountResponse.statusText);
+      }
+    } catch (dcError) {
+      console.error('Error fetching discount data:', dcError);
+    }
+    
     return { flashSaleData, discountData };
   } catch (error) {
-    throw new Error(`Error fetching health data: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('Error fetching health data:', error);
+    // Kembalikan data default jika terjadi error
+    return {
+      flashSaleData: {
+        success: true,
+        data: [],
+        timestamp: new Date().toISOString()
+      },
+      discountData: {
+        success: true,
+        data: {
+          shops_without_backup: [],
+          ending_soon: [],
+          expired_without_ongoing: []
+        },
+        message: 'Error fetching data'
+      }
+    };
   }
 }
 
@@ -200,39 +294,11 @@ interface Shop {
   access_token: string;
 }
 
-async function getAllShopIds(): Promise<number[]> {
-  try {
-    const response = await fetch(API_ENDPOINTS.shops);
-    if (!response.ok) {
-      throw new Error('Gagal mengambil daftar toko');
-    }
-    const result = await response.json();
-    
-    // Response selalu dalam format:
-    // {
-    //   status: 'success',
-    //   message: string,
-    //   data: Array<Shop>
-    // }
-    if (result.status === 'success' && Array.isArray(result.data)) {
-      // Ambil shop_id dari toko yang aktif
-      return result.data
-        .filter((shop: Shop) => shop.is_active)
-        .map((shop: Shop) => shop.shop_id);
-    }
-
-    return [];
-  } catch (error) {
-    console.error('Error fetching shops:', error);
-    return [];
-  }
-}
-
 // Main Function
-export async function checkShopHealth(): Promise<ShopHealthResponse> {
+export async function checkShopHealth(shopIds?: number[]): Promise<ShopHealthResponse> {
   try {
-    // Ambil data flash sale dan diskon
-    const { flashSaleData, discountData } = await fetchHealthData();
+    // Ambil data flash sale dan diskon dengan meneruskan shopIds
+    const { flashSaleData, discountData } = await fetchHealthData(shopIds);
 
     // Process Flash Sale issues
     const criticalShops = processFlashSaleIssues(flashSaleData.data);
@@ -240,16 +306,16 @@ export async function checkShopHealth(): Promise<ShopHealthResponse> {
     // Process Discount issues
     const updatedCriticalShops = processDiscountIssues(discountData.data, criticalShops);
 
-    // Ambil data return issues untuk SEMUA toko
+    // Ambil data return issues untuk toko yang diberikan
     let returnIssues: ReturnIssue[] = [];
     try {
-      // Ambil semua shop_id
-      const shopIds = await getAllShopIds();
-      
-      if (shopIds.length > 0) {
+      if (shopIds && shopIds.length > 0) {
+        console.log('Memeriksa return issues untuk toko-toko:', shopIds);
         const returnPromises = shopIds.map(shopId => checkReturnIssues(shopId));
         const returnResults = await Promise.all(returnPromises);
         returnIssues = returnResults.flat();
+      } else {
+        console.log('Tidak ada shopIds yang diberikan, tidak memeriksa return issues');
       }
     } catch (error) {
       console.error('Error fetching return issues:', error);
@@ -295,10 +361,17 @@ export async function checkReturnIssues(shopId: number): Promise<ReturnIssue[]> 
     const data = await response.json();
     
     // Filter return dengan return_solution = 1 dan status = PROCESSED
-    const criticalReturns = data.data.return.filter((item: any) => 
-      item.return_solution === 1 && 
-      item.status === 'PROCESSING'
-    );
+    const criticalReturns = data.data.return
+      .filter((item: any) => 
+        item.return_solution === 1 && 
+        item.status === 'PROCESSING'
+      )
+      .map((item: any) => ({
+        // Menyimpan semua properti asli
+        ...item,
+        // Tambahkan shop_id
+        shop_id: shopId
+      }));
 
     return criticalReturns;
   } catch (error) {
