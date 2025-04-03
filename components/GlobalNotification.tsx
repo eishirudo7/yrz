@@ -13,38 +13,26 @@ export function GlobalNotification() {
   const { openChat } = useMiniChat();
 
   useEffect(() => {
-    console.log('SSE Connection Status:', isConnected);
-  }, [isConnected]);
-
-  useEffect(() => {
-    console.log('Received lastMessage:', lastMessage);
-    
     if (!lastMessage) return;
 
     switch (lastMessage.type) {
       case 'new_message':
-        console.log('Processing new_message notification');
         handleChatNotification(lastMessage);
         break;
       case 'new_order':
-        console.log('Processing new_order notification');
         handleOrderNotification(lastMessage);
         break;
       case 'item_violation':
-        console.log('Processing item_violation notification');
         handleViolationNotification(lastMessage);
         break;
       case 'shopee_update':
-        console.log('Processing shopee_update notification');
         handleUpdateNotification(lastMessage);
         break;
-      default:
-        console.log('Unhandled message type:', lastMessage.type);
     }
   }, [lastMessage]);
 
   const handleChatNotification = (message: any) => {
-    console.log("Pesan baru dari", message.shop_name, "dengan konten:", message.content);
+    console.log("Pesan baru dari", message.shop_name)
     toast.info(`${message.shop_name}`, {
       icon: <MessageSquare className="w-4 h-4" />,
       description: (
@@ -77,8 +65,12 @@ export function GlobalNotification() {
 
   const handleOrderNotification = (message: any) => {
     const audio = new Audio('/order.mp3');
-    console.log("Memproses notifikasi pesanan baru dari", message.shop_name, "dengan ID:", message.order_sn);
-    audio.play();
+    console.log("Pesanan baru dari", message.shop_name)
+    
+    // Tangani error pemutaran audio
+    audio.play().catch(err => {
+      console.log("Tidak dapat memainkan suara notifikasi:", err.message);
+    });
     
     toast.success(`${message.shop_name} - #${message.order_sn}`, {
       icon: <ShoppingBag className="w-4 h-4" />
@@ -86,9 +78,12 @@ export function GlobalNotification() {
   };
 
   const handleViolationNotification = (message: any) => {
-    const audio = new Audio('/alert.mp3'); // Tambahkan sound untuk violation
-    console.log("Memproses notifikasi pelanggaran produk:", message);
-    audio.play();
+    const audio = new Audio('/alert.mp3');
+    
+    // Tangani error pemutaran audio
+    audio.play().catch(err => {
+      console.log("Tidak dapat memainkan suara notifikasi:", err.message);
+    });
     
     const getViolationTitle = () => {
       switch (message.action) {
@@ -117,9 +112,12 @@ export function GlobalNotification() {
   };
 
   const handleUpdateNotification = (message: any) => {
-    const audio = new Audio('/notification.mp3'); // Tambahkan sound untuk update
-    console.log("Memproses notifikasi update:", message);
-    audio.play();
+    const audio = new Audio('/notification.mp3');
+    
+    // Tangani error pemutaran audio
+    audio.play().catch(err => {
+      console.log("Tidak dapat memainkan suara notifikasi:", err.message);
+    });
     
     toast.info(message.title, {
       icon: <Bell className="w-4 h-4" />,

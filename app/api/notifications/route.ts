@@ -1,65 +1,85 @@
-import { createClient } from '@/utils/supabase/server';
-import { NextResponse, NextRequest } from 'next/server';
-
+import { supabase } from '@/lib/supabase';
+import { NextResponse } from 'next/server';
+import { PenaltyService } from '@/app/services/penaltyService';
+import { UpdateService } from '@/app/services/updateService';
+import { ViolationService } from '@/app/services/violationService';
 import { getAllShops } from '@/app/services/shopeeService';
-import { checkRateLimit, createSSEConnection } from '@/app/services/serverSSEService';
-
-interface Notification {
-  id: number;
-  shop_id: number;
-  notification_type: 'shop_penalty' | 'shopee_update' | 'item_violation';
-  data: any;
-  shop_name: string;
-  read: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 // GET - Ambil notifikasi
-export async function GET(req: NextRequest) {
-  const ip = req.ip || 'unknown';
-  
-  // Cek rate limiting
-  const rateLimitResult = checkRateLimit(ip);
-  
-  if (!rateLimitResult.allowed) {
-    return new Response('Too Many Requests', { status: 429 });
-  }
-
+export async function GET(req: Request) {
   try {
-    // Autentikasi user
-    const supabase = await createClient();
-    const { data: { session } } = await supabase.auth.getSession();
+    const { searchParams } = new URL(req.url);
+    const shop_id = searchParams.get('shop_id');
+    const unread_only = searchParams.get('unread_only') === 'true';
     
-    if (!session || !session.user) {
-      return new Response('Unauthorized', { status: 401 });
+    // Ambil semua toko yang dimiliki user saat ini
+    const shops = await getAllShops();
+    
+    if (shops.length === 0) {
+      return NextResponse.json([]);
     }
     
-    const userId = session.user.id;
+    // Ambil shop_ids dari toko yang dimiliki user
+    const shop_ids = shops.map(shop => shop.id);
     
-    // Ambil daftar toko yang dimiliki user
-    const { data: shops } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('user_id', userId)
-      .eq('is_active', true);
-    
-    const shopIds = shops ? shops.map(shop => shop.shop_id) : [];
-    
-    // Buat koneksi SSE dengan informasi user dan toko
-    const stream = createSSEConnection(req, userId, shopIds);
+    let query = supabase
+      .from('shopee_notifications')
+      .select('*')
+      .in('notification_type', ['shop_penalty', 'shopee_update', 'item_violation'])
+      .in('shop_id', shop_ids)
+      .order('created_at', { ascending: false });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    // Kalau ada shop_id spesifik yang diminta dan ada dalam daftar yang dimiliki user
+    if (shop_id && shop_ids.includes(shop_id)) {
+      query = query.eq('shop_id', shop_id);
+    }
+
+    if (unread_only) {
+      query = query.eq('read', false);
+    }
+
+    const { data: notifications, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Transform notifications berdasarkan tipenya
+    const transformedNotifications = notifications.map(notification => {
+      switch (notification.notification_type) {
+        case 'shop_penalty':
+          return {
+            id: notification.id,
+            ...PenaltyService.createPenaltyNotification(notification.data),
+            shop_name: notification.shop_name
+          };
+        case 'shopee_update':
+          return {
+            ...UpdateService.createUpdateNotification({
+              ...notification,
+              id: notification.id
+            }),
+            shop_name: notification.shop_name
+          };
+        case 'item_violation':
+          return {
+            id: notification.id,
+            ...ViolationService.createViolationNotification(notification.data),
+            shop_name: notification.shop_name
+          };
+        default:
+          return null;
+      }
+    }).filter(Boolean);
+    
+    return NextResponse.json(transformedNotifications);
   } catch (error) {
-    console.error('Error dalam membuat SSE connection:', error);
-    return new Response('Error', { status: 500 });
+    console.error('Error in GET notifications:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -74,30 +94,6 @@ export async function POST(req: Request) {
         { error: 'notification_ids harus berupa array' }, 
         { status: 400 }
       );
-    }
-
-    // Dapatkan daftar toko yang dimiliki user
-    const shops = await getAllShops();
-    const userShopIds = shops.map(shop => shop.shop_id);
-
-    const supabase = await createClient();
-    // Pastikan semua notifikasi yang akan diupdate adalah milik toko user
-    const { data: notifications } = await supabase
-      .from('shopee_notifications')
-      .select('id, shop_id')
-      .in('id', notification_ids);
-
-    if (!notifications) {
-      return NextResponse.json({ error: 'Notifications not found' }, { status: 404 });
-    }
-
-    // Cek apakah ada notifikasi yang bukan milik toko user
-    const unauthorizedNotifications = (notifications as Notification[]).filter(
-      notification => !userShopIds.includes(notification.shop_id)
-    );
-
-    if (unauthorizedNotifications.length > 0) {
-      return NextResponse.json({ error: 'Unauthorized access to some notifications' }, { status: 403 });
     }
 
     const { error } = await supabase

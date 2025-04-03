@@ -114,7 +114,6 @@ async function handleOrder(data: any) {
         
         if (escrowResponse && escrowResponse.success && escrowResponse.data) {
           await saveEscrowDetail(data.shop_id, escrowResponse.data);
-          console.log(`Detail escrow berhasil disimpan untuk order: ${orderData.ordersn}`);
         } else {
           console.error(`Gagal mendapatkan detail escrow: ${JSON.stringify(escrowResponse)}`);
         }
