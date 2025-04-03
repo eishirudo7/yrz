@@ -120,11 +120,21 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
       if (response.ok) {
         const result = await response.json()
-        if (result.success) {
-          setAdsData(result.data || [])
+        if (result.ads_data) {
+          // Convert struktur data dari API ke format yang diharapkan oleh komponen
+          const formattedAdsData = result.ads_data.map((item: any) => ({
+            shopId: item.shop_id,
+            shopName: item.shop_name,
+            totalSpend: item.raw_cost || 0,
+            cost_formatted: item.cost || 'Rp 0'
+          }));
           
-          // Hitung total pengeluaran iklan
-          const totalSpend = result.data.reduce((total: number, item: AdsData) => total + item.totalSpend, 0)
+          setAdsData(formattedAdsData)
+          
+          // Gunakan raw_total_cost dari API jika tersedia, atau hitung dari data
+          const totalSpend = result.raw_total_cost || 
+            formattedAdsData.reduce((total: number, item: AdsData) => total + item.totalSpend, 0);
+            
           setTotalAdsSpend(totalSpend)
         }
       }

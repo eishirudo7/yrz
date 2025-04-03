@@ -8,30 +8,43 @@ import { ShoppingBag, MessageSquare, AlertTriangle, Bell } from 'lucide-react'
 import { useMiniChat } from '@/contexts/MiniChatContext'
 
 export function GlobalNotification() {
-  const { lastMessage } = useSSE();
+  const { lastMessage, isConnected } = useSSE();
   const router = useRouter();
   const { openChat } = useMiniChat();
 
   useEffect(() => {
+    console.log('SSE Connection Status:', isConnected);
+  }, [isConnected]);
+
+  useEffect(() => {
+    console.log('Received lastMessage:', lastMessage);
+    
     if (!lastMessage) return;
 
     switch (lastMessage.type) {
       case 'new_message':
+        console.log('Processing new_message notification');
         handleChatNotification(lastMessage);
         break;
       case 'new_order':
+        console.log('Processing new_order notification');
         handleOrderNotification(lastMessage);
         break;
       case 'item_violation':
+        console.log('Processing item_violation notification');
         handleViolationNotification(lastMessage);
         break;
       case 'shopee_update':
+        console.log('Processing shopee_update notification');
         handleUpdateNotification(lastMessage);
         break;
+      default:
+        console.log('Unhandled message type:', lastMessage.type);
     }
   }, [lastMessage]);
 
   const handleChatNotification = (message: any) => {
+    console.log("Pesan baru dari", message.shop_name, "dengan konten:", message.content);
     toast.info(`${message.shop_name}`, {
       icon: <MessageSquare className="w-4 h-4" />,
       description: (
@@ -64,6 +77,7 @@ export function GlobalNotification() {
 
   const handleOrderNotification = (message: any) => {
     const audio = new Audio('/order.mp3');
+    console.log("Memproses notifikasi pesanan baru dari", message.shop_name, "dengan ID:", message.order_sn);
     audio.play();
     
     toast.success(`${message.shop_name} - #${message.order_sn}`, {
@@ -73,6 +87,7 @@ export function GlobalNotification() {
 
   const handleViolationNotification = (message: any) => {
     const audio = new Audio('/alert.mp3'); // Tambahkan sound untuk violation
+    console.log("Memproses notifikasi pelanggaran produk:", message);
     audio.play();
     
     const getViolationTitle = () => {
@@ -103,6 +118,7 @@ export function GlobalNotification() {
 
   const handleUpdateNotification = (message: any) => {
     const audio = new Audio('/notification.mp3'); // Tambahkan sound untuk update
+    console.log("Memproses notifikasi update:", message);
     audio.play();
     
     toast.info(message.title, {

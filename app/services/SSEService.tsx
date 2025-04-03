@@ -15,21 +15,31 @@ class SSEService {
   private static instance: SSEService;
   private eventSource: EventSource | null = null;
   
-  private constructor() {}
+  private constructor() {
+    console.log('SSEService instance created');
+  }
 
   static getInstance() {
     if (!SSEService.instance) {
+      console.log('Creating new SSEService instance');
       SSEService.instance = new SSEService();
     }
     return SSEService.instance;
   }
 
   connect() {
-    if (this.eventSource) return;
+    if (this.eventSource) {
+      console.log('EventSource already exists, not creating a new one');
+      return this.eventSource;
+    }
 
     try {
+      console.log('Attempting to create new EventSource');
       const url = new URL('/api/notifications/sse', window.location.origin);
+      console.log('SSE URL:', url.toString());
+      
       this.eventSource = new EventSource(url.toString());
+      console.log('EventSource created:', this.eventSource);
       
       return this.eventSource;
     } catch (err) {
@@ -40,6 +50,7 @@ class SSEService {
 
   disconnect() {
     if (this.eventSource) {
+      console.log('Disconnecting EventSource');
       this.eventSource.close();
       this.eventSource = null;
     }
@@ -52,21 +63,25 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
   const [lastMessage, setLastMessage] = useState<any | null>(null);
 
   useEffect(() => {
+    console.log('SSEProvider mounted, setting up EventSource');
     const sseService = SSEService.getInstance();
     const eventSource = sseService.connect();
 
     if (eventSource) {
       eventSource.onopen = () => {
-        console.log('SSE terhubung');
+        console.log('SSE connection open event fired');
         setIsConnected(true);
       };
 
       eventSource.onmessage = (event) => {
+        console.log('Received SSE message:', event.data);
         try {
           const data = JSON.parse(event.data);
+          console.log('Parsed SSE data:', data);
           setLastMessage(data);
           
           if (data.type === 'connection_established') {
+            console.log('Connection established with ID:', data.connectionId);
             setConnectionId(data.connectionId);
           }
           
@@ -78,19 +93,24 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      eventSource.onerror = () => {
-        console.error('SSE connection error');
+      eventSource.onerror = (error) => {
+        console.error('SSE connection error:', error);
         setIsConnected(false);
         sseService.disconnect();
         
         // Reconnect setelah 5 detik
+        console.log('Scheduling reconnection attempt in 5 seconds');
         setTimeout(() => {
+          console.log('Attempting to reconnect SSE');
           sseService.connect();
         }, 5000);
       };
+    } else {
+      console.error('Failed to create EventSource');
     }
 
     return () => {
+      console.log('SSEProvider unmounting, disconnecting EventSource');
       sseService.disconnect();
       setIsConnected(false);
     };

@@ -43,11 +43,14 @@ export function checkRateLimit(ip: string): { allowed: boolean, attempts?: { cou
  * Membuat koneksi SSE baru dengan informasi toko yang dimiliki user
  */
 export function createSSEConnection(req: NextRequest, userId: string, shopIds: number[]) {
+  console.log(`Creating SSE connection for user ${userId} with shops:`, shopIds);
+  
   try {
     const stream = new ReadableStream({
       start(controller) {
         // Simpan controller dengan userId dan shopIds
         clients.set(controller, { userId, shopIds });
+        console.log(`New SSE client added. Total active connections: ${clients.size}`);
         
         // Kirim data inisial ketika koneksi terbentuk
         const initialData = {
@@ -64,10 +67,17 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
           '\n'
         ].join('\n');
         
+        console.log('Sending initial connection message');
         controller.enqueue(event);
 
         // Set up heartbeat
         const heartbeatInterval = setInterval(() => {
+          if (!clients.has(controller)) {
+            console.log('Heartbeat: client no longer exists, clearing interval');
+            clearInterval(heartbeatInterval);
+            return;
+          }
+          
           const heartbeat = {
             type: 'heartbeat',
             timestamp: Date.now()
@@ -79,16 +89,28 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
             '\n'
           ].join('\n');
           
-          controller.enqueue(heartbeatEvent);
+          console.log(`Sending heartbeat to user ${userId}`);
+          
+          try {
+            controller.enqueue(heartbeatEvent);
+          } catch (error) {
+            console.error('Error sending heartbeat, removing client:', error);
+            clearInterval(heartbeatInterval);
+            clients.delete(controller);
+          }
         }, 30000); // Kirim heartbeat setiap 30 detik
 
         req.signal.addEventListener('abort', () => {
+          console.log(`SSE connection aborted for user ${userId}`);
           clearInterval(heartbeatInterval);
           clients.delete(controller);
+          console.log(`Client removed. Total remaining connections: ${clients.size}`);
         });
       },
       cancel(controller) {
+        console.log('SSE connection cancelled');
         clients.delete(controller);
+        console.log(`Client removed on cancel. Total remaining connections: ${clients.size}`);
       }
     });
 
@@ -103,6 +125,7 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
  * Mengirim event hanya ke klien yang memiliki toko tertentu
  */
 export function sendEventToShopOwners(data: any) {
+  console.log('Attempting to send event to shop owners:', data);
   const eventId = Date.now().toString();
   
   // Ambil shop_id dari data
@@ -113,6 +136,8 @@ export function sendEventToShopOwners(data: any) {
     return;
   }
   
+  console.log(`Sending event for shop ${shopId}, event type: ${data.type}`);
+  
   const event = [
     `id: ${eventId}`,
     `retry: 10000`,
@@ -122,26 +147,34 @@ export function sendEventToShopOwners(data: any) {
 
   // Hitung jumlah klien yang menerima notifikasi
   let recipientCount = 0;
+  let totalClients = clients.size;
+
+  console.log(`Total active clients: ${totalClients}`);
 
   // Iterasi semua client dan kirim hanya ke yang memiliki toko tersebut
   clients.forEach((userData, controller) => {
     try {
       // Kirim hanya jika user memiliki toko ini
       if (userData.shopIds.includes(Number(shopId))) {
+        console.log(`Sending notification to user ${userData.userId} for shop ${shopId}`);
         controller.enqueue(event);
         recipientCount++;
+      } else {
+        console.log(`User ${userData.userId} does not own shop ${shopId}, skipping notification`);
       }
     } catch (error) {
-      console.error('Error mengirim event:', error);
+      console.error(`Error sending event to user ${userData.userId}:`, error);
       clients.delete(controller);
+      console.log(`Client removed due to error. Total remaining connections: ${clients.size}`);
     }
   });
 
-  console.log(`Notifikasi untuk toko ${shopId} dikirim ke ${recipientCount} klien`);
+  console.log(`Notification for shop ${shopId} sent to ${recipientCount}/${totalClients} clients`);
 }
 
 // Tetap pertahankan fungsi sendEventToAll untuk notifikasi sistem
 export function sendEventToAll(data: any) {
+  console.log('Sending event to all connected clients:', data);
   const eventId = Date.now().toString();
   const event = [
     `id: ${eventId}`,
@@ -150,13 +183,21 @@ export function sendEventToAll(data: any) {
     '\n'
   ].join('\n');
 
+  let successCount = 0;
+  const totalClients = clients.size;
+
   // Perbaikan: Menggunakan key (controller) sebagai parameter pertama dan value (userData) sebagai kedua
   clients.forEach((userData, controller) => {
     try {
+      console.log(`Sending system notification to user ${userData.userId}`);
       controller.enqueue(event);
+      successCount++;
     } catch (error) {
-      console.error('Error mengirim event:', error);
+      console.error(`Error sending event to user ${userData.userId}:`, error);
       clients.delete(controller);
+      console.log(`Client removed due to error. Total remaining connections: ${clients.size}`);
     }
   });
+  
+  console.log(`System notification sent to ${successCount}/${totalClients} clients`);
 } 
