@@ -173,7 +173,8 @@ export const useDashboard = () => {
               updatedOrders[existingOrderIndex] = {
                 ...updatedOrders[existingOrderIndex],
                 order_status: newOrder.order_status,
-                shipping_carrier: newOrder.shipping_carrier
+                shipping_carrier: newOrder.shipping_carrier,
+                escrow_amount_after_adjustment: newOrder.escrow_amount_after_adjustment
               };
               
               const newSummary = {
