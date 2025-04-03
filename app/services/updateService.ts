@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { sendEventToAll } from '@/app/api/webhook/route';
+import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 
 // Types
 export interface ShopeeUpdateWebhook {
@@ -110,7 +110,7 @@ export class UpdateService {
         read: false
       };
 
-      sendEventToAll(notification);
+      sendEventToShopOwners(notification);
     } catch (error) {
       console.error('Error sending update notification:', error);
       throw error;

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { sendEventToAll } from '@/app/services/serverSSEService';
+import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 
 // Types
 export interface ViolationItemWebhook {
@@ -96,7 +96,7 @@ export class ViolationService {
         shop_name: data.shop_name
       };
 
-      sendEventToAll(notificationWithId);
+      sendEventToShopOwners(notificationWithId);
     } catch (error) {
       console.error('Error sending violation notification:', error);
       throw error;
