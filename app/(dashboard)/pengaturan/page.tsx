@@ -1,7 +1,10 @@
+'use client'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { useEffect, useState } from "react"
+import useSWR from "swr"
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,6 +12,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { SettingsForm } from './SettingsForm'
 import { TemperatureSlider } from "./TemperatureSlider"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import { PromptDialog } from './PromptDialog'
 
@@ -38,23 +42,102 @@ async function checkOpenAIKey(apiKey: string) {
   }
 }
 
-async function getSettings() {
-  console.log(process.env.NEXT_PUBLIC_BASE_URL)
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/settings`, {
+// Fungsi fetcher untuk SWR
+const fetcher = async (url: string) => {
+  const response = await fetch(url, {
     cache: 'no-store'
   });
-  if (!res.ok) throw new Error('Gagal mengambil data pengaturan');
-  return res.json();
-}
+  const data = await response.json();
+  
+  if (!data.ok) throw new Error('Gagal mengambil data pengaturan');
+  return data;
+};
 
-export default async function PengaturanPage() {
-  const { pengaturan, autoShip } = await getSettings();
+export default function PengaturanPage() {
+  const { data, error, isLoading } = useSWR('/api/settings', fetcher, {
+    revalidateOnFocus: false, // Mencegah refetch saat focus kembali ke halaman
+    dedupingInterval: 60000, // Mencegah request berulang dalam waktu 1 menit
+  });
+  
+  const [isValidApiKey, setIsValidApiKey] = useState<boolean>(false);
+  
+  useEffect(() => {
+    // Cek API key jika tersedia
+    const checkApiKey = async () => {
+      if (data?.pengaturan?.openai_api) {
+        const isValid = await checkOpenAIKey(data.pengaturan.openai_api);
+        setIsValidApiKey(isValid);
+      }
+    };
+    
+    if (data) {
+      checkApiKey();
+    }
+  }, [data]);
+  
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Pengaturan</h1>
+        <div className="space-y-4">
+          <Card className="mb-4">
+            <CardHeader>
+              <Skeleton className="h-8 w-1/3" />
+              <Skeleton className="h-4 w-1/2" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="mb-4">
+            <CardHeader>
+              <Skeleton className="h-8 w-1/3" />
+              <Skeleton className="h-4 w-1/2" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Skeleton className="h-6 w-1/2" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+  
+  // Error state
+  if (error) {
+    return (
+      <div className="container mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Pengaturan</h1>
+        <Card className="mb-4 border-red-500">
+          <CardHeader>
+            <CardTitle className="text-red-500">Error</CardTitle>
+            <CardDescription>
+              Gagal memuat pengaturan. Silakan coba lagi nanti.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p>{error.message}</p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={() => window.location.reload()}>Coba Lagi</Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+  
+  // Data sudah tersedia
+  const { pengaturan, autoShip, subscription } = data || {};
   const settings = Array.isArray(pengaturan) ? pengaturan[0] : pengaturan;
-
-  // Cek API key jika tersedia
-  const isValidApiKey = settings?.openai_api ? 
-    await checkOpenAIKey(settings.openai_api) : 
-    false;
 
   return (
     <div className="container mx-auto p-4">
@@ -184,6 +267,39 @@ export default async function PengaturanPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {subscription && (
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle>Informasi Paket Langganan</CardTitle>
+              <CardDescription>Detail paket langganan saat ini</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Paket</span>
+                  <span className="font-bold">{subscription?.plan?.[0]?.name || 'Free'}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Jumlah Toko</span>
+                  <span className="font-bold">{autoShip?.length || 0} / {subscription?.plan?.[0]?.max_shops || 1}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Status</span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    {subscription?.status || 'active'}
+                  </span>
+                </div>
+                {subscription?.end_date && (
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Berlaku Hingga</span>
+                    <span className="font-medium">{new Date(subscription.end_date).toLocaleDateString('id-ID')}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <CardFooter>
           <Button type="submit">Simpan Pengaturan</Button>

@@ -391,6 +391,9 @@ export default function OrdersPage() {
 
   // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 20 dan escrow < 200000)
   const isFakeOrder = (order: Order) => {
+    // Pesanan yang dibatalkan (CANCELLED) tidak dihitung sebagai fake order
+    if (order.order_status === 'CANCELLED') return false;
+    
     if (!order.sku_qty) return false;
     
     const skuEntries = order.sku_qty.split(',').map(entry => entry.trim());
@@ -597,6 +600,11 @@ export default function OrdersPage() {
         default:
           return true;
       }
+    }).sort((a, b) => {
+      // Urutkan berdasarkan pay_time (dari baru ke lama)
+      const aTime = a.cod ? a.create_time : (a.pay_time || a.create_time);
+      const bTime = b.cod ? b.create_time : (b.pay_time || b.create_time);
+      return bTime - aTime;
     });
   }, [searchResults, filteredOrdersByShop, activeFilter]);
 
@@ -865,7 +873,12 @@ export default function OrdersPage() {
       if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery') 
         return total
         
-      return total + parseFloat(order.total_amount)
+      // Selalu gunakan recalculated_total_amount jika tersedia
+      const orderAmount = order.recalculated_total_amount !== undefined ? 
+        order.recalculated_total_amount : 
+        parseFloat(order.total_amount)
+      
+      return total + orderAmount
     }, 0)
   }, [filteredOrders])
 
@@ -1708,7 +1721,10 @@ export default function OrdersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      Rp {parseInt(order.total_amount).toLocaleString('id-ID')}
+                      {order.recalculated_total_amount !== undefined ? 
+                        `Rp ${Math.round(order.recalculated_total_amount).toLocaleString('id-ID')}` :
+                        `Rp ${parseInt(order.total_amount).toLocaleString('id-ID')}`
+                      }
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       {order.escrow_amount_after_adjustment !== undefined && order.escrow_amount_after_adjustment !== null

@@ -8,6 +8,7 @@ export interface Order {
   shop_name: string
   order_status: string
   total_amount: string
+  recalculated_total_amount?: number
   buyer_username: string
   shipping_carrier: string
   tracking_number: string
@@ -15,6 +16,7 @@ export interface Order {
   create_time: number
   cod: boolean
   cancel_reason: string
+  pay_time?: number
   buyer_user_id?: number
   shop_id?: number
   escrow_amount_after_adjustment?: number
@@ -114,32 +116,66 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
   const fetchAdsData = async (startTimestamp: number, endTimestamp: number) => {
     try {
-      const response = await fetch(
-        `/api/ads?start_timestamp=${startTimestamp}&end_timestamp=${endTimestamp}`
-      )
-
-      if (response.ok) {
-        const result = await response.json()
-        if (result.ads_data) {
-          // Convert struktur data dari API ke format yang diharapkan oleh komponen
-          const formattedAdsData = result.ads_data.map((item: any) => ({
-            shopId: item.shop_id,
-            shopName: item.shop_name,
-            totalSpend: item.raw_cost || 0,
-            cost_formatted: item.cost || 'Rp 0'
-          }));
-          
-          setAdsData(formattedAdsData)
-          
-          // Gunakan raw_total_cost dari API jika tersedia, atau hitung dari data
-          const totalSpend = result.raw_total_cost || 
-            formattedAdsData.reduce((total: number, item: AdsData) => total + item.totalSpend, 0);
-            
-          setTotalAdsSpend(totalSpend)
-        }
+      // Ubah timestamp menjadi tanggal dalam format YYYY-MM-DD
+      const startDate = new Date(startTimestamp * 1000);
+      const endDate = new Date(endTimestamp * 1000);
+      
+      // Format tanggal untuk API iklan (YYYY-MM-DD)
+      const startDateStr = formatDateToYYYYMMDD(startDate);
+      const endDateStr = formatDateToYYYYMMDD(endDate);
+      
+      // Debug: log tanggal input
+      console.log("Input ke fetchAdsData:", startDateStr, endDateStr);
+      
+      // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
+      const formattedStartDate = formatDateToDDMMYYYY(startDateStr);
+      const formattedEndDate = formatDateToDDMMYYYY(endDateStr);
+      
+      // Debug: log tanggal yang dikirim ke API
+      console.log("Dikirim ke API ads:", formattedStartDate, formattedEndDate);
+      
+      // Panggil API untuk mendapatkan data iklan
+      const response = await fetch(`/api/ads?start_date=${formattedStartDate}&end_date=${formattedEndDate}&_timestamp=${Date.now()}`);
+      
+      if (!response.ok) {
+        throw new Error(`Gagal mengambil data iklan`);
+      }
+      
+      const adsResult = await response.json();
+      
+      // Debug: log hasil respons API
+      console.log("Respons dari API ads:", adsResult);
+      console.log("Struktur ads_data:", adsResult.ads_data);
+      console.log("Tipe ads_data:", Array.isArray(adsResult.ads_data) ? "Array" : typeof adsResult.ads_data);
+      console.log("Jumlah item dalam ads_data:", adsResult.ads_data ? adsResult.ads_data.length : 0);
+      
+      // Simpan data toko jika ada
+      if (adsResult && adsResult.ads_data) {
+        setAdsData(adsResult.ads_data.map((ad: any) => ({
+          shopId: ad.shop_id,
+          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
+          totalSpend: ad.raw_cost,
+          cost_formatted: ad.cost
+        })));
+        
+        // Debug: log hasil konversi ads_data
+        console.log("AdsData setelah konversi:", adsResult.ads_data.map((ad: any) => ({
+          shopId: ad.shop_id,
+          shopName: ad.shop_name || `Shop ${ad.shop_id}`,
+          totalSpend: ad.raw_cost,
+          cost_formatted: ad.cost
+        })));
+      }
+      
+      // Ambil total_cost langsung dari API response
+      if (adsResult && adsResult.raw_total_cost) {
+        // Gunakan raw_total_cost yang sudah dalam bentuk angka
+        const totalCost = adsResult.raw_total_cost;
+        setTotalAdsSpend(totalCost);
+        console.log("Total pengeluaran iklan:", adsResult.total_cost, "(Rp)", adsResult.raw_total_cost, "(angka)");
       }
     } catch (err) {
-      console.error('Error fetching ads data:', err)
+      console.error("Error saat mengambil data iklan:", err)
       // Tidak perlu set error utama, karena ini hanya data pendukung
     }
   }

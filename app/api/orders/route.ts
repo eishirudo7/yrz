@@ -14,10 +14,14 @@ interface Order {
   tracking_number: string;
   sku_qty: string;
   create_time: number;
+  update_time?: number;
+  pay_time?: number;
   cod: boolean;
   cancel_reason: string;
   buyer_user_id?: number;
   shop_id?: number;
+  document_status?: string;
+  is_printed?: boolean;
   escrow_amount_after_adjustment?: number;
 }
 
@@ -64,46 +68,181 @@ export async function GET(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Lakukan proses pagination di server seperti yang dilakukan di client sebelumnya
-    let allOrders: Order[] = [];
+    // Jika start_timestamp dan end_timestamp sama, berarti user ingin data untuk satu hari penuh
+    let startTimestampValue = parseInt(startTimestamp);
+    let endTimestampValue = parseInt(endTimestamp);
+    
+    if (startTimestampValue === endTimestampValue) {
+      // Konversi timestamp ke Date untuk mendapatkan tanggal
+      const dateObj = new Date(startTimestampValue * 1000);
+      // Set waktu ke awal hari (00:00:00)
+      dateObj.setHours(0, 0, 0, 0);
+      startTimestampValue = Math.floor(dateObj.getTime() / 1000);
+      
+      // Set waktu ke akhir hari (23:59:59)
+      dateObj.setHours(23, 59, 59, 999);
+      endTimestampValue = Math.floor(dateObj.getTime() / 1000);
+      
+      console.log(`Mengubah rentang timestamp untuk satu hari penuh: ${startTimestampValue} - ${endTimestampValue}`);
+    }
+    
+    // === OPTIMASI: Pisahkan query menjadi beberapa bagian dengan paginasi ===
+    console.time('fetch_orders');
+    
+    // Lakukan proses pagination di server
+    let allOrdersData: any[] = [];
     let page = 0;
     const pageSize = 800;
     let hasMore = true;
     
-    console.time('fetch_orders');
-    
-    // Proses pagination di server, kembali menggunakan orders_view
-    // untuk menghindari masalah dengan struktur fungsi RPC
+    // 1. Query dasar untuk data pesanan dengan paginasi
     while (hasMore) {
-      try {
-        const { data, error } = await supabase
-          .from('orders_view')
-          .select('*')
-          .filter('create_time', 'gte', parseInt(startTimestamp))
-          .filter('create_time', 'lte', parseInt(endTimestamp))
-          .in('shop_id', userShopIds)
-          .order('pay_time', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1);
-        
-        if (error) {
-          console.error('Error fetching orders:', error);
-          return NextResponse.json({
-            success: false,
-            message: error.message
-          }, { status: 500 });
-        }
-        
-        if (data && data.length > 0) {
-          allOrders = [...allOrders, ...data as Order[]];
-          page++;
-        }
-        
-        hasMore = data && data.length === pageSize;
-      } catch (err) {
-        console.error('Exception in fetch orders:', err);
-        throw err;
+      const { data: ordersPageData, error: ordersPageError } = await supabase
+        .from('orders')
+        .select(`
+          order_sn, shop_id, order_status, cod, buyer_user_id,
+          total_amount, create_time, update_time, pay_time,
+          buyer_username, shipping_carrier, escrow_amount_after_adjustment,
+          cancel_reason
+        `)
+        .filter('create_time', 'gte', startTimestampValue)
+        .filter('create_time', 'lte', endTimestampValue)
+        .in('shop_id', userShopIds)
+        .order('create_time', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
+      
+      if (ordersPageError) {
+        console.error('Error fetching orders page:', ordersPageError);
+        return NextResponse.json({
+          success: false,
+          message: ordersPageError.message
+        }, { status: 500 });
+      }
+      
+      if (ordersPageData && ordersPageData.length > 0) {
+        allOrdersData = [...allOrdersData, ...ordersPageData];
+        page++;
+      }
+      
+      hasMore = ordersPageData && ordersPageData.length === pageSize;
+    }
+    
+    console.log(`Total orders loaded: ${allOrdersData.length} in ${page} pages`);
+    
+    if (allOrdersData.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        total: 0,
+        ordersWithoutEscrow: []
+      });
+    }
+    
+    // Data toko sudah tersedia dari hasil getAllShops(), tidak perlu query lagi
+    // Siapkan data dalam format yang sama seperti yang diharapkan
+    const shopsData = userShops.map(shop => ({
+      shop_id: shop.shop_id,
+      shop_name: shop.shop_name
+    }));
+    
+    // Ambil unique order_sn untuk query selanjutnya
+    const orderSns = Array.from(new Set(allOrdersData.map(o => o.order_sn)));
+    
+    // 3. Query untuk data logistic dengan batching jika diperlukan
+    const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
+    let allLogisticData: any[] = [];
+    
+    for (let i = 0; i < orderSns.length; i += batchSize) {
+      const batchOrderSns = orderSns.slice(i, i + batchSize);
+      
+      const { data: logisticBatchData, error: logisticBatchError } = await supabase
+        .from('logistic')
+        .select('order_sn, tracking_number, document_status, is_printed')
+        .in('order_sn', batchOrderSns);
+      
+      if (logisticBatchError) {
+        console.error(`Error fetching logistics batch ${i}:`, logisticBatchError);
+      } else if (logisticBatchData) {
+        allLogisticData = [...allLogisticData, ...logisticBatchData];
       }
     }
+    
+    // 4. Query untuk data order_items dengan batching
+    let allOrderItemsData: any[] = [];
+    
+    for (let i = 0; i < orderSns.length; i += batchSize) {
+      const batchOrderSns = orderSns.slice(i, i + batchSize);
+      
+      const { data: itemsBatchData, error: itemsBatchError } = await supabase
+        .from('order_items')
+        .select('order_sn, item_sku, model_quantity_purchased, model_discounted_price')
+        .in('order_sn', batchOrderSns);
+      
+      if (itemsBatchError) {
+        console.error(`Error fetching order items batch ${i}:`, itemsBatchError);
+      } else if (itemsBatchData) {
+        allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
+      }
+    }
+    
+    // 5. Gabungkan data di server
+    const allOrders = allOrdersData.map(order => {
+      // Cari data toko
+      const shop = shopsData?.find(s => s.shop_id === order.shop_id) || { shop_name: 'Tidak diketahui' };
+      
+      // Cari data logistic
+      const logistic = allLogisticData?.find(l => l.order_sn === order.order_sn) || { 
+        tracking_number: null, 
+        document_status: null,
+        is_printed: false
+      };
+      
+      // Kumpulkan item untuk format sku_qty dan hitung total
+      const items = allOrderItemsData?.filter(i => i.order_sn === order.order_sn) || [];
+      
+      // Hitung ulang total_amount dari order_items (seperti pada view SQL)
+      const recalculated_total_amount = items.reduce((total, item) => {
+        const price = parseFloat(item.model_discounted_price || 0);
+        const quantity = parseInt(item.model_quantity_purchased || 0);
+        return total + (price * quantity);
+      }, 0);
+      
+      const skuQty = items.length > 0
+        ? items.map(item => `${item.item_sku} (${item.model_quantity_purchased})`).join(', ')
+        : '';
+      
+      // Gabungkan semua data
+      return {
+        order_sn: order.order_sn,
+        shop_id: order.shop_id,
+        shop_name: shop.shop_name,
+        order_status: order.order_status,
+        cod: order.cod,
+        buyer_user_id: order.buyer_user_id,
+        total_amount: order.total_amount,
+        recalculated_total_amount: recalculated_total_amount || order.total_amount, // Tambahkan total yang dihitung ulang
+        create_time: order.create_time,
+        update_time: order.update_time,
+        pay_time: order.pay_time,
+        buyer_username: order.buyer_username,
+        shipping_carrier: order.shipping_carrier,
+        tracking_number: logistic.tracking_number,
+        document_status: logistic.document_status,
+        is_printed: logistic.is_printed,
+        sku_qty: skuQty,
+        cancel_reason: order.cancel_reason,
+        escrow_amount_after_adjustment: order.escrow_amount_after_adjustment
+      } as Order;
+    });
+    
+    // Urutkan pesanan berdasarkan kriteria:
+    // - Jika COD, gunakan create_time
+    // - Jika bukan COD, gunakan pay_time (dengan fallback ke create_time)
+    allOrders.sort((a, b) => {
+      const aTime = a.cod ? a.create_time : (a.pay_time || a.create_time);
+      const bTime = b.cod ? b.create_time : (b.pay_time || b.create_time);
+      return bTime - aTime;
+    });
     
     console.timeEnd('fetch_orders');
     
