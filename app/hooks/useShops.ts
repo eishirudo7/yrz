@@ -171,6 +171,11 @@ export function useShops() {
     }
   };
 
+  // Fungsi untuk menghapus toko dari state
+  const removeShop = (shopId: number) => {
+    setShops(prevShops => prevShops.filter(shop => shop.shop_id !== shopId));
+  };
+
   return { 
     shops, 
     isLoading,
@@ -180,7 +185,8 @@ export function useShops() {
       getUnitName,
       getMetricTypeName,
       getRatingText,
-      getPunishmentName
+      getPunishmentName,
+      removeShop
     }
   };
 }

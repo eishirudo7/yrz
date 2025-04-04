@@ -228,6 +228,17 @@ export default function PengaturanPage() {
                   min={1}
                 />
               </div>
+              <div className="grid gap-2">
+                <Label htmlFor="in_cancel_msg">Pesan Cancel Order</Label>
+                <Textarea 
+                  id="in_cancel_msg" 
+                  name="in_cancel_msg"
+                  defaultValue={settings?.in_cancel_msg || ''}
+                  placeholder="Masukkan pesan untuk pembatalan pesanan"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -268,38 +279,36 @@ export default function PengaturanPage() {
           </CardContent>
         </Card>
 
-        {subscription && (
-          <Card className="mb-4">
-            <CardHeader>
-              <CardTitle>Informasi Paket Langganan</CardTitle>
-              <CardDescription>Detail paket langganan saat ini</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Paket</span>
-                  <span className="font-bold">{subscription?.plan?.[0]?.name || 'Free'}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Jumlah Toko</span>
-                  <span className="font-bold">{autoShip?.length || 0} / {subscription?.plan?.[0]?.max_shops || 1}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Status</span>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    {subscription?.status || 'active'}
-                  </span>
-                </div>
-                {subscription?.end_date && (
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">Berlaku Hingga</span>
-                    <span className="font-medium">{new Date(subscription.end_date).toLocaleDateString('id-ID')}</span>
-                  </div>
-                )}
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Informasi Paket Langganan</CardTitle>
+            <CardDescription>Detail paket langganan saat ini</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Paket</span>
+                <span className="font-bold">{subscription?.plan?.name || 'Basic'}</span>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Jumlah Toko</span>
+                <span className="font-bold">{autoShip?.length || 0} / {subscription?.plan?.max_shops || 1}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Status</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  {subscription?.status || 'active'}
+                </span>
+              </div>
+              {subscription?.end_date && (
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Berlaku Hingga</span>
+                  <span className="font-medium">{new Date(subscription.end_date).toLocaleDateString('id-ID')}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         <CardFooter>
           <Button type="submit">Simpan Pengaturan</Button>

@@ -1,4 +1,5 @@
 import { redis } from '@/app/services/redis';
+import { createClient } from '@/utils/supabase/server';
 
 export interface Shop {
   shop_id: number;
@@ -18,14 +19,25 @@ export interface UserSettings {
   // Pengaturan Auto Ship
   auto_ship?: boolean;
   auto_ship_interval?: number;
+  in_cancel_msg?: string | null;
+  
+  // Informasi langganan
+  subscription?: any;
   
   // Daftar toko pengguna
   shops: Shop[];
+  
+  // User ID
+  user_id?: string;
 }
 
 export class UserSettingsService {
   private static getSettingsKey(userId: string): string {
     return `user_settings:${userId}`;
+  }
+  
+  private static getShopToUserKey(shopId: number): string {
+    return `shop_to_user:${shopId}`;
   }
   
   /**
@@ -68,6 +80,14 @@ export class UserSettingsService {
       }
       
       await redis.set(this.getSettingsKey(userId), JSON.stringify(settings));
+      
+      // Update shop_to_user mapping for each shop
+      for (const shop of settings.shops) {
+        if (shop.shop_id) {
+          await redis.set(this.getShopToUserKey(shop.shop_id), userId);
+        }
+      }
+      
       return true;
     } catch (error) {
       console.error(`Error saving user settings for ${userId}:`, error);
@@ -90,7 +110,7 @@ export class UserSettingsService {
   }
   
   /**
-   * Mendapatkan pengaturan toko berdasarkan shop_id
+   * Mendapatkan pengaturan toko berdasarkan shop_id dan user_id
    */
   static async getShopSettings(userId: string, shopId: number): Promise<Shop | null> {
     try {
@@ -99,6 +119,26 @@ export class UserSettingsService {
     } catch (error) {
       console.error(`Error getting shop settings for shop ${shopId}:`, error);
       return null;
+    }
+  }
+  
+  /**
+   * Mendapatkan pengaturan toko hanya berdasarkan shop_id
+   * Useful untuk webhook handlers yang tidak memiliki user_id
+   */
+  static async getShopSettingsByShopId(shopId: number): Promise<{shop: Shop | null, userId: string | null}> {
+    try {
+      // Dapatkan user_id dari shopId
+      const userId = await this.getUserIdFromShopId(shopId);
+      if (!userId) {
+        return { shop: null, userId: null };
+      }
+      
+      const shop = await this.getShopSettings(userId, shopId);
+      return { shop, userId };
+    } catch (error) {
+      console.error(`Error getting shop settings for shop ${shopId}:`, error);
+      return { shop: null, userId: null };
     }
   }
   
@@ -135,7 +175,7 @@ export class UserSettingsService {
   }
   
   /**
-   * Mendapatkan daftar toko berdasarkan status premium 
+   * Mendapatkan daftar toko premium dari pengguna tertentu
    */
   static async getPremiumShops(userId: string): Promise<Shop[]> {
     try {
@@ -150,68 +190,48 @@ export class UserSettingsService {
   }
   
   /**
-   * Migrasi dari format lama (auto_ship) ke format baru
-   * Hanya untuk keperluan migrasi satu kali
+   * Mendapatkan userId berdasarkan shopId dari Redis atau database
    */
-  static async migrateFromOldFormat(userId: string): Promise<boolean> {
+  static async getUserIdFromShopId(shopId: number): Promise<string | null> {
     try {
-      // Ambil data dari format lama
-      const oldAutoShipData = await redis.get('auto_ship');
-      const oldSettingsData = await redis.get('settings');
+      // Coba dapatkan dari Redis terlebih dahulu
+      const userId = await redis.get(this.getShopToUserKey(shopId));
+      if (userId) return userId;
       
-      if (!oldAutoShipData && !oldSettingsData) {
-        return false; // Tidak ada data untuk dimigrasi
+      // Jika tidak ada di Redis, cari di database
+      const supabase = await createClient();
+      const { data, error } = await supabase
+        .from('shopee_tokens')
+        .select('user_id')
+        .eq('shop_id', shopId)
+        .eq('is_active', true)
+        .single();
+      
+      if (error || !data) {
+        console.warn(`Tidak menemukan user_id untuk shop_id ${shopId}`);
+        return null;
       }
       
-      // Inisialisasi objek pengaturan baru
-      const newSettings: UserSettings = {
-        shops: []
-      };
+      // Simpan ke Redis untuk digunakan selanjutnya
+      await redis.set(this.getShopToUserKey(shopId), data.user_id);
       
-      // Migrasi pengaturan umum
-      if (oldSettingsData) {
-        const oldSettings = JSON.parse(oldSettingsData);
-        
-        if (Array.isArray(oldSettings)) {
-          const settingsObj = oldSettings[0];
-          
-          newSettings.openai_api = settingsObj.openai_api;
-          newSettings.openai_model = settingsObj.openai_model;
-          newSettings.openai_temperature = settingsObj.openai_temperature;
-          newSettings.openai_prompt = settingsObj.openai_prompt;
-          newSettings.auto_ship = settingsObj.auto_ship;
-          newSettings.auto_ship_interval = settingsObj.auto_ship_interval;
-        } else {
-          newSettings.openai_api = oldSettings.openai_api;
-          newSettings.openai_model = oldSettings.openai_model;
-          newSettings.openai_temperature = oldSettings.openai_temperature;
-          newSettings.openai_prompt = oldSettings.openai_prompt;
-          newSettings.auto_ship = oldSettings.auto_ship;
-          newSettings.auto_ship_interval = oldSettings.auto_ship_interval;
-        }
-      }
-      
-      // Migrasi data toko
-      if (oldAutoShipData) {
-        const oldShops = JSON.parse(oldAutoShipData);
-        
-        if (Array.isArray(oldShops)) {
-          newSettings.shops = oldShops.map((shop: any) => ({
-            shop_id: shop.shop_id,
-            shop_name: shop.shop_name,
-            status_chat: shop.status_chat || false,
-            status_ship: shop.status_ship || false,
-            premium_plan: shop.premium_plan || 'free'
-          }));
-        }
-      }
-      
-      // Simpan ke format baru
-      await this.saveUserSettings(userId, newSettings);
+      return data.user_id;
+    } catch (error) {
+      console.error('Error mendapatkan user_id dari shop_id:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Hapus data pengaturan dari Redis (untuk logout)
+   */
+  static async clearUserSettings(userId: string): Promise<boolean> {
+    try {
+      await redis.del(this.getSettingsKey(userId));
       return true;
     } catch (error) {
-      console.error(`Error migrating settings for ${userId}:`, error);
+      console.error(`Error clearing user settings for ${userId}:`, error);
       return false;
     }
   }
-} 
+}

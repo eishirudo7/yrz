@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client'
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
+import { useUserData } from '@/contexts/UserDataContext';
 
 export type OrderItem = {
   [key: string]: any;
@@ -74,6 +75,9 @@ export const useDashboard = () => {
   const LAST_FETCH_KEY = 'ads_last_fetch_time';
   const CACHED_ADS_DATA_KEY = 'cached_ads_data';
 
+  // Menggunakan useUserData hook untuk mendapatkan daftar toko user
+  const { shops } = useUserData();
+
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     summary: {
       pesananPerToko: {},
@@ -91,15 +95,35 @@ export const useDashboard = () => {
   const [error, setError] = useState<string | null>(null);
 
   const createOrderSubscription = () => {
+    // Mendapatkan daftar shop_id dari daftar toko user
+    const userShopIds = shops.map(shop => shop.shop_id.toString());
+    
+    // Jika tidak ada toko, jangan buat subscription
+    if (userShopIds.length === 0) {
+      console.log('Tidak ada toko yang ditemukan, subscription tidak dibuat');
+      return createClient().channel('orders-empty');
+    }
+    
+    // Filter untuk shop_id in.(user shop ids) dan order_status in.(tracked statuses)
+    // Format filter Supabase: "column=in.(val1,val2,val3)"
+    const shopFilter = `shop_id=in.(${userShopIds.join(',')})`;
+    const statusFilter = `order_status=in.(${trackedStatuses.join(',')})`;
+    
     return createClient()
       .channel('orders')
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
         table: 'orders',
-        filter: `order_status=in.(${trackedStatuses.join(',')})`
+        filter: `${shopFilter}`,
       }, async (payload) => {
         const newOrder = payload.new as OrderItem;
+        
+        // Verifikasi additional filter secara manual karena Supabase hanya mendukung
+        // satu filter pada saat ini
+        if (!trackedStatuses.includes(newOrder.order_status)) {
+          return; // Lewati jika status tidak dalam daftar yang dipantau
+        }
         
         if (newOrder.order_status === 'READY_TO_SHIP') {
           setDashboardData(prevData => {
@@ -209,6 +233,18 @@ export const useDashboard = () => {
   };
 
   const createLogisticSubscription = () => {
+    // Mendapatkan daftar shop_id dari daftar toko user
+    const userShopIds = shops.map(shop => shop.shop_id.toString());
+    
+    // Jika tidak ada toko, jangan buat subscription
+    if (userShopIds.length === 0) {
+      console.log('Tidak ada toko yang ditemukan, subscription logistic tidak dibuat');
+      return createClient().channel('logistic-empty');
+    }
+    
+    // Filter untuk shop_id in.(user shop ids)
+    const shopFilter = `shop_id=in.(${userShopIds.join(',')})`;
+    
     return createClient()
       .channel('logistic-changes')
       .on(
@@ -217,7 +253,7 @@ export const useDashboard = () => {
           event: 'UPDATE',
           schema: 'public',
           table: 'logistic',
-          
+          filter: shopFilter
         },
         (payload) => {
           const logisticData = payload.new;
@@ -464,50 +500,56 @@ export const useDashboard = () => {
       }
     };
 
-    // Panggil fungsi untuk ambil data
-    fetchDashboardData();
+    // Hanya buat subscription jika ada toko yang dimiliki user
+    if (shops.length > 0) {
+      // Panggil fungsi untuk ambil data
+      fetchDashboardData();
 
-    // Buat subscription awal
-    const channels = {
-      orderChannel: createOrderSubscription(),
-      logisticChannel: createLogisticSubscription()
-    };
+      // Buat subscription awal
+      const channels = {
+        orderChannel: createOrderSubscription(),
+        logisticChannel: createLogisticSubscription()
+      };
 
-    // Subscribe ke channel
-    channels.orderChannel.subscribe((status) => {
-      console.log(`Status koneksi orders: ${status}`);
-      if (status === 'SUBSCRIBED') {
-        console.log('Berhasil berlangganan ke perubahan orders');
-      }
-    });
-
-    channels.logisticChannel.subscribe((status) => {
-      console.log(`Status koneksi logistic: ${status}`);
-      if (status === 'SUBSCRIBED') {
-        console.log('Berhasil berlangganan ke perubahan logistic');
-      }
-    });
-
-    // Tambahkan ping interval untuk menjaga koneksi tetap aktif
-    const pingInterval = setInterval(() => {
-      channels.orderChannel.send({
-        type: 'broadcast',
-        event: 'ping',
-        payload: {}
+      // Subscribe ke channel
+      channels.orderChannel.subscribe((status) => {
+        console.log(`Status koneksi orders: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          console.log('Berhasil berlangganan ke perubahan orders untuk toko user');
+        }
       });
-      channels.logisticChannel.send({
-        type: 'broadcast',
-        event: 'ping',
-        payload: {}
-      });
-    }, 30000);
 
-    return () => {
-      clearInterval(pingInterval);
-      channels.orderChannel.unsubscribe();
-      channels.logisticChannel.unsubscribe();
-    };
-  }, []);
+      channels.logisticChannel.subscribe((status) => {
+        console.log(`Status koneksi logistic: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          console.log('Berhasil berlangganan ke perubahan logistic untuk toko user');
+        }
+      });
+
+      // Tambahkan ping interval untuk menjaga koneksi tetap aktif
+      const pingInterval = setInterval(() => {
+        channels.orderChannel.send({
+          type: 'broadcast',
+          event: 'ping',
+          payload: {}
+        });
+        channels.logisticChannel.send({
+          type: 'broadcast',
+          event: 'ping',
+          payload: {}
+        });
+      }, 30000);
+
+      return () => {
+        clearInterval(pingInterval);
+        channels.orderChannel.unsubscribe();
+        channels.logisticChannel.unsubscribe();
+      };
+    } else {
+      // Jika tidak ada toko, hanya fetch data dashboard
+      fetchDashboardData();
+    }
+  }, [shops]); // Tambahkan shops sebagai dependency
 
   const refreshData = () => {
     // Tambahkan fungsi untuk refresh data manual jika diperlukan

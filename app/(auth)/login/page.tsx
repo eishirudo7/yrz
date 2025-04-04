@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { LockIcon, UserIcon, MailIcon } from 'lucide-react'
+import { LockIcon, UserIcon, MailIcon, Loader2Icon, CheckCircleIcon } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import logindark from '@/app/fonts/logod.png'
 import loginlight from '@/app/fonts/logol.png'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
+import { toast } from "sonner"
 
 export default function StylishLoginPage() {
   const router = useRouter()
@@ -26,6 +27,8 @@ export default function StylishLoginPage() {
     email: '',
     password: '',
     confirmPassword: '',
+    displayName: '',
+    phone: '',
   })
   const [loginError, setLoginError] = useState<string | null>(null)
   const [signupError, setSignupError] = useState<string | null>(null)
@@ -71,8 +74,14 @@ export default function StylishLoginPage() {
         return
       }
 
-      router.push('/')
-      router.refresh()
+      toast.success('Login berhasil', {
+        description: 'Selamat datang kembali!'
+      })
+      
+      setTimeout(() => {
+        router.push('/')
+        router.refresh()
+      }, 500)
 
     } catch (error) {
       console.error('Login error:', error)
@@ -85,8 +94,8 @@ export default function StylishLoginPage() {
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
-    if (!signupData.email || !signupData.password || !signupData.confirmPassword) {
-      setSignupError('Silakan isi semua kolom')
+    if (!signupData.email || !signupData.password || !signupData.confirmPassword || !signupData.displayName) {
+      setSignupError('Silakan isi semua kolom yang wajib')
       return
     }
 
@@ -110,6 +119,10 @@ export default function StylishLoginPage() {
         password: signupData.password,
         options: {
           emailRedirectTo: `${window.location.origin}/api/auth/callback`,
+          data: {
+            display_name: signupData.displayName,
+            phone: signupData.phone || null
+          }
         },
       })
 
@@ -118,11 +131,15 @@ export default function StylishLoginPage() {
         return
       }
 
-      setSignupSuccess('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi')
+      setSignupSuccess(
+        'Pendaftaran berhasil! Silakan verifikasi email Anda untuk dapat login.'
+      )
       setSignupData({
         email: '',
         password: '',
         confirmPassword: '',
+        displayName: '',
+        phone: '',
       })
     } catch (error) {
       console.error('Signup error:', error)
@@ -211,7 +228,14 @@ export default function StylishLoginPage() {
                   className="w-full font-semibold"
                   disabled={loading}
                 >
-                  {loading ? 'Memproses...' : 'Login'}
+                  {loading ? (
+                    <>
+                      <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                      Memproses...
+                    </>
+                  ) : (
+                    'Login'
+                  )}
                 </Button>
               </form>
             </CardContent>
@@ -228,9 +252,30 @@ export default function StylishLoginPage() {
                 
                 {signupSuccess && (
                   <Alert className="bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900">
-                    <AlertDescription className="text-green-800 dark:text-green-300">{signupSuccess}</AlertDescription>
+                    <div className="flex items-start">
+                      <CheckCircleIcon className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5 mr-2 flex-shrink-0" />
+                      <AlertDescription className="text-green-800 dark:text-green-300">{signupSuccess}</AlertDescription>
+                    </div>
                   </Alert>
                 )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="signup-displayName" className="sr-only">Nama</Label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                    <Input
+                      id="signup-displayName"
+                      name="displayName"
+                      type="text"
+                      required
+                      value={signupData.displayName}
+                      onChange={handleSignupChange}
+                      placeholder="Nama Lengkap"
+                      className="pl-10"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="signup-email" className="sr-only">Email</Label>
@@ -246,6 +291,25 @@ export default function StylishLoginPage() {
                       placeholder="Email"
                       className="pl-10"
                       autoComplete="email"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-phone" className="sr-only">Nomor Telepon</Label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                    </div>
+                    <Input
+                      id="signup-phone"
+                      name="phone"
+                      type="tel"
+                      value={signupData.phone}
+                      onChange={handleSignupChange}
+                      placeholder="Nomor Telepon (Opsional)"
+                      className="pl-10"
                       disabled={loading}
                     />
                   </div>
@@ -294,7 +358,14 @@ export default function StylishLoginPage() {
                   className="w-full font-semibold"
                   disabled={loading}
                 >
-                  {loading ? 'Memproses...' : 'Daftar'}
+                  {loading ? (
+                    <>
+                      <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                      Memproses...
+                    </>
+                  ) : (
+                    'Daftar'
+                  )}
                 </Button>
               </form>
             </CardContent>

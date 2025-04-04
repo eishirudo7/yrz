@@ -1,6 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Array halaman yang memerlukan akses Pro
+const PRO_ONLY_PAGES = [
+  '/ubah_pesanan',
+  '/keluhan',
+  '/otp',
+  '/pengaturan'
+];
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -36,6 +44,8 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  let userPlan = 'basic'; // Default ke basic jika tidak ada subscription
 
   if (user) {
     try {
@@ -75,10 +85,53 @@ export async function updateSession(request: NextRequest) {
         });
       }
       
-      // Cek subscription juga bisa ditambahkan di sini jika diperlukan
+      // Cek subscription untuk menentukan jenis paket
+      const { data: subscription, error: subError } = await supabase
+        .from('user_subscriptions')
+        .select(`
+          id, 
+          status,
+          subscription_plans (name)
+        `)
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (!subError && subscription) {
+        // Mendapatkan nama paket dengan type-safe
+        const planData = Array.isArray(subscription.subscription_plans) 
+          ? subscription.subscription_plans[0] 
+          : subscription.subscription_plans;
+        const planName = planData?.name || 'basic';
+        userPlan = planName.toLowerCase();
+        
+        // Simpan jenis paket di cookie untuk referensi cepat
+        supabaseResponse.cookies.set('user_plan', userPlan, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 60 * 60 * 8, // 8 jam
+          path: '/'
+        });
+      }
     } catch (error) {
       console.error("Error saat menyimpan data toko ke cookie:", error);
       // Error handling, tapi tetap lanjutkan proses
+    }
+    
+    // Cek apakah pengguna mencoba mengakses halaman khusus Pro tanpa paket Pro
+    const isPro = userPlan === 'admin';
+    const currentPath = request.nextUrl.pathname;
+    const isProOnlyPage = PRO_ONLY_PAGES.some(page => currentPath.startsWith(page));
+    
+    if (isProOnlyPage && !isPro) {
+      // Redirect ke halaman profile jika mencoba akses halaman khusus Pro tanpa paket Pro
+      const url = request.nextUrl.clone();
+      url.pathname = '/profile';
+      url.searchParams.set('upgrade', 'true');
+      return NextResponse.redirect(url);
     }
   }
 

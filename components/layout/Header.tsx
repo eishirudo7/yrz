@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useTheme } from "next-themes" // Import useTheme
-import { CircleUser, Search, Menu, Sun, Moon, Bell, AlertCircle, CheckCircle, AlertTriangle, Activity } from "lucide-react"
+import { CircleUser, Sun, Moon, Bell, AlertCircle, CheckCircle, AlertTriangle, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSSE } from "@/app/services/SSEService"
 import { createClient } from '@/utils/supabase/client'
+import { useUserData } from "@/contexts/UserDataContext"
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { MobileSidebar } from "./mobile-sidebar"
@@ -119,6 +120,10 @@ export function Header() {
   const [expandedShop, setExpandedShop] = useState<number | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userShops, setUserShops] = useState<Array<{shop_id: number; shop_name: string}>>([]);
+  const { subscription, isLoading } = useUserData();
+
+  // Cek apakah user adalah Pro user
+  const isProUser = !isLoading && subscription?.plan_name === 'Admin';
 
   useEffect(() => {
     if (!lastMessage) return
@@ -401,9 +406,9 @@ export function Header() {
               className="rounded-full relative hover:bg-muted"
             >
               <Bell className="h-5 w-5" />
-              {(notifications.length > 0 || (healthData?.data?.shop_health?.summary?.totalIssues ?? 0) > 0) && (
+              {(notifications.length > 0 || (isProUser && (healthData?.data?.shop_health?.summary?.totalIssues ?? 0) > 0)) && (
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
-                  {notifications.length + (healthData?.data?.shop_health?.summary?.totalIssues ?? 0)}
+                  {notifications.length + (isProUser ? (healthData?.data?.shop_health?.summary?.totalIssues ?? 0) : 0)}
                 </span>
               )}
               <span className="sr-only">Notifikasi</span>
@@ -426,18 +431,20 @@ export function Header() {
                     )}
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="health" className="flex-1">
-                  <span className="flex items-center gap-2">
-                    <Activity className="h-4 w-4" />
-                    <span className="text-xs">Health Check</span>
-                    {healthData?.data?.shop_health?.summary?.totalIssues !== undefined && 
-                     healthData?.data?.shop_health?.summary?.totalIssues > 0 && (
-                      <span className="bg-yellow-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
-                        {healthData?.data?.shop_health?.summary?.totalIssues}
-                      </span>
-                    )}
-                  </span>
-                </TabsTrigger>
+                {isProUser && (
+                  <TabsTrigger value="health" className="flex-1">
+                    <span className="flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      <span className="text-xs">Health Check</span>
+                      {healthData?.data?.shop_health?.summary?.totalIssues !== undefined && 
+                      healthData?.data?.shop_health?.summary?.totalIssues > 0 && (
+                        <span className="bg-yellow-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+                          {healthData?.data?.shop_health?.summary?.totalIssues}
+                        </span>
+                      )}
+                    </span>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="notifications">
@@ -564,182 +571,184 @@ export function Header() {
                 )}
               </TabsContent>
 
-              <TabsContent value="health">
-                <DropdownMenuLabel className="flex justify-between items-center border-b pb-2">
-                  <span className="text-xs font-medium">Status Sistem</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleRefreshClick}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                    disabled={loadingHealth}
-                  >
-                    {loadingHealth ? 'Memuat...' : 'Refresh'}
-                  </Button>
-                </DropdownMenuLabel>
+              {isProUser && (
+                <TabsContent value="health">
+                  <DropdownMenuLabel className="flex justify-between items-center border-b pb-2">
+                    <span className="text-xs font-medium">Status Sistem</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={handleRefreshClick}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      disabled={loadingHealth}
+                    >
+                      {loadingHealth ? 'Memuat...' : 'Refresh'}
+                    </Button>
+                  </DropdownMenuLabel>
 
-                <div className="max-h-[400px] overflow-y-auto p-2">
-                  {loadingHealth ? (
-                    <div className="p-8 text-center">
-                      <Activity className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3 animate-pulse" />
-                      <p className="text-sm text-muted-foreground">Memuat status sistem...</p>
-                    </div>
-                  ) : healthData && healthData.data ? (
-                    <div className="space-y-4">
-                      {/* OpenAI Status */}
-                      <div className="p-3 rounded-lg border">
-                        <div className="flex items-center gap-2">
-                          {healthData.data.openai?.success ? (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                          )}
-                          <span className="text-xs">OpenAI Service</span>
-                          {!healthData.data.openai?.success && (
-                            <span className="text-[11px] text-red-600 ml-2">
-                              {healthData.data.openai?.message}
-                            </span>
-                          )}
-                        </div>
+                  <div className="max-h-[400px] overflow-y-auto p-2">
+                    {loadingHealth ? (
+                      <div className="p-8 text-center">
+                        <Activity className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3 animate-pulse" />
+                        <p className="text-sm text-muted-foreground">Memuat status sistem...</p>
                       </div>
-
-                      {/* Shop Health Issues */}
-                      {healthData.data.shop_health?.summary?.criticalShops?.length > 0 ? (
-                        <div className="space-y-3">
-                          {/* Return Issues */}
-                          {healthData.data.shop_health.returnIssues?.length > 0 && (
-                            <div className="p-3 rounded-lg border">
-                              <div className="flex items-center gap-2 mb-2">
-                                <AlertTriangle className="h-4 w-4 text-red-500" />
-                                <span className="text-xs font-medium">Return Kritis</span>
-                              </div>
-                              <div className="space-y-2">
-                                {healthData.data.shop_health.returnIssues.map((returnIssue, index) => {
-                                  // Cari nama toko dari shop_id jika tersedia
-                                  const shopInfo = userShops.find(shop => shop.shop_id === returnIssue.shop_id);
-                                  const shopName = shopInfo ? shopInfo.shop_name : returnIssue.user?.username || `Toko ${returnIssue.shop_id}`;
-                                  
-                                  return (
-                                    <div key={index} className="text-xs space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
-                                      <div className="flex justify-between">
-                                        <span className="font-medium">Return #{returnIssue.return_sn}</span>
-                                        <span className="text-muted-foreground">
-                                          {new Date(returnIssue.create_time * 1000).toLocaleDateString('id-ID')}
-                                        </span>
-                                      </div>
-                                      <div className="text-muted-foreground">
-                                        <p>Toko: {shopName}</p>
-                                        <p>Order: {returnIssue.order_sn}</p>
-                                        <p>Status: {returnIssue.status}</p>
-                                        <p>Alasan: {returnIssue.text_reason}</p>
-                                        <p>Refund: Rp {returnIssue.refund_amount.toLocaleString('id-ID')}</p>
-                                      </div>
-                                      {returnIssue.item.map((item, itemIndex) => (
-                                        <div key={itemIndex} className="ml-2 text-muted-foreground">
-                                          <p>• {item.name}</p>
-                                          <p className="ml-2">SKU: {item.item_sku}</p>
-                                          <p className="ml-2">Jumlah: {item.amount}</p>
-                                          <p className="ml-2">Refund: Rp {item.refund_amount.toLocaleString('id-ID')}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Existing Critical Shops */}
-                          {healthData.data.shop_health.summary.criticalShops.map((shop, index) => {
-                            // Cari nama toko yang sebenarnya berdasarkan shop_id
-                            const shopInfo = userShops.find(s => s.shop_id === shop.shop_id);
-                            const shopName = shopInfo ? shopInfo.shop_name : `Toko ${shop.shop_id}`;
-                            
-                            return (
-                              <div 
-                                key={index} 
-                                className="p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => setExpandedShop(expandedShop === shop.shop_id ? null : shop.shop_id)}
-                              >
-                                <div className="flex items-center gap-2 mb-2">
-                                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                  <span className="text-xs">{shopName}</span>
-                                </div>
-                                <ul className="space-y-1">
-                                  {shop.issues.map((issue, i) => (
-                                    <li key={i} className="text-xs text-muted-foreground">
-                                      <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
-                                        {issue}
-                                      </div>
-                                      {issue === 'Tidak ada backup diskon' && expandedShop === shop.shop_id && (
-                                        <div className="mt-1 ml-3 space-y-1">
-                                          <p className="font-medium text-xs text-muted-foreground">Diskon aktif:</p>
-                                          {healthData.data.shop_health.discountIssues.shops_without_backup
-                                            .find(s => s.shop_id === shop.shop_id)
-                                            ?.ongoing_discounts.map((discount, j) => (
-                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                                • {discount.discount_name} ({discount.start_time_formatted} - {discount.end_time_formatted})
-                                              </p>
-                                            ))
-                                          }
-                                        </div>
-                                      )}
-                                      
-                                      {/* Tambahkan tampilan untuk expired without ongoing */}
-                                      {issue === 'Diskon telah kedaluwarsa tanpa pengganti' && expandedShop === shop.shop_id && (
-                                        <div className="mt-1 ml-3 space-y-1">
-                                          <p className="font-medium text-xs text-muted-foreground">Diskon kedaluwarsa:</p>
-                                          {healthData.data.shop_health.discountIssues.expired_without_ongoing
-                                            .filter(s => s.shop_id === shop.shop_id)
-                                            .map((item, j) => (
-                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                                • {item.discount.discount_name} ({item.discount.start_time_formatted} - {item.discount.end_time_formatted})
-                                              </p>
-                                            ))
-                                          }
-                                        </div>
-                                      )}
-                                      
-                                      {(issue.includes('Flash Sale aktif tidak memiliki produk') || 
-                                        issue.includes('Flash Sale mendatang tidak memiliki produk')) && 
-                                       expandedShop === shop.shop_id && (
-                                        <div className="mt-1 ml-3 space-y-1">
-                                          <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
-                                          {shop.details
-                                            .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
-                                            .map((detail, j) => (
-                                              <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                                • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
-                                              </p>
-                                            ))
-                                          }
-                                        </div>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                    ) : healthData && healthData.data ? (
+                      <div className="space-y-4">
+                        {/* OpenAI Status */}
+                        <div className="p-3 rounded-lg border">
                           <div className="flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                            <span className="text-sm text-green-600 dark:text-green-400">Semua toko dalam kondisi baik</span>
+                            {healthData.data.openai?.success ? (
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4 text-red-500" />
+                            )}
+                            <span className="text-xs">OpenAI Service</span>
+                            {!healthData.data.openai?.success && (
+                              <span className="text-[11px] text-red-600 ml-2">
+                                {healthData.data.openai?.message}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-8 text-center">
-                      <AlertCircle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-                      <p className="text-sm text-muted-foreground">Gagal memuat status sistem</p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
+
+                        {/* Shop Health Issues */}
+                        {healthData.data.shop_health?.summary?.criticalShops?.length > 0 ? (
+                          <div className="space-y-3">
+                            {/* Return Issues */}
+                            {healthData.data.shop_health.returnIssues?.length > 0 && (
+                              <div className="p-3 rounded-lg border">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                                  <span className="text-xs font-medium">Return Kritis</span>
+                                </div>
+                                <div className="space-y-2">
+                                  {healthData.data.shop_health.returnIssues.map((returnIssue, index) => {
+                                    // Cari nama toko dari shop_id jika tersedia
+                                    const shopInfo = userShops.find(shop => shop.shop_id === returnIssue.shop_id);
+                                    const shopName = shopInfo ? shopInfo.shop_name : returnIssue.user?.username || `Toko ${returnIssue.shop_id}`;
+                                    
+                                    return (
+                                      <div key={index} className="text-xs space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
+                                        <div className="flex justify-between">
+                                          <span className="font-medium">Return #{returnIssue.return_sn}</span>
+                                          <span className="text-muted-foreground">
+                                            {new Date(returnIssue.create_time * 1000).toLocaleDateString('id-ID')}
+                                          </span>
+                                        </div>
+                                        <div className="text-muted-foreground">
+                                          <p>Toko: {shopName}</p>
+                                          <p>Order: {returnIssue.order_sn}</p>
+                                          <p>Status: {returnIssue.status}</p>
+                                          <p>Alasan: {returnIssue.text_reason}</p>
+                                          <p>Refund: Rp {returnIssue.refund_amount.toLocaleString('id-ID')}</p>
+                                        </div>
+                                        {returnIssue.item.map((item, itemIndex) => (
+                                          <div key={itemIndex} className="ml-2 text-muted-foreground">
+                                            <p>• {item.name}</p>
+                                            <p className="ml-2">SKU: {item.item_sku}</p>
+                                            <p className="ml-2">Jumlah: {item.amount}</p>
+                                            <p className="ml-2">Refund: Rp {item.refund_amount.toLocaleString('id-ID')}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Existing Critical Shops */}
+                            {healthData.data.shop_health.summary.criticalShops.map((shop, index) => {
+                              // Cari nama toko yang sebenarnya berdasarkan shop_id
+                              const shopInfo = userShops.find(s => s.shop_id === shop.shop_id);
+                              const shopName = shopInfo ? shopInfo.shop_name : `Toko ${shop.shop_id}`;
+                              
+                              return (
+                                <div 
+                                  key={index} 
+                                  className="p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                                  onClick={() => setExpandedShop(expandedShop === shop.shop_id ? null : shop.shop_id)}
+                                >
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                    <span className="text-xs">{shopName}</span>
+                                  </div>
+                                  <ul className="space-y-1">
+                                    {shop.issues.map((issue, i) => (
+                                      <li key={i} className="text-xs text-muted-foreground">
+                                        <div className="flex items-center gap-2">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                                          {issue}
+                                        </div>
+                                        {issue === 'Tidak ada backup diskon' && expandedShop === shop.shop_id && (
+                                          <div className="mt-1 ml-3 space-y-1">
+                                            <p className="font-medium text-xs text-muted-foreground">Diskon aktif:</p>
+                                            {healthData.data.shop_health.discountIssues.shops_without_backup
+                                              .find(s => s.shop_id === shop.shop_id)
+                                              ?.ongoing_discounts.map((discount, j) => (
+                                                <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                  • {discount.discount_name} ({discount.start_time_formatted} - {discount.end_time_formatted})
+                                                </p>
+                                              ))
+                                            }
+                                          </div>
+                                        )}
+                                        
+                                        {/* Tambahkan tampilan untuk expired without ongoing */}
+                                        {issue === 'Diskon telah kedaluwarsa tanpa pengganti' && expandedShop === shop.shop_id && (
+                                          <div className="mt-1 ml-3 space-y-1">
+                                            <p className="font-medium text-xs text-muted-foreground">Diskon kedaluwarsa:</p>
+                                            {healthData.data.shop_health.discountIssues.expired_without_ongoing
+                                              .filter(s => s.shop_id === shop.shop_id)
+                                              .map((item, j) => (
+                                                <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                  • {item.discount.discount_name} ({item.discount.start_time_formatted} - {item.discount.end_time_formatted})
+                                                </p>
+                                              ))
+                                            }
+                                          </div>
+                                        )}
+                                        
+                                        {(issue.includes('Flash Sale aktif tidak memiliki produk') || 
+                                          issue.includes('Flash Sale mendatang tidak memiliki produk')) && 
+                                         expandedShop === shop.shop_id && (
+                                          <div className="mt-1 ml-3 space-y-1">
+                                            <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
+                                            {shop.details
+                                              .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
+                                              .map((detail, j) => (
+                                                <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                  • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
+                                                </p>
+                                              ))
+                                            }
+                                          </div>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-lg border bg-green-50 dark:bg-green-950/20">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                              <span className="text-sm text-green-600 dark:text-green-400">Semua toko dalam kondisi baik</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">Gagal memuat status sistem</p>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              )}
             </Tabs>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -781,10 +790,14 @@ export function Header() {
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/pengaturan">Pengaturan</Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {isProUser && (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link href="/pengaturan">Pengaturan</Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem 
               onClick={handleLogout}
               className="text-red-600 focus:text-red-600 cursor-pointer"

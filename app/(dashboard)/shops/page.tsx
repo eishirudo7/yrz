@@ -2,6 +2,7 @@
 
 import { useShops } from '@/app/hooks/useShops';
 import { useState, useEffect } from 'react';
+import { useUserData } from "@/contexts/UserDataContext";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Store, CheckCircle, AlertCircle } from "lucide-react";
+
 interface SyncStatus {
   [shopId: number]: {
     progress: { current: number; total: number } | null;
@@ -212,6 +216,7 @@ function ShopCard({
   helpers: {
     getRatingText: (rating: number) => string;
     getPunishmentName: (name: string) => string;
+    removeShop: (shopId: number) => void;
   };
   blockingShops: {[key: number]: boolean};
 }) {
@@ -514,6 +519,15 @@ export default function ShopsPage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [hasCheckedTokens, setHasCheckedTokens] = useState(false);
   const [blockingShops, setBlockingShops] = useState<{[key: number]: boolean}>({});
+  const { subscription, isLoading: isLoadingSubscription } = useUserData();
+
+  // Periksa apakah pengguna sudah mencapai batas toko
+  const hasReachedShopLimit = () => {
+    if (!subscription) return false;
+    
+    const maxShops = subscription.max_shops || 1;
+    return shops.length >= maxShops;
+  };
 
   const checkTokens = async (shopsList: any[]) => {
     if (!shopsList || shopsList.length === 0) return;
@@ -690,10 +704,13 @@ export default function ShopsPage() {
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.message || 'Gagal memblokir toko');
+        throw new Error(result.message || 'Gagal menghapus toko');
       }
 
-      toast.success('Toko berhasil diblokir');
+      toast.success('Toko berhasil dihapus');
+      
+      // Hapus toko dari state lokal setelah berhasil diblokir
+      helpers.removeShop(shopId);
     } catch (error) {
       console.error('Gagal memblokir toko:', error);
       toast.error(error instanceof Error ? error.message : 'Gagal memblokir toko');
@@ -704,32 +721,64 @@ export default function ShopsPage() {
 
   return (
     <div className="p-3 sm:p-6">
-      <div className="flex justify-between items-center mb-4 sm:mb-6">
+      <div className="mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-gray-100">Toko Shopee</h1>
-        <button
-          onClick={handleConnect}
-          disabled={isConnecting}
-          className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 
-                    disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors
-                    flex items-center gap-2 text-sm"
-        >
-          {isConnecting ? (
-            <>
-              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Menghubungkan</span>
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span>Tambah Toko</span>
-            </>
-          )}
-        </button>
+        <div className="mt-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <span className="text-gray-600 dark:text-gray-400">
+                Toko terhubung: <span className="font-medium">{shops.length}</span> dari <span className="font-medium">{subscription?.max_shops || 1}</span>
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <span className="text-gray-600 dark:text-gray-400">
+                Paket: <span className="font-medium capitalize">{subscription?.plan_name || 'Basic'}</span>
+              </span>
+            </div>
+          </div>
+          
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <button
+                    onClick={handleConnect}
+                    disabled={isConnecting || hasReachedShopLimit() || isLoadingSubscription}
+                    className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 
+                              disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors
+                              flex items-center gap-2 text-sm"
+                  >
+                    {isConnecting ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Menghubungkan</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        <span>Tambah Toko</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </TooltipTrigger>
+              {hasReachedShopLimit() && (
+                <TooltipContent side="bottom">
+                  <p>Anda telah mencapai batas maksimum toko ({subscription?.max_shops || 1})</p>
+                  <p className="text-xs text-gray-500">Upgrade paket untuk menambah toko</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       {/* Grid layout optimization */}
@@ -740,9 +789,24 @@ export default function ShopsPage() {
           ))}
         </div>
       ) : shops.length === 0 ? (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-6 text-center">
-          <p className="text-gray-500 dark:text-gray-400">Belum ada toko yang terhubung</p>
-          <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Silakan hubungkan toko Shopee Anda</p>
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-8 text-center border border-dashed border-gray-200 dark:border-gray-700">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Store className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">Belum ada toko yang terhubung</h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">Hubungkan toko Shopee Anda untuk mulai menggunakan fitur pengelolaan toko</p>
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting || hasReachedShopLimit() || isLoadingSubscription}
+            className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 
+                      disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:cursor-not-allowed transition-colors
+                      flex items-center gap-2 text-sm mx-auto"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            <span>Tambah Toko Sekarang</span>
+          </button>
         </div>
       ) : (
         <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">

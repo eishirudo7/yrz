@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { checkShopHealth, checkOpenAIKey } from '@/app/services/SafeTool';
+import { createClient } from '@/utils/supabase/server';
+import { redis } from "@/app/services/redis";
 
 interface SettingsResponse {
   pengaturan: Array<{
@@ -7,20 +9,67 @@ interface SettingsResponse {
   }>;
 }
 
+async function getUserIdFromSession() {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error || !data.user) {
+      console.error('User session error:', error);
+      return null;
+    }
+
+    return data.user.id;
+  } catch (err) {
+    console.error('Error validating user session:', err);
+    return null;
+  }
+}
+
 async function getSettings(): Promise<SettingsResponse | null> {
   try {
-    const response = await fetch('http://localhost:10000/api/settings');
-    if (!response.ok) {
-      throw new Error('Gagal mengambil pengaturan');
+    // Cek apakah ada user yang terautentikasi
+    const userId = await getUserIdFromSession();
+    if (!userId) {
+      console.warn('Tidak ada user yang terautentikasi untuk mengambil pengaturan');
+      return null;
     }
-    const data = await response.json();
+    
+    // Coba dapatkan dari Redis cache terlebih dahulu
+    try {
+      const redisKey = `user_settings:${userId}`;
+      const cachedSettings = await redis.get(redisKey);
+      
+      if (cachedSettings) {
+        const parsedSettings = JSON.parse(cachedSettings);
+        return {
+          pengaturan: [{
+            openai_api: parsedSettings.openai_api || null
+          }]
+        };
+      }
+    } catch (cacheError) {
+      console.warn('Gagal mengambil data dari cache:', cacheError);
+      // Lanjutkan dengan query database
+    }
+
+    // Jika tidak ada di cache, ambil dari database
+    const supabase = await createClient();
+    const { data: pengaturan, error } = await supabase
+      .from('pengaturan')
+      .select('openai_api')
+      .eq('user_id', userId);
+    
+    if (error) {
+      console.error('Error saat mengambil pengaturan dari database:', error);
+      throw error;
+    }
+    
     return {
-      pengaturan: data.pengaturan.map((p: any) => ({
-        openai_api: p.openai_api
-      }))
+      pengaturan: pengaturan || []
     };
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    console.error('Error getting settings:', error);
     return null;
   }
 }

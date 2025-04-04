@@ -29,32 +29,48 @@ import {
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useMiniChat } from "@/contexts/MiniChatContext"
+import { useUserData } from "@/contexts/UserDataContext"
 import { Badge } from "@/components/ui/badge"
 
 export const navItems = [
-  { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/webchat', icon: MessageSquare, label: 'Chat' },
-  { href: '/orders', icon: ShoppingBag, label: 'Orders' },
-  { href: '/ubah_pesanan', icon: ShoppingCart, label: 'Perubahan Pesanan' },
-  { href: '/return', icon: RotateCcw, label: 'Return' },
-  { href: '/produk', icon: Package, label: 'Produk' },
-  { href: '/flashsale', icon: Zap, label: 'Flash Sale' },
-  { href: '/ads', icon: Megaphone, label: 'Iklan' },
-  { href: '/shops', icon: Store, label: 'Shops' },
-  { href: '/keluhan', icon: AlertCircle, label: 'Keluhan' },
-  { href: '/otp', icon: KeyRound, label: 'OTP' },
-  { href: '/discounts', icon: Percent, label: 'Diskon' },
-  { href: '/profile', icon: UserIcon, label: 'Profil & Langganan' },
-  { href: '/pengaturan', icon: Settings, label: 'Pengaturan' },
+  { href: '/', icon: LayoutDashboard, label: 'Dashboard', showAlways: true },
+  { href: '/webchat', icon: MessageSquare, label: 'Chat', showAlways: true },
+  { href: '/orders', icon: ShoppingBag, label: 'Orders', showAlways: true },
+  { href: '/ubah_pesanan', icon: ShoppingCart, label: 'Perubahan Pesanan', proOnly: true },
+  { href: '/return', icon: RotateCcw, label: 'Return', showAlways: true },
+  { href: '/produk', icon: Package, label: 'Produk', showAlways: true },
+  { href: '/flashsale', icon: Zap, label: 'Flash Sale', showAlways: true },
+  { href: '/ads', icon: Megaphone, label: 'Iklan', showAlways: true },
+  { href: '/shops', icon: Store, label: 'Shops', showAlways: true },
+  { href: '/keluhan', icon: AlertCircle, label: 'Keluhan', proOnly: true },
+  { href: '/otp', icon: KeyRound, label: 'OTP', proOnly: true },
+  { href: '/discounts', icon: Percent, label: 'Diskon', showAlways: true },
+  { href: '/profile', icon: UserIcon, label: 'Profil & Langganan', showAlways: true },
+  { href: '/pengaturan', icon: Settings, label: 'Pengaturan', proOnly: true },
 ]
+
 export function Sidebar() {
   const pathname = usePathname()
   const { state } = useMiniChat()
+  const { subscription, isLoading } = useUserData()
 
   const isActive = (path: string) => pathname === path
+  const isProUser = !isLoading && subscription?.plan_name === 'Admin'
 
   // Hitung jumlah akun yang memiliki pesan belum dibaca
   const totalUnread = state.conversations.filter(conv => conv.unread_count > 0).length
+
+  // Filter menu items berdasarkan level langganan
+  const filteredNavItems = navItems.filter(item => {
+    // Selalu tampilkan item yang memiliki showAlways: true
+    if (item.showAlways) return true
+    
+    // Tampilkan item khusus Pro jika user adalah Pro user
+    if (item.proOnly) return isProUser
+    
+    // Secara default tampilkan menu jika tidak ada flag khusus
+    return true
+  })
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -67,7 +83,7 @@ export function Sidebar() {
           </Link>
         </div>
         <nav className="grid gap-4 p-2 mt-8">
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <Tooltip key={item.href}>
               <TooltipTrigger asChild>
                 <Link href={item.href}>

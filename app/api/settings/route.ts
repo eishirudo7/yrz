@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { redis } from "@/app/services/redis";
 import { createClient } from '@/utils/supabase/server';
 import { getAllShops } from "@/app/services/shopeeService";
+import { UserSettingsService } from '@/app/services/userSettingsService';
 
 async function getUserIdFromSession() {
   try {
@@ -33,9 +33,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Ambil data dari Supabase
+    // Selalu ambil dari database terlebih dahulu
     const supabase = await createClient();
-    
+      
     // Ambil pengaturan user
     const { data: pengaturan, error: pengaturanError } = await supabase
       .from('pengaturan')
@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
       .eq('user_id', userId)
       .single();
     
-    if (pengaturanError && pengaturanError.code !== 'PGRST116') { // PGRST116 = tidak ditemukan
+    if (pengaturanError && pengaturanError.code !== 'PGRST116') {
       console.error('Error saat mengambil pengaturan:', pengaturanError);
       throw pengaturanError;
     }
 
-    // Ambil data langganan user dari tabel user_subscriptions dan subscription_plans
-    const { data: subscription, error: subscriptionError } = await supabase
+    // Ambil data langganan user
+    let { data: subscription, error: subscriptionError } = await supabase
       .from('user_subscriptions')
       .select(`
         id, 
@@ -64,15 +64,37 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .single();
     
-    if (subscriptionError && subscriptionError.code !== 'PGRST116') {
-      console.error('Error saat mengambil data langganan:', subscriptionError);
-      // Lanjutkan meskipun error, treat sebagai free user
+    if (subscriptionError || !subscription) {
+      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
+      
+      const { data: freePlan, error: planError } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('name', 'Basic')
+        .single();
+      
+      if (planError) {
+        console.error('Error saat mencari paket Basic:', planError);
+      }
+      
+      subscription = {
+        id: 'default-subscription',
+        status: 'active',
+        start_date: new Date().toISOString(),
+        end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
+        plan: [{
+          id: freePlan?.id || 'default-plan',
+          name: 'Basic',
+          max_shops: freePlan?.max_shops || 1,
+          features: freePlan?.features || {}
+        }]
+      };
     }
 
-    // Mengambil semua toko milik user dari shopee_tokens
+    // Ambil data toko
     const userShops = await getAllShops();
     
-    // Ambil data auto_ship_chat untuk toko-toko milik user
+    // Proses data toko dan auto_ship_chat
     let transformedAutoShip: any[] = [];
     
     if (userShops && userShops.length > 0) {
@@ -87,7 +109,6 @@ export async function GET(req: NextRequest) {
       
       if (autoShipError) {
         console.error('Error saat mengambil auto ship:', autoShipError);
-        // Lanjutkan dengan data kosong daripada throw error
       } else {
         // Map untuk menghubungkan shop_id dengan nama toko
         const shopMap = userShops.reduce((acc, shop) => {
@@ -95,14 +116,14 @@ export async function GET(req: NextRequest) {
           return acc;
         }, {});
         
-        // Dapatkan paket berlangganan user, gunakan 'free' jika tidak ada
+        // Dapatkan paket berlangganan user
         let maxShops = 1;
-        let planName = 'free';
+        let planName = 'basic';
         
         if (subscription && subscription.plan && subscription.plan.length > 0) {
           const plan = subscription.plan[0];
           maxShops = plan.max_shops || 1;
-          planName = plan.name || 'free';
+          planName = plan.name || 'basic';
         }
         
         // Transform data untuk kompatibilitas frontend
@@ -111,7 +132,7 @@ export async function GET(req: NextRequest) {
           shop_name: shopMap[item.shop_id] || `Toko ${item.shop_id}`,
           status_chat: item.status_chat || false,
           status_ship: item.status_ship || false,
-          premium_plan: planName
+          premium_plan: planName.toLowerCase()
         })) || [];
         
         // Tambahkan toko yang belum memiliki entri di auto_ship_chat
@@ -123,40 +144,35 @@ export async function GET(req: NextRequest) {
               shop_name: shop.shop_name || `Toko ${shop.shop_id}`,
               status_chat: false,
               status_ship: false,
-              premium_plan: planName
+              premium_plan: planName.toLowerCase()
             });
           }
         });
       }
     }
-
-    // Simpan ke Redis sebagai cache
-    try {
-      // Simpan dengan format user_id sebagai prefix
-      const redisKey = `user_settings:${userId}`;
-      const settingsData = {
-        ...pengaturan,
-        subscription: subscription,
-        shops: transformedAutoShip
-      };
-      
-      await redis.set(redisKey, JSON.stringify(settingsData));
-    } catch (cacheError) {
-      console.error('Error saat menyimpan ke cache:', cacheError);
-      // Lanjutkan eksekusi meskipun cache gagal
-    }
     
-    // Format respons untuk kompatibilitas dengan frontend
+    // Gabungkan semua data
+    const settingsData = {
+      ...pengaturan,
+      subscription: subscription,
+      shops: transformedAutoShip,
+      user_id: userId
+    };
+    
+    // Perbarui cache Redis SETELAH mengambil dari database
+    await UserSettingsService.saveUserSettings(userId, settingsData);
+    
+    // Respon data dari database ke frontend
     return NextResponse.json({
       ok: true,
-      pengaturan: pengaturan || {
-        openai_api: null,
-        openai_model: 'gpt-3.5-turbo',
-        openai_temperature: 0.4,
-        openai_prompt: '',
-        auto_ship: true,
-        auto_ship_interval: 5,
-        in_cancel_msg: null,
+      pengaturan: {
+        openai_api: pengaturan?.openai_api || null,
+        openai_model: pengaturan?.openai_model || 'gpt-3.5-turbo',
+        openai_temperature: pengaturan?.openai_temperature || 0.4,
+        openai_prompt: pengaturan?.openai_prompt || '',
+        auto_ship: pengaturan?.auto_ship !== undefined ? pengaturan.auto_ship : true,
+        auto_ship_interval: pengaturan?.auto_ship_interval || 5,
+        in_cancel_msg: pengaturan?.in_cancel_msg || null,
         user_id: userId
       },
       subscription: subscription,
@@ -200,7 +216,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Ambil data langganan user untuk memastikan status berlangganan
-    const { data: subscription, error: subscriptionError } = await supabase
+    let { data: subscription, error: subscriptionError } = await supabase
       .from('user_subscriptions')
       .select(`
         id, 
@@ -215,14 +231,41 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
     
-    // Dapatkan paket berlangganan user, gunakan 'free' jika tidak ada
+    if (subscriptionError || !subscription) {
+      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
+      
+      const { data: freePlan, error: planError } = await supabase
+        .from('subscription_plans')
+        .select('*')
+        .eq('name', 'Basic')
+        .single();
+      
+      if (planError) {
+        console.error('Error saat mencari paket Basic:', planError);
+      }
+      
+      subscription = {
+        id: 'default-subscription',
+        status: 'active',
+        start_date: new Date().toISOString(),
+        end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
+        plan: [{
+          id: freePlan?.id || 'default-plan',
+          name: 'Basic',
+          max_shops: freePlan?.max_shops || 1,
+          features: freePlan?.features || {}
+        }]
+      };
+    }
+
+    // Dapatkan paket berlangganan user
     let maxShops = 1;
-    let planName = 'free';
+    let planName = 'basic';
     
     if (subscription && subscription.plan && subscription.plan.length > 0) {
       const plan = subscription.plan[0];
       maxShops = plan.max_shops || 1;
-      planName = plan.name || 'free';
+      planName = plan.name || 'basic';
     }
 
     // Sanitasi dan validasi updatedSettings
@@ -236,52 +279,54 @@ export async function POST(req: NextRequest) {
         updatedSettings.auto_ship : true,
       auto_ship_interval: typeof updatedSettings.auto_ship_interval === 'number' ? 
         updatedSettings.auto_ship_interval : 5,
-      in_cancel_msg: updatedSettings.in_cancel_msg || null,
-      user_id: userId
+      in_cancel_msg: updatedSettings.in_cancel_msg !== undefined ? updatedSettings.in_cancel_msg : null,
+      user_id: userId,
+      subscription: subscription,
+      shops: updatedAutoShip.map(item => ({
+        shop_id: item.shop_id,
+        shop_name: item.shop_name,
+        status_chat: Boolean(item.status_chat),
+        status_ship: Boolean(item.status_ship),
+        premium_plan: subscription?.plan?.[0]?.name?.toLowerCase() || 'basic'
+      }))
     };
 
     // Simpan pengaturan ke database
     const { error: settingsError } = await supabase
       .from('pengaturan')
-      .upsert(sanitizedSettings)
-      .eq('user_id', userId);
+      .upsert({
+        openai_api: sanitizedSettings.openai_api,
+        openai_model: sanitizedSettings.openai_model,
+        openai_temperature: sanitizedSettings.openai_temperature,
+        openai_prompt: sanitizedSettings.openai_prompt,
+        auto_ship: sanitizedSettings.auto_ship,
+        auto_ship_interval: sanitizedSettings.auto_ship_interval,
+        in_cancel_msg: sanitizedSettings.in_cancel_msg,
+        user_id: userId
+      }, {
+        onConflict: 'user_id'
+      });
 
     if (settingsError) {
       console.error('Error saat menyimpan pengaturan:', settingsError);
       throw settingsError;
     }
 
-    // Mengambil semua toko milik user dari shopee_tokens
-    const userShops = await getAllShops();
-    
-    // Pastikan jumlah toko tidak melebihi batas paket berlangganan
-    const totalShops = userShops.length;
-    if (totalShops > maxShops) {
-      console.warn(`Jumlah toko (${totalShops}) melebihi batas paket berlangganan (${maxShops})`);
-    }
-
     // Update auto_ship_chat
     for (const item of updatedAutoShip) {
       if (!item.shop_id) continue;
 
-      // Periksa apakah shop_id ini adalah milik user
-      const isUserShop = userShops.some(shop => shop.shop_id === item.shop_id);
-      if (!isUserShop) {
-        console.warn(`Shop ID ${item.shop_id} bukan milik user ${userId}`);
-        continue;
-      }
-
       const autoShipData = {
         shop_id: item.shop_id,
         status_chat: Boolean(item.status_chat),
-        status_ship: Boolean(item.status_ship),
-        premium_plan: planName // Gunakan paket berlangganan user saat ini
+        status_ship: Boolean(item.status_ship)
       };
 
       const { error: autoShipError } = await supabase
         .from('auto_ship_chat')
-        .upsert(autoShipData)
-        .eq('shop_id', item.shop_id);
+        .upsert(autoShipData, {
+          onConflict: 'shop_id'
+        });
 
       if (autoShipError) {
         console.error(`Error saat memperbarui auto_ship_chat untuk toko ${item.shop_id}:`, autoShipError);
@@ -289,35 +334,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Update Redis cache
-    try {
-      const redisKey = `user_settings:${userId}`;
-      const settingsData = {
-        ...sanitizedSettings,
-        subscription: subscription,
-        shops: updatedAutoShip.map(item => ({
-          ...item,
-          premium_plan: planName // Pastikan semua shop menggunakan paket yang sama
-        }))
-      };
-      
-      await redis.set(redisKey, JSON.stringify(settingsData));
-    } catch (cacheError) {
-      console.error('Error saat memperbarui cache:', cacheError);
-      // Lanjutkan karena data utama sudah tersimpan di database
-    }
+    // Simpan ke UserSettingsService
+    await UserSettingsService.saveUserSettings(userId, sanitizedSettings);
     
     return NextResponse.json({ 
       success: true,
       ok: true,
       message: 'Pengaturan berhasil disimpan',
       data: {
-        settings: sanitizedSettings,
+        settings: {
+          openai_api: sanitizedSettings.openai_api,
+          openai_model: sanitizedSettings.openai_model,
+          openai_temperature: sanitizedSettings.openai_temperature,
+          openai_prompt: sanitizedSettings.openai_prompt,
+          auto_ship: sanitizedSettings.auto_ship,
+          auto_ship_interval: sanitizedSettings.auto_ship_interval,
+          in_cancel_msg: sanitizedSettings.in_cancel_msg,
+          user_id: userId
+        },
         subscription: subscription,
-        autoShip: updatedAutoShip.map(item => ({
-          ...item,
-          premium_plan: planName // Pastikan semua shop menggunakan paket yang sama
-        }))
+        autoShip: sanitizedSettings.shops
       }
     });
   } catch (error) {
@@ -328,3 +364,6 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Mengexport fungsi getUserIdFromShopId jika diperlukan
+export const getUserIdFromShopId = UserSettingsService.getUserIdFromShopId.bind(UserSettingsService);
