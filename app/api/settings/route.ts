@@ -364,6 +364,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-// Mengexport fungsi getUserIdFromShopId jika diperlukan
-export const getUserIdFromShopId = UserSettingsService.getUserIdFromShopId.bind(UserSettingsService);
