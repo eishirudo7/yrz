@@ -80,23 +80,29 @@ export default function ProfitabilitySettingsDialog({
   const fetchSkus = async () => {
     setLoading(true)
     try {
+      // Dapatkan user_id dari sesi aktif
+      const { data: { user } } = await createClient().auth.getUser()
+      
+      if (!user) {
+        toast.error('Anda harus login untuk mengakses fitur ini')
+        return
+      }
+      
       let query = createClient()
         .from('sku_cost_margins')
         .select('*')
+        .eq('user_id', user.id) // Filter berdasarkan user_id
         .order('item_sku', { ascending: true })
       
       if (searchTerm) {
         query = query.ilike('item_sku', `%${searchTerm}%`)
       }
       
-      const { data, error } = await query.limit(100) // Batasi untuk performa
+      const { data, error } = await query.limit(100)
       
       if (error) throw error
       
-      // Simpan semua data
       setAllSkus(data || [])
-      
-      // Filter data sesuai dengan tab yang aktif
       filterSkusByActiveTab(data || [])
     } catch (error) {
       console.error('Error fetching SKUs:', error)
@@ -134,11 +140,21 @@ export default function ProfitabilitySettingsDialog({
   const syncSkus = async () => {
     setSyncing(true)
     try {
-      const { data, error } = await createClient().rpc('populate_sku_cost_margins')
+      // Dapatkan user_id dari sesi aktif
+      const { data: { user } } = await createClient().auth.getUser()
+      
+      if (!user) {
+        toast.error('Anda harus login untuk mengakses fitur ini')
+        return
+      }
+      
+      // Panggil fungsi RPC dengan parameter user_id
+      const { data, error } = await createClient().rpc('populate_sku_cost_margins', {
+        p_user_id: user.id
+      })
       
       if (error) {
         if (error.message.includes('function') || error.message.includes('does not exist')) {
-          // Fungsi belum dibuat di database, buat tabel dan fungsi
           await createSkuMarginsTable()
         } else {
           throw error
@@ -180,6 +196,14 @@ export default function ProfitabilitySettingsDialog({
   
   const updateSkuData = async (id: number, updates: any) => {
     try {
+      // Opsional: verifikasi user_id untuk keamanan
+      const { data: { user } } = await createClient().auth.getUser()
+      
+      if (!user) {
+        toast.error('Anda harus login untuk mengakses fitur ini')
+        return
+      }
+      
       const { error } = await createClient()
         .from('sku_cost_margins')
         .update({
@@ -187,6 +211,7 @@ export default function ProfitabilitySettingsDialog({
           updated_at: new Date().toISOString()
         })
         .eq('id', id)
+        .eq('user_id', user.id) // Pastikan user hanya bisa update data miliknya
       
       if (error) throw error
       
@@ -199,7 +224,6 @@ export default function ProfitabilitySettingsDialog({
         )
       )
       
-      // Notify parent component
       if (onSettingsChange) {
         onSettingsChange()
       }

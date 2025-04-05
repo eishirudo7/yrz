@@ -179,9 +179,17 @@ export default function ProfitCalculator({
   // Fungsi untuk mengambil semua data SKU sekaligus
   const fetchAllSkuData = async (orders: Order[]) => {
     try {
+      // Dapatkan user_id dari sesi aktif
+      const { data: { user } } = await createClient().auth.getUser()
+      
+      if (!user) {
+        toast.error('Anda harus login untuk mengakses fitur ini')
+        return
+      }
+      
       // Ekstrak semua SKU unik dari orders
       const allSkus = new Set<string>();
-      const skuVariants: {[key: string]: string[]} = {}; // Untuk menampung varian dari SKU (perbedaan case)
+      const skuVariants: {[key: string]: string[]} = {};
       
       orders.forEach(order => {
         if (order.sku_qty) {
@@ -203,10 +211,11 @@ export default function ProfitCalculator({
       
       if (allSkus.size === 0) return;
       
-      // Query database sekali saja untuk semua SKU
+      // Query database dengan filter user_id
       const { data, error } = await createClient()
         .from('sku_cost_margins')
-        .select('item_sku, cost_price, margin_percentage, is_using_cost');
+        .select('item_sku, cost_price, margin_percentage, is_using_cost')
+        .eq('user_id', user.id);  // Filter berdasarkan user_id
       
       if (error) {
         console.error('Error fetching SKU data:', error);
@@ -424,6 +433,15 @@ export default function ProfitCalculator({
     setProfitDetails([]);
     
     try {
+      // Cek autentikasi pengguna
+      const { data: { user } } = await createClient().auth.getUser()
+      
+      if (!user) {
+        toast.error('Anda harus login untuk menghitung profit')
+        setIsCalculating(false);
+        return;
+      }
+      
       // Gunakan orders langsung karena sudah difilter dari page.tsx
       await fetchAllSkuData(orders);
       
