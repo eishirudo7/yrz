@@ -19,15 +19,23 @@ interface MobileSidebarProps {
 }
 
 export function MobileSidebar({ onNavigate }: MobileSidebarProps) {
-  const { subscription } = useUserData();
-  const isPremium = subscription?.plan_name === 'Admin';
+  const { subscription, isLoading } = useUserData()
   
-  // Filter navigasi berdasarkan hak akses pengguna
+  // Cek apakah pengguna adalah Pro user
+  const isProUser = !isLoading && subscription?.plan_name === 'Admin'
+  
+  // Filter menu items berdasarkan level langganan
   const filteredNavItems = navItems.filter(item => {
-    // Tampilkan jika showAlways=true atau jika proOnly=true dan pengguna premium
-    return item.showAlways || (item.proOnly && isPremium);
-  });
-  
+    // Selalu tampilkan item yang memiliki showAlways: true
+    if (item.showAlways) return true
+    
+    // Tampilkan item khusus Pro jika user adalah Pro user
+    if (item.proOnly) return isProUser
+    
+    // Secara default tampilkan menu jika tidak ada flag khusus
+    return true
+  })
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

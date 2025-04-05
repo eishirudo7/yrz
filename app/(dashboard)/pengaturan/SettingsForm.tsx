@@ -19,6 +19,7 @@ interface Settings {
   openai_prompt: string | null;
   auto_ship: boolean;
   auto_ship_interval: number;
+  in_cancel_status: boolean;
   in_cancel_msg: string | null;
 }
 
@@ -47,6 +48,7 @@ export function SettingsForm({ children }: { children: React.ReactNode }) {
       auto_ship: formData.get('auto_ship') === 'on',
       auto_ship_interval: formData.get('auto_ship_interval') ? 
         parseInt(formData.get('auto_ship_interval') as string) : 5,
+      in_cancel_status: formData.get('in_cancel_status') === 'on',
       in_cancel_msg: formData.get('in_cancel_msg')?.toString() || null
     }
 

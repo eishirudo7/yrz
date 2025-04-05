@@ -2,7 +2,7 @@
 
 // contexts/UserDataContext.tsx
 
-import { createContext, useContext, ReactNode, useState, useEffect } from 'react'
+import { createContext, useContext, ReactNode, useState, useEffect, useRef } from 'react'
 import { createClient } from '@/utils/supabase/client'
 
 // Tipe data untuk toko
@@ -44,76 +44,106 @@ const UserDataContext = createContext<UserDataContextType | undefined>(undefined
 
 // Provider konteks
 export function UserDataProvider({ children }: { children: ReactNode }) {
-  const supabase = createClient()
-  
   const [userId, setUserId] = useState<string | null>(null)
   const [shops, setShops] = useState<Shop[]>([])
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [lastLoadTime, setLastLoadTime] = useState(0)
-  const CACHE_DURATION = 5 * 60 * 1000 // 5 menit dalam milidetik
   
-  const loadUserData = async (force = false) => {
-    // Jika data sudah dimuat dalam 5 menit terakhir dan tidak force reload, 
-    // jangan muat ulang data
-    const now = Date.now()
-    if (!force && lastLoadTime > 0 && now - lastLoadTime < CACHE_DURATION) {
-      return // Gunakan data yang sudah di-cache
+  // Referensi untuk melacak apakah data sudah dimuat
+  const isDataLoaded = useRef(false)
+  // Referensi untuk melacak userId saat ini
+  const currentUserIdRef = useRef<string | null>(null)
+  
+  const supabase = createClient()
+  
+  // Fungsi untuk memuat data
+  const loadUserData = async (forceRefresh = false) => {
+    // Cek apakah perlu memuat ulang data
+    if (isDataLoaded.current && !forceRefresh) {
+      console.log('[UserData]: Data sudah dimuat, skip loading');
+      setIsLoading(false);
+      return;
     }
     
+    setIsLoading(true)
+    
     try {
-      setIsLoading(true)
-
-      // Ambil data user
+      // Ambil data user yang sedang login
       const { data: { user } } = await supabase.auth.getUser()
+      
       if (!user) {
-        setUserId(null)
-        setShops([])
-        setSubscription(null)
+        setIsLoading(false)
         return
       }
-
+      
+      // Cek apakah user ID berubah
+      if (currentUserIdRef.current === user.id && !forceRefresh) {
+        console.log('[UserData]: User ID sama, skip loading');
+        setIsLoading(false);
+        return;
+      }
+      
       setUserId(user.id)
-
+      currentUserIdRef.current = user.id
+      
       // Ambil data toko
-      const { data: shopsData, error: shopsError } = await supabase
+      const { data: shopData, error: shopError } = await supabase
         .from('shopee_tokens')
-        .select('*')
-        .order('id', { ascending: true })
-
-      if (shopsError) {
-        throw shopsError
+        .select('id, shop_id, shop_name, is_active')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+      
+      if (shopData && !shopError) {
+        setShops(shopData)
       }
-
-      // Format data toko
-      if (shopsData) {
-        setShops(shopsData)
-      }
-
+      
       // Ambil data subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
-        .from('subscriptions')
-        .select('*')
+        .from('user_subscriptions')
+        .select(`
+          id, 
+          plan_id, 
+          status, 
+          start_date, 
+          end_date,
+          subscription_plans (
+            id,
+            name,
+            max_shops,
+            features
+          )
+        `)
         .eq('user_id', user.id)
-        .order('id', { ascending: false })
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
         .limit(1)
         .single()
-
-      if (subscriptionError && subscriptionError.code !== 'PGRST116') {
-        // PGRST116 adalah kode untuk "no rows returned", bukan error sebenarnya
-        throw subscriptionError
-      }
-
-      // Format data subscription
-      if (subscriptionData) {
-        setSubscription(subscriptionData)
+      
+      if (subscriptionData && !subscriptionError) {
+        // Pastikan kita mengakses elemen pertama dari array (index 0)
+        const planData = Array.isArray(subscriptionData.subscription_plans) 
+          ? subscriptionData.subscription_plans[0] 
+          : subscriptionData.subscription_plans;
+        
+        setSubscription({
+          id: subscriptionData.id,
+          plan_id: subscriptionData.plan_id,
+          plan_name: planData.name,
+          status: subscriptionData.status,
+          start_date: subscriptionData.start_date,
+          end_date: subscriptionData.end_date,
+          max_shops: planData.max_shops,
+          features: planData.features || []
+        })
       } else {
         // Set default ke free jika tidak ada subscription aktif
         setSubscription(null)
       }
       
-      // Update waktu terakhir data dimuat
-      setLastLoadTime(now)
+      // Tandai bahwa data telah berhasil dimuat
+      isDataLoaded.current = true;
+      console.log('[UserData]: Data berhasil dimuat');
     } catch (error) {
       console.error('Error loading user data:', error)
     } finally {
@@ -121,34 +151,87 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
     }
   }
   
-  // Efek untuk memuat data saat komponen mount
+  // Fungsi untuk memuat ulang data
+  const refreshData = async () => {
+    console.log('[UserData]: Memuat ulang data (force refresh)');
+    await loadUserData(true)
+  }
+
+  // Inisialisasi data saat komponen dimuat pertama kali
   useEffect(() => {
     loadUserData()
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab menjadi aktif lagi, tapi tidak perlu memuat ulang data
+        console.log('[UserData]: Tab menjadi aktif, namun tidak memicu fetch ulang');
+      }
+    };
+    
+    // Tambahkan listener untuk perubahan visibilitas tab
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     // Setup listener untuk perubahan auth state
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          loadUserData(true) // Force reload untuk event login
+        console.log(`[Auth Event]: ${event}`, { session: session?.user?.email || 'No active session' });
+        
+        if (event === 'SIGNED_IN') {
+          // Cek apakah ini adalah proses login awal atau pindah tab
+          const isNewLogin = currentUserIdRef.current !== session?.user?.id;
+          console.log(`[UserData]: SIGNED_IN - ${isNewLogin ? 'Login baru' : 'Same user kembali ke tab'}`);
+          
+          if (isNewLogin) {
+            console.log(`[UserData]: Memuat ulang data pengguna setelah login baru`);
+            loadUserData(true);
+          }
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Tidak perlu memuat ulang data hanya karena token di-refresh
+          console.log('[UserData]: Token di-refresh, tidak perlu memuat ulang data');
         } else if (event === 'SIGNED_OUT') {
+          console.log('[UserData]: Menghapus data pengguna setelah logout');
           setUserId(null)
           setShops([])
           setSubscription(null)
-          setLastLoadTime(0)
+          isDataLoaded.current = false;
+          currentUserIdRef.current = null;
         }
       }
     )
     
     // Cleanup listener
     return () => {
-      authSubscription.unsubscribe()
+      console.log('[UserData]: Membersihkan auth listener dan visibility listener');
+      authSubscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
   }, [])
   
-  // Fungsi untuk memuat ulang data dengan flag force
-  const refreshData = async () => {
-    await loadUserData(true)
-  }
+  // Effect untuk log perubahan data
+  useEffect(() => {
+    // Format data subscription agar lebih mudah dibaca
+    const formattedSubscription = subscription ? {
+      ...subscription,
+      features: subscription.features?.length ? `[${subscription.features.length} fitur]` : '[]'
+    } : null;
+    
+    // Format data shops agar lebih mudah dibaca
+    const formattedShops = shops.length ? 
+      `[${shops.length} toko: ${shops.map(shop => shop.shop_name).join(', ')}]` : 
+      '[]';
+    
+    console.log('[UserData Context]:', {
+      userId,
+      isLoading,
+      subscription: formattedSubscription ? {
+        plan_name: formattedSubscription.plan_name,
+        max_shops: formattedSubscription.max_shops,
+        status: formattedSubscription.status,
+        features: formattedSubscription.features
+      } : 'null',
+      shops: formattedShops
+    });
+  }, [userId, shops, subscription, isLoading]);
   
   return (
     <UserDataContext.Provider value={{

@@ -228,6 +228,14 @@ export default function PengaturanPage() {
                   min={1}
                 />
               </div>
+              <div className="flex items-center space-x-2">
+                <Switch 
+                  id="in_cancel_status" 
+                  name="in_cancel_status"
+                  defaultChecked={settings?.in_cancel_status}
+                />
+                <Label htmlFor="in_cancel_status">Aktifkan Pesan Cancel Order</Label>
+              </div>
               <div className="grid gap-2">
                 <Label htmlFor="in_cancel_msg">Pesan Cancel Order</Label>
                 <Textarea 
