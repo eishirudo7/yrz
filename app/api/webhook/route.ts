@@ -8,7 +8,6 @@ import { PenaltyService } from '@/app/services/penaltyService';
 import { UpdateService } from '@/app/services/updateService';
 import { ViolationService } from '@/app/services/violationService';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
-import { PremiumFeatureService } from '@/app/services/premiumFeatureService';
 
 export async function POST(req: NextRequest) {
   // Segera kirim respons 200
@@ -136,40 +135,84 @@ async function handleOrder(data: any) {
           shop_name: shopName,
           shop_id: data.shop_id
         }),
-        // Gunakan PremiumFeatureService untuk auto-ship
+        // Cek dan proses auto-ship
         (async () => {
-          try {
-            console.log(`Menjalankan auto-ship dengan PremiumFeatureService untuk pesanan ${orderData.ordersn}`);
-            return await PremiumFeatureService.handleAutoShipByShopId(data.shop_id, orderData.ordersn);
-          } catch (error) {
-            console.error(`Error saat menjalankan auto-ship dengan PremiumFeatureService: ${error}`);
+          if (autoShipData) {
+            const shops = JSON.parse(autoShipData);
+            const shop = shops.find((s: any) => s.shop_id === data.shop_id);
+            
+            if (shop?.status_ship) {
+              return withRetry(
+                () => prosesOrder(data.shop_id, orderData.ordersn),
+                3,
+                2000
+              );
+            }
           }
         })()
       ]);
     }
     else if (orderData.status === 'IN_CANCEL') {
-      try {
-        if (orderDetail && orderDetail.buyer_user_id && orderDetail.buyer_username) {
-          console.log(`Menjalankan auto-chat dengan PremiumFeatureService untuk pesanan ${orderData.ordersn} yang dibatalkan`);
-          
-          // Gunakan PremiumFeatureService untuk auto-chat
-          const chatSent = await PremiumFeatureService.handleAutoChatByShopId(
-            data.shop_id, 
-            orderData.ordersn, 
-            orderDetail.buyer_user_id, 
-            orderDetail.buyer_username
+      // Cek status_chat dari auto_ship data
+      if (autoShipData) {
+        const shops = JSON.parse(autoShipData);
+        const shop = shops.find((s: any) => s.shop_id === data.shop_id);
+        const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:10000';
+
+        if (shop && shop.status_chat) {
+          try {
+            // Kirim pesan pertama dengan tipe 'order'
+            console.log('Memulai pengiriman pesan pertama ke pembeli');
+            const orderResponse = await fetch(`${API_BASE_URL}/api/msg/send_message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                toId: orderDetail.buyer_user_id,
+                messageType: 'order',
+                content: {
+                  order_sn: orderData.ordersn
+                },
+                shopId: data.shop_id
+              })
+            }
           );
-          
-          if (chatSent) {
-            console.log(`Berhasil mengirim pesan pembatalan untuk pesanan ${orderData.ordersn}`);
-          } else {
-            console.log(`Tidak dapat mengirim pesan pembatalan untuk pesanan ${orderData.ordersn}`);
+
+            if (!orderResponse.ok) {
+              throw new Error(`Gagal mengirim pesan order ke pembeli ${orderDetail.buyer_username}`);
+            }
+
+            // Tunggu sebentar sebelum mengirim pesan kedua
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Kirim pesan kedua dengan teks informasi
+            const message = `Halo ${orderDetail.buyer_username},\n\nMohon maaf, pesanan dengan nomor ${orderData.ordersn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nDitunggu ya kak responnya.`;
+            console.log('Memulai pengiriman pesan kedua ke pembeli');
+            const textResponse = await fetch(`${API_BASE_URL}/api/msg/send_message`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                toId: orderDetail.buyer_user_id,
+                messageType: 'text',
+                content: message,
+                shopId: data.shop_id
+              })
+            });
+
+            if (!textResponse.ok) {
+              throw new Error(`Gagal mengirim pesan teks ke pembeli ${orderDetail.buyer_username}`);
+            }
+
+            console.log(`Pesan pembatalan berhasil dikirim ke pembeli untuk order ${orderData.ordersn}`);
+          } catch (error) {
+            console.error(`Gagal mengirim pesan pembatalan untuk order ${orderData.ordersn}:`, error);
           }
         } else {
-          console.error(`Data pembeli tidak lengkap untuk pesanan ${orderData.ordersn}`);
+          console.log(`Auto-chat tidak aktif untuk toko ${shopName} (${data.shop_id})`);
         }
-      } catch (error) {
-        console.error(`Error saat menangani status IN_CANCEL untuk pesanan ${orderData.ordersn}:`, error);
       }
     }
   } catch (error) {

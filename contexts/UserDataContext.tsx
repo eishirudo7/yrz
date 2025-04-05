@@ -44,82 +44,76 @@ const UserDataContext = createContext<UserDataContextType | undefined>(undefined
 
 // Provider konteks
 export function UserDataProvider({ children }: { children: ReactNode }) {
+  const supabase = createClient()
+  
   const [userId, setUserId] = useState<string | null>(null)
   const [shops, setShops] = useState<Shop[]>([])
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [lastLoadTime, setLastLoadTime] = useState(0)
+  const CACHE_DURATION = 5 * 60 * 1000 // 5 menit dalam milidetik
   
-  const supabase = createClient()
-  
-  // Fungsi untuk memuat data
-  const loadUserData = async () => {
-    setIsLoading(true)
+  const loadUserData = async (force = false) => {
+    // Jika data sudah dimuat dalam 5 menit terakhir dan tidak force reload, 
+    // jangan muat ulang data
+    const now = Date.now()
+    if (!force && lastLoadTime > 0 && now - lastLoadTime < CACHE_DURATION) {
+      return // Gunakan data yang sudah di-cache
+    }
     
     try {
-      // Ambil data user yang sedang login
+      setIsLoading(true)
+
+      // Ambil data user
       const { data: { user } } = await supabase.auth.getUser()
-      
       if (!user) {
-        setIsLoading(false)
+        setUserId(null)
+        setShops([])
+        setSubscription(null)
         return
       }
-      
+
       setUserId(user.id)
-      
+
       // Ambil data toko
-      const { data: shopData, error: shopError } = await supabase
+      const { data: shopsData, error: shopsError } = await supabase
         .from('shopee_tokens')
-        .select('id, shop_id, shop_name, is_active')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-      
-      if (shopData && !shopError) {
-        setShops(shopData)
+        .select('*')
+        .order('id', { ascending: true })
+
+      if (shopsError) {
+        throw shopsError
       }
-      
+
+      // Format data toko
+      if (shopsData) {
+        setShops(shopsData)
+      }
+
       // Ambil data subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
-        .from('user_subscriptions')
-        .select(`
-          id, 
-          plan_id, 
-          status, 
-          start_date, 
-          end_date,
-          subscription_plans (
-            id,
-            name,
-            max_shops,
-            features
-          )
-        `)
+        .from('subscriptions')
+        .select('*')
         .eq('user_id', user.id)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .limit(1)
         .single()
-      
-      if (subscriptionData && !subscriptionError) {
-        // Pastikan kita mengakses elemen pertama dari array (index 0)
-        const planData = Array.isArray(subscriptionData.subscription_plans) 
-          ? subscriptionData.subscription_plans[0] 
-          : subscriptionData.subscription_plans;
-        
-        setSubscription({
-          id: subscriptionData.id,
-          plan_id: subscriptionData.plan_id,
-          plan_name: planData.name,
-          status: subscriptionData.status,
-          start_date: subscriptionData.start_date,
-          end_date: subscriptionData.end_date,
-          max_shops: planData.max_shops,
-          features: planData.features || []
-        })
+
+      if (subscriptionError && subscriptionError.code !== 'PGRST116') {
+        // PGRST116 adalah kode untuk "no rows returned", bukan error sebenarnya
+        throw subscriptionError
+      }
+
+      // Format data subscription
+      if (subscriptionData) {
+        setSubscription(subscriptionData)
       } else {
         // Set default ke free jika tidak ada subscription aktif
         setSubscription(null)
       }
+      
+      // Update waktu terakhir data dimuat
+      setLastLoadTime(now)
     } catch (error) {
       console.error('Error loading user data:', error)
     } finally {
@@ -135,11 +129,12 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          loadUserData()
+          loadUserData(true) // Force reload untuk event login
         } else if (event === 'SIGNED_OUT') {
           setUserId(null)
           setShops([])
           setSubscription(null)
+          setLastLoadTime(0)
         }
       }
     )
@@ -150,44 +145,10 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   
-  // Fungsi untuk memuat ulang data
+  // Fungsi untuk memuat ulang data dengan flag force
   const refreshData = async () => {
-    await loadUserData()
+    await loadUserData(true)
   }
-  
-  useEffect(() => {
-    // Log data setiap kali berubah
-    console.log({
-      userId,
-      subscription,
-      shops,
-      isLoading
-    });
-  }, [userId, subscription, shops, isLoading]);
-  
-  // Tambahkan akses global untuk debugging
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // @ts-ignore
-      window.__userData = {
-        userId,
-        subscription,
-        shops,
-        isLoading,
-        refreshData
-      };
-      
-      // @ts-ignore
-      window.getUserData = () => {
-        return {
-          userId,
-          subscription,
-          shops,
-          isLoading
-        };
-      };
-    }
-  }, [userId, subscription, shops, isLoading]);
   
   return (
     <UserDataContext.Provider value={{

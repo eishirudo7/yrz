@@ -12,12 +12,22 @@ import {
   DropdownMenuSeparator
 } from "../ui/dropdown-menu"
 import { Button } from "../ui/button"
+import { useUserData } from "@/contexts/UserDataContext"
 
 interface MobileSidebarProps {
   onNavigate: () => void
 }
 
 export function MobileSidebar({ onNavigate }: MobileSidebarProps) {
+  const { subscription } = useUserData();
+  const isPremium = subscription?.plan_name === 'Admin';
+  
+  // Filter navigasi berdasarkan hak akses pengguna
+  const filteredNavItems = navItems.filter(item => {
+    // Tampilkan jika showAlways=true atau jika proOnly=true dan pengguna premium
+    return item.showAlways || (item.proOnly && isPremium);
+  });
+  
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -29,7 +39,7 @@ export function MobileSidebar({ onNavigate }: MobileSidebarProps) {
       <DropdownMenuContent align="start" className="w-56 ml-2">
         <DropdownMenuLabel>Menu</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {navItems.map((item) => (
+        {filteredNavItems.map((item) => (
           <DropdownMenuItem key={item.href} asChild>
             <Link
               href={item.href}
