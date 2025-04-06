@@ -1,6 +1,6 @@
 'use client';
 
-import { useDiscounts } from '@/hooks/useDiscounts';
+import { useDiscounts } from '@/app/hooks/useDiscounts';
 import { useRouter } from 'next/navigation';
 import {
   Table,
