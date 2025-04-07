@@ -37,12 +37,13 @@ import {
   RadioGroupItem,
 } from "@/components/ui/radio-group";
 import { format } from 'date-fns';
-import { X, AlertTriangle, Plus, CalendarDays, Clock, Eye, Bell, MoreVertical, Check, Trash2, Copy, RefreshCcw } from 'lucide-react';
+import { X, AlertTriangle, Plus, CalendarDays, Clock, Eye, Bell, MoreVertical, Check, Trash2, Copy, RefreshCcw, HelpCircle } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 import { Checkbox } from "@/components/ui/checkbox"
 import { InactiveFlashSaleIndicator } from "./components/InactiveFlashSaleIndicator"
+import { Label } from "@/components/ui/label";
 
 interface FlashSale {
   flash_sale_id: number;
@@ -391,6 +392,7 @@ export default function FlashSalePage() {
   const [isDesktopDialogOpen, setIsDesktopDialogOpen] = useState(false);
   const [isMobileDialogOpen, setIsMobileDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [includeTurnOff, setIncludeTurnOff] = useState(true);
 
   // Tambahkan fungsi helper untuk mengambil slot waktu
   const fetchTimeSlots = async (shopId: number) => {
@@ -709,6 +711,7 @@ export default function FlashSalePage() {
   const handleDuplicate = async (flashSaleId: number) => {
     setDuplicatingFlashSaleId(flashSaleId);
     setSelectedSlots([]); // Reset selected slots
+    setIncludeTurnOff(true); // Reset toggle ke default true
     
     try {
       const response = await fetch(`/api/flashsale/timeslot?shop_id=${selectedShop}`);
@@ -751,7 +754,8 @@ export default function FlashSalePage() {
         body: JSON.stringify({
           shop_id: selectedShop,
           flash_sale_id: duplicatingFlashSaleId,
-          timeslot_ids: selectedSlots
+          timeslot_ids: selectedSlots,
+          turnOn: includeTurnOff
         })
       });
 
@@ -1851,6 +1855,19 @@ export default function FlashSalePage() {
                    
                   </div>
                 </div>
+                
+                <div className="flex items-center gap-2 mb-3 border-b pb-2 dark:border-gray-800">
+                  <Switch
+                    checked={includeTurnOff}
+                    onCheckedChange={setIncludeTurnOff}
+                    id="include-turnoff"
+                  />
+                  <Label htmlFor="include-turnoff" className="text-sm dark:text-gray-300">
+                    Sertakan produk yang dinonaktifkan
+                  </Label>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </div>
+                
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
                   <div className="grid grid-cols-2 gap-2">
                     {timeSlots.map((slot) => {

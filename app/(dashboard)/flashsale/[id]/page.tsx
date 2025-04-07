@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { toast } from "sonner";
+import Link from "next/link";
+import { useRouter } from 'next/navigation';
 
 // Shadcn UI imports
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -18,7 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox"
-import { ChevronDown, ChevronRight, Trash2, Store, Clock, Package } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Store, Clock, Package, ArrowLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -158,6 +160,8 @@ export default function FlashSaleDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [hasLoadedProducts, setHasLoadedProducts] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [modelFilter, setModelFilter] = useState('all'); // 'all', 'active', 'inactive', 'out-of-stock'
+  const router = useRouter();
 
   // Modifikasi useEffect untuk menginisialisasi collapsedItems
   useEffect(() => {
@@ -966,69 +970,81 @@ export default function FlashSaleDetailPage() {
     
       <Card className="bg-white dark:bg-gray-800/50 rounded-none">
         <CardContent className="pt-6 px-4 sm:px-6">
-          {/* Info Flash Sale - Responsif Grid */}
-          <div className="bg-white dark:bg-gray-800/80 rounded-lg shadow-sm border dark:border-gray-700/50 p-3 sm:p-4 mb-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
-              <h2 className="text-lg font-semibold dark:text-gray-200">Detail Flash Sale</h2>
+          {/* Tombol Kembali */}
+          <div className="mb-6">
+            <Link href="/flashsale">
+              <Button variant="outline" size="sm" className="gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                Kembali ke Daftar Flash Sale
+              </Button>
+            </Link>
+          </div>
+        
+          {/* Header Section - Lebih Profesional */}
+          <div className="bg-white dark:bg-gray-800/80 rounded-lg shadow-sm border dark:border-gray-700/50 overflow-hidden mb-6">
+            <div className="border-b bg-slate-50 dark:bg-gray-800/90 px-4 py-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Store className="h-5 w-5 text-slate-700 dark:text-slate-300" />
+                <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">{shopName || 'Loading...'}</h2>
+              </div>
               <Badge 
-                variant="secondary" 
-                className="bg-green-50 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-3 py-0.5 text-xs"
+                variant="outline" 
+                className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800/30 px-2.5 py-0.5 text-xs"
               >
-                Aktif
+                {flashSaleData?.status === 1 ? 'Aktif' : 'Non-aktif'}
               </Badge>
             </div>
             
-            {/* Grid yang responsif */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Kolom Kiri */}
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">ID Flash Sale</label>
-                  <p className="text-sm font-mono dark:text-gray-200">{flashSaleId}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">ID Time Slot</label>
-                  <p className="text-sm font-mono dark:text-gray-200">{flashSaleData?.timeslot_id}</p>
-                </div>
-              </div>
-
-              {/* Kolom Tengah */}
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Store className="w-4 h-4 text-gray-400" />
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Toko</label>
+            {/* Body Content */}
+            <div className="p-5">
+              <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                {/* Informasi Utama - Tampilan Full Width */}
+                <div className="w-full">
+                  <h1 className="text-xl font-bold mb-2 dark:text-gray-100">Flash Sale</h1>
+                  <div className="flex flex-wrap gap-y-2 gap-x-4 text-sm text-gray-600 dark:text-gray-400">
+                    {/* Waktu Flash Sale */}
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4" />
+                      <span>
+                        {flashSaleData ? 
+                          `${format(new Date(flashSaleData.start_time * 1000), "d MMMM yyyy")} · ${formatTime(flashSaleData.start_time)} - ${formatTime(flashSaleData.end_time)}` 
+                          : 'Loading...'}
+                      </span>
+                    </div>
+                    
+                    {/* Jumlah Produk */}
+                    <div className="flex items-center gap-1.5">
+                      <Package className="h-4 w-4" />
+                      <span>
+                        {flashSaleData ? (
+                          <>
+                            {`${flashSaleData.item_count} produk (${flashSaleData.enabled_item_count} aktif)`}
+                            {/* Tambahkan total model tidak aktif */}
+                            {(() => {
+                              if (!flashSaleData?.models) return null;
+                              const inactiveModelsCount = flashSaleData.models.filter(model => model.status === 0).length;
+                              const totalModelsCount = flashSaleData.models.length;
+                              return inactiveModelsCount > 0 ? (
+                                <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
+                                  {inactiveModelsCount} dari {totalModelsCount} model tidak aktif
+                                </span>
+                              ) : null;
+                            })()}
+                          </>
+                        ) : 'Loading...'}
+                      </span>
+                    </div>
+                    
+                    {/* Tipe Flash Sale */}
+                    {flashSaleData?.type && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="rounded-full w-4 h-4 bg-gray-100 flex items-center justify-center text-xs">
+                          <span>{flashSaleData.type === 1 ? 'R' : 'S'}</span>
+                        </div>
+                        <span>{flashSaleData.type === 1 ? 'Regular' : 'Special'}</span>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm dark:text-gray-200">{shopName}</p>
-                </div>
-                
-                <div>
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Clock className="w-4 h-4 text-gray-400" />
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Waktu Flash Sale</label>
-                  </div>
-                  <p className="text-sm dark:text-gray-200">
-                    {flashSaleData && format(new Date(flashSaleData.start_time * 1000), "MMMM do, yyyy")}
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">
-                      {flashSaleData && `${formatTime(flashSaleData.start_time)} - ${formatTime(flashSaleData.end_time)}`}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Kolom Kanan */}
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Package className="w-4 h-4 text-gray-400" />
-                    <label className="text-xs text-gray-500 dark:text-gray-400">Total Produk</label>
-                  </div>
-                  <p className="text-sm font-medium dark:text-gray-200">{flashSaleData?.item_count ?? 0} Produk</p>
-                </div>
-                
-                <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-0.5">Status Produk</label>
-                  <p className="text-sm font-medium dark:text-gray-200">{flashSaleData?.enabled_item_count ?? 0} Aktif</p>
                 </div>
               </div>
             </div>
@@ -1036,131 +1052,117 @@ export default function FlashSaleDetailPage() {
 
           {/* Mass Update Controls - Responsif */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-3 sm:p-5 bg-white dark:bg-gray-800/95 rounded-lg shadow-sm border dark:border-gray-700/50 mb-6">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Mass Update
-              </span>
-              <Badge 
-                variant="secondary" 
-                className="bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600/50 w-[140px] flex items-center justify-center"
-              >
-                {selectedModels.size} model terpilih
-              </Badge>
+           
+
+            <div className="flex flex-wrap items-center gap-3 w-full">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <Select 
+                  onValueChange={(value: 'fixed' | 'percentage') => {
+                    setUpdateType(value);
+                    setPromoPrice(null);
+                  }}
+                  value={updateType}
+                >
+                  <SelectTrigger className="h-9 text-sm bg-white dark:bg-gray-700/50 dark:text-gray-200 w-full sm:w-[100px] shrink-0">
+                    <SelectValue placeholder="Harga" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">Harga</SelectItem>
+                    <SelectItem value="percentage">Diskon</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Input
+                  type="number"
+                  placeholder={updateType === 'fixed' ? "Harga" : "%"}
+                  className="h-9 text-sm w-full sm:w-32 dark:bg-gray-700/50 dark:border-gray-600/50 dark:text-gray-200 dark:placeholder-gray-400"
+                  value={promoPrice || ''}
+                  min={0}
+                  max={updateType === 'percentage' ? 100 : undefined}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value)) {
+                      setPromoPrice(value);
+                    }
+                  }}
+                />
+
+                <Input
+                  type="number"
+                  placeholder="Stok"
+                  className="h-9 text-sm w-full sm:w-32 dark:bg-gray-700/50 dark:border-gray-600/50 dark:text-gray-200 dark:placeholder-gray-400"
+                  value={stockValue || ''}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value)) {
+                      setStockValue(value);
+                    }
+                  }}
+                />
+
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (promoPrice !== null) {
+                      if (updateType === 'fixed') {
+                        handleMassUpdate('promotion_price', promoPrice);
+                      } else {
+                        handleMassUpdate('discount', promoPrice);
+                      }
+                    }
+                    if (stockValue !== null) {
+                      handleMassUpdate('stock', stockValue);
+                    }
+                  }}
+                  disabled={selectedModels.size === 0}
+                  className="h-9 w-full sm:w-auto bg-gray-900 dark:bg-gray-700 text-white hover:bg-gray-800"
+                >
+                  Update
+                </Button>
+              </div>
             </div>
 
             <div className="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700/50 mx-2" />
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full">
-              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  <Select 
-                    onValueChange={(value: 'fixed' | 'percentage') => {
-                      setUpdateType(value);
-                      setPromoPrice(null);
-                    }}
-                    value={updateType}
-                  >
-                    <SelectTrigger className="h-9 text-sm bg-white dark:bg-gray-700/50 dark:text-gray-200 w-full sm:w-[100px] shrink-0">
-                      <SelectValue placeholder="Harga" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fixed">Harga</SelectItem>
-                      <SelectItem value="percentage">Diskon</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="flex flex-row flex-nowrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
+              <Button
+                onClick={() => handleMassActivation(true)}
+                className="h-9 w-auto bg-emerald-500 text-white hover:bg-emerald-600"
+                disabled={selectedModels.size === 0}
+              >
+                Aktifkan
+              </Button>
 
-                  <Input
-                    type="number"
-                    placeholder={updateType === 'fixed' ? "Harga" : "%"}
-                    className="h-9 text-sm w-full sm:w-32 dark:bg-gray-700/50 dark:border-gray-600/50 dark:text-gray-200 dark:placeholder-gray-400"
-                    value={promoPrice || ''}
-                    min={0}
-                    max={updateType === 'percentage' ? 100 : undefined}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value);
-                      if (!isNaN(value)) {
-                        setPromoPrice(value);
-                      }
-                    }}
-                  />
+              <Button
+                onClick={() => handleMassActivation(false)}
+                className="h-9 w-auto bg-rose-500 text-white hover:bg-rose-600"
+                disabled={selectedModels.size === 0}
+              >
+                Nonaktifkan
+              </Button>
 
-                  <Input
-                    type="number"
-                    placeholder="Stok"
-                    className="h-9 text-sm w-full sm:w-32 dark:bg-gray-700/50 dark:border-gray-600/50 dark:text-gray-200 dark:placeholder-gray-400"
-                    value={stockValue || ''}
-                    onChange={(e) => {
-                      const value = parseInt(e.target.value);
-                      if (!isNaN(value)) {
-                        setStockValue(value);
-                      }
-                    }}
-                  />
-
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (promoPrice !== null) {
-                        if (updateType === 'fixed') {
-                          handleMassUpdate('promotion_price', promoPrice);
-                        } else {
-                          handleMassUpdate('discount', promoPrice);
-                        }
-                      }
-                      if (stockValue !== null) {
-                        handleMassUpdate('stock', stockValue);
-                      }
-                    }}
-                    disabled={selectedModels.size === 0}
-                    className="h-9 w-full sm:w-auto bg-gray-900 dark:bg-gray-700 text-white hover:bg-gray-800"
-                  >
-                    Update
-                  </Button>
-                </div>
-              </div>
-
-              <div className="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700/50 mx-2" />
-
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
-                <Button
-                  onClick={() => handleMassActivation(true)}
-                  className="h-9 w-full sm:w-auto bg-emerald-500 text-white hover:bg-emerald-600"
-                  disabled={selectedModels.size === 0}
-                >
-                  Aktifkan
-                </Button>
-
-                <Button
-                  onClick={() => handleMassActivation(false)}
-                  className="h-9 w-full sm:w-auto bg-rose-500 text-white hover:bg-rose-600"
-                  disabled={selectedModels.size === 0}
-                >
-                  Nonaktifkan
-                </Button>
-
-                <Button
-                  onClick={handleDeleteItems}
-                  className="h-9 w-full sm:w-auto bg-red-600 text-white hover:bg-red-700"
-                  disabled={selectedModels.size === 0 || isDeleting}
-                >
-                  {isDeleting ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                      Menghapus...
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="h-4 w-4 mr-1.5" />
-                      Hapus Item
-                    </>
-                  )}
-                </Button>
-              </div>
+              <Button
+                onClick={handleDeleteItems}
+                className="h-9 w-auto bg-red-600 text-white hover:bg-red-700"
+                disabled={selectedModels.size === 0 || isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Hapus Item
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
-          {/* Tambahkan tombol Tambah Produk */}
-          <div className="mb-4">
+          {/* Tambahkan tombol Tambah Produk dan Filter Status */}
+          <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <Button
               type="button"
               onClick={handleAddProduct}
@@ -1168,6 +1170,54 @@ export default function FlashSaleDetailPage() {
             >
               + Tambah Produk
             </Button>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
+              <Select 
+                onValueChange={(value) => {
+                  setModelFilter(value);
+                }}
+                defaultValue="all"
+              >
+                <SelectTrigger className="h-9 text-sm bg-white dark:bg-gray-700/50 dark:text-gray-200 w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    Semua Model 
+                    {flashSaleData?.models && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        ({flashSaleData.models.length})
+                      </span>
+                    )}
+                  </SelectItem>
+                  <SelectItem value="active">
+                    Model Aktif
+                    {flashSaleData?.models && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        ({flashSaleData.models.filter(model => model.status === 1).length})
+                      </span>
+                    )}
+                  </SelectItem>
+                  <SelectItem value="inactive">
+                    Model Tidak Aktif
+                    {flashSaleData?.models && (
+                      <span className="ml-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                        ({flashSaleData.models.filter(model => model.status === 0).length})
+                      </span>
+                    )}
+                  </SelectItem>
+                  <SelectItem value="out-of-stock">
+                    Stok Habis
+                    {flashSaleData?.models && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        ({flashSaleData.models.filter(model => model.stock === 0).length})
+                      </span>
+                    )}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Table responsif dengan scroll horizontal */}
@@ -1258,6 +1308,15 @@ export default function FlashSaleDetailPage() {
                                     Belum Terdaftar
                                   </span>
                                 )}
+                                {/* Tambahkan indikator jumlah model yang tidak aktif */}
+                                {(() => {
+                                  const inactiveModelsCount = itemModels.filter(model => model.status === 0).length;
+                                  return inactiveModelsCount > 0 ? (
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
+                                      {inactiveModelsCount} Model Tidak Aktif
+                                    </span>
+                                  ) : null;
+                                })()}
                               </div>
                             </div>
                             
@@ -1282,10 +1341,18 @@ export default function FlashSaleDetailPage() {
                       {!collapsedItems.has(item.item_id) && 
                         [...itemModels] // Buat copy array untuk diurutkan
                           .sort((a, b) => a.model_name.localeCompare(b.model_name)) // Urutkan berdasarkan model_name
+                          .filter((model: any) => {
+                            // Filter berdasarkan status model
+                            if (modelFilter === 'all') return true;
+                            if (modelFilter === 'active') return model.status === 1;
+                            if (modelFilter === 'inactive') return model.status === 0;
+                            if (modelFilter === 'out-of-stock') return model.stock === 0;
+                            return true;
+                          })
                           .map((model: any) => (
                             <TableRow 
                               key={`${model.item_id}-${model.model_id}`} 
-                              className="border-b dark:border-gray-700/50"
+                              className={`border-b dark:border-gray-700/50 ${model.status === 0 ? 'opacity-70 bg-gray-50 dark:bg-gray-800/50' : ''}`}
                             >
                               <TableCell>
                                 <Checkbox
@@ -1294,7 +1361,21 @@ export default function FlashSaleDetailPage() {
                                     disabled={model.stock === 0}
                                   />
                               </TableCell>
-                              <TableCell>{model.model_name}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span>{model.model_name}</span>
+                                  {model.status === 0 && (
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full">
+                                      Tidak Aktif
+                                    </span>
+                                  )}
+                                  {model.stock === 0 && (
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full">
+                                      Stok Habis
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell>{formatRupiah(model.original_price)}</TableCell>
                               <TableCell>{formatRupiah(model.promotion_price_with_tax || model.promotion_price)}</TableCell>
                               <TableCell>

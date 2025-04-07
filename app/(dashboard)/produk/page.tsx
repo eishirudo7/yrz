@@ -2,7 +2,7 @@
 
 import { useProducts } from '@/app/hooks/useProducts'
 import { Button } from '@/components/ui/button'
-import { Loader2, RefreshCcw, Search, Package } from 'lucide-react'
+import { Loader2, RefreshCcw, Search, Package, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -98,6 +98,9 @@ export default function ProdukPage() {
   const [isDeactivatingPromo, setIsDeactivatingPromo] = useState(false)
   const { isLoading: isLoadingPromotions, fetchPromotions, promotions } = useProductPromotions()
   const [isConfirmStatusDialogOpen, setIsConfirmStatusDialogOpen] = useState(false)
+  const [selectedModels, setSelectedModels] = useState<number[]>([])
+  const [isDeleteMultiplePromoDialogOpen, setIsDeleteMultiplePromoDialogOpen] = useState(false)
+  const [isDeletingMultiplePromos, setIsDeletingMultiplePromos] = useState(false)
 
   const filteredProducts = products.filter((product) => {
     const shopFilter = selectedShopId === 'all' || 
@@ -127,8 +130,14 @@ export default function ProdukPage() {
 
       const response = await getStockPrices(itemId)
       const stocks = response as StockPrice[]
-      setSelectedItemStocks(stocks)
-      setStockPrices(stocks)
+      
+      // Urutkan model berdasarkan nama secara alfabetis
+      const sortedStocks = [...stocks].sort((a, b) => 
+        a.model_name.localeCompare(b.model_name, 'id', { sensitivity: 'base' })
+      )
+      
+      setSelectedItemStocks(sortedStocks)
+      setStockPrices(sortedStocks)
       setIsStockDialogOpen(true)
       
       // Fetch promotions untuk produk ini
@@ -158,7 +167,12 @@ export default function ProdukPage() {
     if (massUpdateStock === '') return;
     
     const newStocks = { ...editedStocks };
-    selectedItemStocks.forEach(stock => {
+    // Jika ada model yang dipilih, update hanya model yang dipilih
+    const modelsToUpdate = selectedModels.length > 0 
+      ? selectedItemStocks.filter(stock => selectedModels.includes(stock.model_id))
+      : selectedItemStocks;
+    
+    modelsToUpdate.forEach(stock => {
       const minStock = stock.stock_info.total_reserved_stock;
       newStocks[stock.model_id] = massUpdateStock < minStock ? minStock : massUpdateStock;
     });
@@ -446,36 +460,56 @@ export default function ProdukPage() {
         throw new Error('Tidak ada Flash Sale upcoming yang dapat dinonaktifkan')
       }
 
-      // Nonaktifkan semua Flash Sale yang upcoming
-      for (const flashSaleId of promoInfo.upcomingFlashSaleIds) {
-        const response = await fetch('/api/flashsale/items/update', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            shop_id: product.shop_id,
-            flash_sale_id: flashSaleId,
-            items: [{
-              item_id: selectedItemId,
-              models: [{
-                model_id: selectedPromoModel.modelId,
-                status: 0
+      // Nonaktifkan semua Flash Sale yang upcoming untuk model ini secara paralel
+      const deactivationPromises = promoInfo.upcomingFlashSaleIds.map(async (flashSaleId) => {
+        try {
+          const response = await fetch('/api/flashsale/items/update', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              shop_id: product.shop_id,
+              flash_sale_id: flashSaleId,
+              items: [{
+                item_id: selectedItemId,
+                models: [{
+                  model_id: selectedPromoModel.modelId,
+                  status: 0
+                }]
               }]
-            }]
-          })
-        })
+            })
+          });
 
-        const result = await response.json()
-        if (!result.success) {
-          throw new Error(result.message || 'Gagal menonaktifkan promosi')
+          const result = await response.json();
+          return { success: result.success, flashSaleId, modelId: selectedPromoModel.modelId };
+        } catch (error) {
+          console.error(`Error deactivating promo for model ${selectedPromoModel.modelId}, flash sale ${flashSaleId}:`, error);
+          return { success: false, flashSaleId, modelId: selectedPromoModel.modelId, error };
+        }
+      });
+
+      // Tunggu semua requests selesai diproses
+      const results = await Promise.all(deactivationPromises);
+
+      // Hitung hasil
+      let totalDeactivatedPromos = 0;
+      let totalFailedPromos = 0;
+      let totalOngoingPromos = 0;
+
+      for (const result of results) {
+        if (result.success) {
+          totalDeactivatedPromos++;
+        } else {
+          totalFailedPromos++;
         }
       }
 
       // Tampilkan pesan sukses yang berbeda berdasarkan status promosi
-      let successMessage = `${promoInfo.upcomingFlashSaleIds.length} promosi upcoming berhasil dinonaktifkan`
+      let successMessage = `${totalDeactivatedPromos} promosi upcoming berhasil dinonaktifkan`
       if (promoInfo.ongoingFlashSaleIds.length > 0) {
         successMessage += `. ${promoInfo.ongoingFlashSaleIds.length} promosi ongoing tidak diubah`
+        totalOngoingPromos = promoInfo.ongoingFlashSaleIds.length;
       }
 
       toast.success(successMessage)
@@ -493,6 +527,122 @@ export default function ProdukPage() {
       setIsDeactivatingPromo(false)
     }
   }
+
+  const handleSelectModel = (modelId: number) => {
+    setSelectedModels(prev => {
+      if (prev.includes(modelId)) {
+        return prev.filter(id => id !== modelId)
+      }
+      return [...prev, modelId]
+    })
+  }
+
+  const handleSelectAllModels = (checked: boolean) => {
+    if (checked) {
+      setSelectedModels(selectedItemStocks.map(s => s.model_id))
+    } else {
+      setSelectedModels([])
+    }
+  }
+
+  const handleDeleteMultiplePromotions = async () => {
+    if (selectedModels.length === 0 || !selectedItemId) return;
+
+    setIsDeletingMultiplePromos(true);
+    try {
+      const product = products.find(p => p.item_id === selectedItemId);
+      if (!product?.shop_id) {
+        throw new Error('Shop ID tidak ditemukan');
+      }
+
+      let totalDeactivatedPromos = 0;
+      let totalFailedPromos = 0;
+      let totalOngoingPromos = 0;
+
+      // Untuk setiap model yang dipilih
+      for (const modelId of selectedModels) {
+        const promoInfo = getPromotionCount(selectedItemId, modelId);
+        if (promoInfo.upcomingFlashSaleIds.length === 0) {
+          continue; // Lanjut ke model berikutnya jika tidak ada upcoming promo
+        }
+
+        totalOngoingPromos += promoInfo.ongoingFlashSaleIds.length;
+
+        // Nonaktifkan semua Flash Sale yang upcoming untuk model ini secara paralel
+        const deactivationPromises = promoInfo.upcomingFlashSaleIds.map(async (flashSaleId) => {
+          try {
+            const response = await fetch('/api/flashsale/items/update', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                shop_id: product.shop_id,
+                flash_sale_id: flashSaleId,
+                items: [{
+                  item_id: selectedItemId,
+                  models: [{
+                    model_id: modelId,
+                    status: 0
+                  }]
+                }]
+              })
+            });
+
+            const result = await response.json();
+            return { success: result.success, flashSaleId, modelId };
+          } catch (error) {
+            console.error(`Error deactivating promo for model ${modelId}, flash sale ${flashSaleId}:`, error);
+            return { success: false, flashSaleId, modelId, error };
+          }
+        });
+
+        // Tunggu semua requests selesai diproses
+        const results = await Promise.all(deactivationPromises);
+
+        // Hitung hasil
+        for (const result of results) {
+          if (result.success) {
+            totalDeactivatedPromos++;
+          } else {
+            totalFailedPromos++;
+          }
+        }
+      }
+
+      // Tampilkan pesan sukses
+      let successMessage = '';
+      if (totalDeactivatedPromos > 0) {
+        successMessage = `${totalDeactivatedPromos} promosi upcoming berhasil dinonaktifkan`;
+        if (totalFailedPromos > 0) {
+          successMessage += `, ${totalFailedPromos} gagal dinonaktifkan`;
+        }
+        if (totalOngoingPromos > 0) {
+          successMessage += `. ${totalOngoingPromos} promosi ongoing tidak diubah`;
+        }
+      } else if (totalFailedPromos > 0) {
+        throw new Error(`${totalFailedPromos} promosi gagal dinonaktifkan`);
+      } else {
+        throw new Error('Tidak ada promosi upcoming yang dapat dinonaktifkan');
+      }
+
+      toast.success(successMessage);
+      setIsDeleteMultiplePromoDialogOpen(false);
+      
+      // Refresh data promosi
+      await fetchPromotions(product.shop_id, [selectedItemId]);
+      
+      // Reset selected models
+      setSelectedModels([]);
+    } catch (error) {
+      toast.error('Gagal menonaktifkan promosi', {
+        description: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      });
+      console.error('Error deleting multiple promotions:', error);
+    } finally {
+      setIsDeletingMultiplePromos(false);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -721,7 +871,7 @@ export default function ProdukPage() {
                           onClick={handleMassUpdate}
                           disabled={massUpdateStock === ''}
                         >
-                          Terapkan ke Semua
+                          Terapkan {selectedModels.length > 0 ? `[${selectedModels.length}]` : 'Semua'}
                         </Button>
                         <Button 
                           variant="outline" 
@@ -745,6 +895,17 @@ export default function ProdukPage() {
                         </Button>
                       </div>
                     </div>
+                    {selectedModels.length > 0 && (
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => setIsDeleteMultiplePromoDialogOpen(true)}
+                        className="whitespace-nowrap"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Hapus Promosi ({selectedModels.length})
+                      </Button>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     *Stok akan otomatis disesuaikan dengan stok minimum yang dikunci untuk setiap varian
@@ -758,6 +919,16 @@ export default function ProdukPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-[40px]">
+                              <Checkbox
+                                checked={
+                                  selectedItemStocks.length > 0 &&
+                                  selectedModels.length === selectedItemStocks.length
+                                }
+                                onCheckedChange={handleSelectAllModels}
+                                aria-label="Select all models"
+                              />
+                            </TableHead>
                             <TableHead className="min-w-[200px] max-w-[200px]">Varian</TableHead>
                             <TableHead className="w-[150px] text-center">Harga</TableHead>
                             <TableHead className="w-[150px] text-center">Harga Asli</TableHead>
@@ -770,6 +941,13 @@ export default function ProdukPage() {
                         <TableBody>
                           {selectedItemStocks.map((stock) => (
                             <TableRow key={stock.model_id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedModels.includes(stock.model_id)}
+                                  onCheckedChange={() => handleSelectModel(stock.model_id)}
+                                  aria-label={`Select ${stock.model_name}`}
+                                />
+                              </TableCell>
                               <TableCell className="font-medium">
                                 <div className="flex items-center gap-2">
                                   {stock.image_url ? (
@@ -829,7 +1007,10 @@ export default function ProdukPage() {
                                   ) : (
                                     <Badge 
                                       variant="secondary"
-                                      className="cursor-pointer hover:bg-secondary/80"
+                                      className={cn(
+                                        "cursor-pointer hover:bg-secondary/80",
+                                        getPromotionCount(selectedItemId!, stock.model_id).count === 0 && "opacity-50"
+                                      )}
                                       onClick={() => {
                                         const promoInfo = getPromotionCount(selectedItemId!, stock.model_id)
                                         if (promoInfo.count > 0) {
@@ -858,6 +1039,11 @@ export default function ProdukPage() {
                         <Card key={stock.model_id} className="mb-4">
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3 mb-3">
+                              <Checkbox
+                                checked={selectedModels.includes(stock.model_id)}
+                                onCheckedChange={() => handleSelectModel(stock.model_id)}
+                                aria-label={`Select ${stock.model_name}`}
+                              />
                               {stock.image_url ? (
                                 <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0">
                                   <img 
@@ -924,7 +1110,10 @@ export default function ProdukPage() {
                               ) : (
                                 <Badge 
                                   variant="secondary"
-                                  className="cursor-pointer hover:bg-secondary/80"
+                                  className={cn(
+                                    "cursor-pointer hover:bg-secondary/80",
+                                    getPromotionCount(selectedItemId!, stock.model_id).count === 0 && "opacity-50"
+                                  )}
                                   onClick={() => {
                                     const promoInfo = getPromotionCount(selectedItemId!, stock.model_id)
                                     if (promoInfo.count > 0) {
@@ -952,6 +1141,7 @@ export default function ProdukPage() {
                     variant="outline"
                     onClick={() => {
                       setEditedStocks({})
+                      setSelectedModels([])
                       setIsStockDialogOpen(false)
                     }}
                     disabled={isSavingStocks}
@@ -1234,7 +1424,6 @@ export default function ProdukPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Tambahkan dialog konfirmasi status */}
       <Dialog open={isConfirmStatusDialogOpen} onOpenChange={setIsConfirmStatusDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -1244,11 +1433,7 @@ export default function ProdukPage() {
           <div className="py-4">
             {selectedProducts.length > 0 && (
               <p className="text-sm text-muted-foreground">
-                {(() => {
-                  const firstProduct = products.find(p => p.item_id === selectedProducts[0]);
-                  const action = firstProduct?.item_status === 'NORMAL' ? 'menonaktifkan' : 'mengaktifkan';
-                  return `Apakah Anda yakin ingin ${action} ${selectedProducts.length} produk yang dipilih?`;
-                })()}
+                Apakah Anda yakin ingin menonaktifkan {selectedProducts.length} produk yang dipilih?
               </p>
             )}
           </div>
@@ -1272,6 +1457,53 @@ export default function ProdukPage() {
                 </>
               ) : (
                 'Ya, Ubah Status'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteMultiplePromoDialogOpen} onOpenChange={setIsDeleteMultiplePromoDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Nonaktifkan Promosi Flash Sale</DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Apakah Anda yakin ingin menonaktifkan promosi Flash Sale untuk {selectedModels.length} varian yang dipilih?
+            </p>
+            <div className="mt-4 p-3 bg-muted rounded-md text-xs">
+              <p className="font-medium mb-1">Catatan:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Hanya promosi yang berstatus upcoming yang akan dinonaktifkan</li>
+                <li>Promosi yang sedang berjalan (ongoing) tidak akan terpengaruh</li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteMultiplePromoDialogOpen(false)
+              }}
+              disabled={isDeletingMultiplePromos}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteMultiplePromotions}
+              disabled={isDeletingMultiplePromos}
+            >
+              {isDeletingMultiplePromos ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Menonaktifkan...
+                </>
+              ) : (
+                'Nonaktifkan'
               )}
             </Button>
           </DialogFooter>

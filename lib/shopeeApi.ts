@@ -1080,10 +1080,24 @@ export class ShopeeAPI {
         throw new Error('Harus menyertakan minimal satu item');
     }
 
-    const body = {
+    // Ambil informasi dari item pertama (hanya mendukung 1 item per request)
+    const firstItem = itemIds[0];
+    
+    interface DeleteDiscountItemRequest {
+        discount_id: number;
+        item_id: number;
+        model_id?: number;
+    }
+    
+    const body: DeleteDiscountItemRequest = {
         discount_id: discountId,
-        item_list: itemIds
+        item_id: firstItem.item_id
     };
+
+    // Tambahkan model_id jika ada
+    if (firstItem.model_id) {
+        body.model_id = firstItem.model_id;
+    }
 
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
@@ -1116,7 +1130,8 @@ export class ShopeeAPI {
         sign,
         shop_id: shopId.toString(),
         access_token: accessToken,
-        discount_id: discountId.toString()
+        discount_id: discountId.toString(),
+        page_size: '100'
     });
 
     // Validasi input

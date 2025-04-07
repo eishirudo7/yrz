@@ -31,12 +31,13 @@ export async function POST(request: NextRequest) {
     console.log('=== Start Flash Sale Duplication ===');
     
     const body = await request.json();
-    const { shop_id, flash_sale_id, timeslot_ids } = body;
+    const { shop_id, flash_sale_id, timeslot_ids, turnOn = true } = body;
     
     console.log('Request payload:', {
       shop_id,
       flash_sale_id, 
       timeslot_ids,
+      turnOn,
       url: request.url
     });
 
@@ -173,9 +174,17 @@ export async function POST(request: NextRequest) {
           const items = detailResponse.data.items
             .map((item: FlashSaleItem) => {
               const itemModels = detailResponse.data.models
-                .filter((model: FlashSaleModel) => 
-                  model.item_id === item.item_id && model.campaign_stock > 0
-                );
+                .filter((model: FlashSaleModel) => {
+                  // Filter berdasarkan item_id dan campaign_stock
+                  const baseFilter = model.item_id === item.item_id && model.campaign_stock > 0;
+                  
+                  // Jika turnOn adalah false, hanya ikutkan model dengan status 1
+                  if (!turnOn) {
+                    return baseFilter && model.status === 1;
+                  }
+                  
+                  return baseFilter;
+                });
               
               if (itemModels.length === 0) return null;
 
