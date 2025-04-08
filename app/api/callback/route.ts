@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTokens } from '@/app/services/tokenManager';
 import { unblockShopWebhook } from '@/app/services/shopeeService';
 import { syncOrders } from '@/app/services/orderSyncs';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(request: NextRequest) {
     const code = request.nextUrl.searchParams.get('code');
@@ -11,7 +12,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Code or shop_id is missing' }, { status: 400 });
     }
 
-    const tokens = await getTokens(code, Number(shopId));
+    // Dapatkan user_id dari session aktif
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+        console.error('User tidak terautentikasi:', userError);
+        return NextResponse.json({ error: 'User tidak terautentikasi' }, { status: 401 });
+    }
+
+    // Simpan user_id bersama token
+    const tokens = await getTokens(code, Number(shopId), user.id);
     
     await unblockShopWebhook(Number(shopId));
 
@@ -76,7 +87,8 @@ async function syncProducts(shopId: number) {
         console.log(`Memulai sinkronisasi produk untuk toko ${shopId}...`);
         
         // Ambil data produk dari API
-        const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/produk?shop_id=${shopId}`, {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yorozuya.me';
+        const response = await fetch(`${baseUrl}/api/produk?shop_id=${shopId}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'

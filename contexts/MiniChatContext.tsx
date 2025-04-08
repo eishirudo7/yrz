@@ -1,6 +1,7 @@
 'use client'
 import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo } from 'react';
 import { useSSE } from '@/app/services/SSEService';
+import { useUserData } from '@/contexts/UserDataContext';
 
 // Definisikan tipe untuk data percakapan dari API
 interface Conversation {
@@ -458,6 +459,9 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isConnected: false
   });
   
+  // Dapatkan status user login dari UserDataContext
+  const { userId, isLoading: isUserLoading } = useUserData();
+  
   // Tambahkan state untuk total unread messages
   const [totalUnread, setTotalUnread] = useState(0);
   
@@ -562,10 +566,16 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
   
-  // Ambil daftar percakapan saat komponen dimuat
+  // Ambil daftar percakapan ketika user login berhasil (userId tersedia dan loading selesai)
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    if (userId && !isUserLoading) {
+      console.log('[MiniChat]: User terdeteksi sudah login, mengambil daftar percakapan');
+      fetchConversations();
+    } else if (!userId && !isUserLoading) {
+      console.log('[MiniChat]: User tidak login, reset state percakapan');
+      dispatch({ type: 'SET_CONVERSATIONS', payload: [] });
+    }
+  }, [userId, isUserLoading, fetchConversations]);
   
   // Fungsi untuk update conversation list
   const updateConversationList = useCallback((update: ConversationUpdate) => {

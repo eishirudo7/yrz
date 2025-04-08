@@ -11,7 +11,7 @@ export async function refreshAllTokens() {
   try {
     const { data: shops, error } = await supabase
       .from('shopee_tokens')
-      .select('shop_id, refresh_token, shop_name');
+      .select('shop_id, refresh_token, shop_name, user_id');
 
     if (error) {
       console.error('Error fetching tokens:', error);
@@ -24,7 +24,7 @@ export async function refreshAllTokens() {
     const results = await Promise.all(
       shops.map(async (shop) => {
         try {
-          const data = await refreshToken(shop.shop_id, shop.refresh_token, shop.shop_name);
+          const data = await refreshToken(shop.shop_id, shop.refresh_token, shop.shop_name, shop.user_id);
           await redis.hset(`shopee:token:${shop.shop_id}`, 'access_token', JSON.stringify(data.access_token));
           await redis.expire(`shopee:token:${shop.shop_id}`, 24 * 60 * 60);
           console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shop_id}`);

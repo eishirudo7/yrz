@@ -4,11 +4,11 @@ import { redis } from '@/app/services/redis';
 import jsonStableStringify from 'json-stable-stringify';
 
 
-export async function getTokens(code: string, shopId: number): Promise<{ tokens: any, shopName: string }> {
+export async function getTokens(code: string, shopId: number, userId?: string): Promise<{ tokens: any, shopName: string }> {
     try {
         const tokens = await shopeeApi.getTokens(code, shopId);
         const shopName = await getShopName(shopId, tokens.access_token);
-        await saveTokens(shopId, tokens, shopName);
+        await saveTokens(shopId, tokens, shopName, userId);
         return { tokens, shopName };
     } catch (error) {
         console.error('Gagal mendapatkan token:', error);
@@ -26,7 +26,7 @@ async function getShopName(shopId: number, accessToken: string): Promise<string>
     }
 }
 
-export async function saveTokens(shopId: number, tokens: any, shopName?: string): Promise<void> {
+export async function saveTokens(shopId: number, tokens: any, shopName?: string, userId?: string): Promise<void> {
     try {
         // Ambil status is_active yang ada
         const { data: existingData } = await supabase
@@ -48,6 +48,11 @@ export async function saveTokens(shopId: number, tokens: any, shopName?: string)
             is_active: existingData ? existingData.is_active : true, // Gunakan status yang ada atau true jika baru
             updated_at: now.toISOString()
         };
+
+        // Tambahkan user_id jika ada
+        if (userId) {
+            data.user_id = userId;
+        }
 
         // Gunakan fungsi getShopName untuk mendapatkan nama toko
         if (!shopName) {
@@ -77,12 +82,12 @@ export async function saveTokens(shopId: number, tokens: any, shopName?: string)
     }
 }
 
-export async function refreshToken(shopId: number, refreshToken: string, shopName?: string): Promise<any> {
+export async function refreshToken(shopId: number, refreshToken: string, shopName?: string, userId?: string): Promise<any> {
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
             const newTokens = await shopeeApi.refreshAccessToken(refreshToken, shopId);
             
-            await saveTokens(shopId, newTokens, shopName);
+            await saveTokens(shopId, newTokens, shopName, userId);
             
             return newTokens;
 

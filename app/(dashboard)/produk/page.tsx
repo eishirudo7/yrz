@@ -119,9 +119,15 @@ export default function ProdukPage() {
   }, [])
 
   const handleViewStockDetail = async (itemId: number) => {
+    // Reset semua state terkait terlebih dahulu
+    setSelectedModels([]) // Reset model yang dipilih
+    setEditedStocks({}) // Reset perubahan stok
+    setMassUpdateStock('') // Reset input mass update
+    
     setLoadingProductId(itemId)
     setSelectedItemId(itemId)
     setIsLoadingStocks(true)
+    
     try {
       const product = products.find(p => p.item_id === itemId);
       if (!product?.shop_id) {
@@ -837,7 +843,18 @@ export default function ProdukPage() {
         </Table>
       </div>
 
-      <Dialog open={isStockDialogOpen} onOpenChange={setIsStockDialogOpen}>
+      <Dialog open={isStockDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          // Reset semua state ketika dialog ditutup
+          setIsStockDialogOpen(false)
+          setSelectedModels([])
+          setEditedStocks({})
+          setMassUpdateStock('')
+          setSelectedItemStocks([])
+          setStockPrices([])
+          setSelectedItemId(null)
+        }
+      }}>
         <DialogContent className="sm:max-w-[1000px] h-[90vh] sm:h-[80vh] w-[95vw] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Detail Stok dan Harga</DialogTitle>
@@ -1379,7 +1396,12 @@ export default function ProdukPage() {
         </div>
       )}
 
-      <Dialog open={isDeletePromoDialogOpen} onOpenChange={setIsDeletePromoDialogOpen}>
+      <Dialog open={isDeletePromoDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsDeletePromoDialogOpen(false)
+          setSelectedPromoModel(null) // Reset model promosi yang dipilih
+        }
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Nonaktifkan Promosi Flash Sale</DialogTitle>
@@ -1463,7 +1485,12 @@ export default function ProdukPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isDeleteMultiplePromoDialogOpen} onOpenChange={setIsDeleteMultiplePromoDialogOpen}>
+      <Dialog open={isDeleteMultiplePromoDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsDeleteMultiplePromoDialogOpen(false)
+          setSelectedModels([]) // Reset model yang dipilih
+        }
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Nonaktifkan Promosi Flash Sale</DialogTitle>

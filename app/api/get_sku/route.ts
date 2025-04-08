@@ -9,19 +9,25 @@ export async function GET(request: Request) {
     const itemIds = searchParams.get('item_ids')?.split(',');
 
     // Validasi parameter
-    if (!shopId || !itemIds?.length) {
+    if (!itemIds?.length) {
       return NextResponse.json(
-        { error: 'shop_id dan item_ids diperlukan' },
+        { error: 'item_ids diperlukan' },
         { status: 400 }
       );
     }
 
     // Query ke database untuk multiple items
-    const { data, error } = await supabase
+    let query = supabase
       .from('items')
-      .select('item_id, item_sku')
-      .eq('shop_id', shopId)
+      .select('item_id, item_sku, item_name, image')
       .in('item_id', itemIds);
+
+    // Tambahkan filter shop_id hanya jika disediakan
+    if (shopId) {
+      query = query.eq('shop_id', shopId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return NextResponse.json(

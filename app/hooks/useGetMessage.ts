@@ -1,62 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-
-interface Message {
-  id: string;
-  sender: 'buyer' | 'seller';
-  content: string;
-  time: string;
-  type: 'text' | 'image' | 'image_with_text' | 'order';
-  imageUrl?: string;
-  imageThumb?: {
-    url: string;
-    height: number;
-    width: number;
-  };
-  orderData?: {
-    shopId: number;
-    orderSn: string;
-  };
-}
+import { UIMessage, ShopeeMessage, convertToUIMessage } from '@/types/shopeeMessage';
 
 export function useConversationMessages(conversationId: string | null, shopId: number) {
-  const [messages, setMessagesState] = useState<Message[]>([]);
+  const [messages, setMessagesState] = useState<UIMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextOffset, setNextOffset] = useState<string | null>(null);
 
-  const setMessages = useCallback((updater: (prevMessages: Message[]) => Message[]) => {
+  const setMessages = useCallback((updater: (prevMessages: UIMessage[]) => UIMessage[]) => {
     setMessagesState(updater);
   }, []);
 
-  const processApiMessages = (apiMessages: any[], shopId: number): Message[] => {
-    return apiMessages.map(msg => ({
-      id: msg.message_id,
-      sender: msg.from_shop_id === shopId ? 'seller' : 'buyer',
-      type: msg.message_type,
-      content: ['text', 'image_with_text'].includes(msg.message_type) 
-        ? msg.content.text 
-        : msg.message_type === 'order'
-          ? 'Menampilkan detail pesanan'
-          : '',
-      imageUrl: msg.message_type === 'image' 
-        ? msg.content.url 
-        : msg.message_type === 'image_with_text' 
-          ? msg.content.image_url 
-          : undefined,
-      imageThumb: ['image', 'image_with_text'].includes(msg.message_type) ? {
-        url: msg.message_type === 'image' 
-          ? (msg.content.thumb_url || msg.content.url)
-          : (msg.content.thumb_url || msg.content.image_url),
-        height: msg.content.thumb_height,
-        width: msg.content.thumb_width
-      } : undefined,
-      orderData: msg.message_type === 'order' ? {
-        shopId: msg.content.shop_id,
-        orderSn: msg.content.order_sn
-      } : undefined,
-      time: new Date(msg.created_timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }));
+  const processApiMessages = (apiMessages: any[], shopId: number): UIMessage[] => {
+    return apiMessages.map(msg => {
+      const shopeeMsg: ShopeeMessage = {
+        message_id: msg.message_id,
+        from_id: msg.from_id,
+        to_id: msg.to_id,
+        from_shop_id: msg.from_shop_id,
+        to_shop_id: msg.to_shop_id,
+        message_type: msg.message_type,
+        content: msg.content,
+        conversation_id: msg.conversation_id,
+        created_timestamp: msg.created_timestamp,
+        region: msg.region,
+        status: msg.status,
+        message_option: msg.message_option,
+        source: msg.source,
+        source_content: msg.source_content,
+        quoted_msg: msg.quoted_msg
+      };
+      
+      return convertToUIMessage(shopeeMsg, shopId);
+    });
   };
 
   const fetchMessages = useCallback(async (offset?: string) => {
@@ -109,17 +86,23 @@ export function useConversationMessages(conversationId: string | null, shopId: n
       
       if (data.type === 'new_message' && data.conversation_id === conversationId) {
         console.log('New message for current conversation:', data);
-        const newMessage: Message = {
+        
+        const newMessage: UIMessage = {
           id: data.message_id,
           sender: 'buyer',
           type: data.message_type,
-          content: ['text', 'image_with_text'].includes(data.message_type) ? data.content.text : '',
+          content: ['text', 'image_with_text'].includes(data.message_type) ? data.content.text || '' : '',
           imageUrl: ['image', 'image_with_text'].includes(data.message_type) ? data.content.image_url : undefined,
           imageThumb: ['image', 'image_with_text'].includes(data.message_type) ? {
-            url: data.content.thumb_url || data.content.image_url,
-            height: data.content.thumb_height,
-            width: data.content.thumb_width
+            url: data.content.thumb_url || data.content.image_url || '',
+            height: data.content.thumb_height || 0,
+            width: data.content.thumb_width || 0
           } : undefined,
+          orderData: data.message_type === 'order' ? {
+            shopId: data.content.shop_id || 0,
+            orderSn: data.content.order_sn || ''
+          } : undefined,
+          sourceContent: data.source_content || {},
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
 
@@ -145,7 +128,7 @@ export function useConversationMessages(conversationId: string | null, shopId: n
     }
   }, [fetchMessages, nextOffset]);
 
-  const addNewMessage = (newMessage: Message) => {
+  const addNewMessage = (newMessage: UIMessage) => {
     setMessages(prevMessages => [...prevMessages, newMessage]);
   };
 
