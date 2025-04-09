@@ -250,6 +250,8 @@ ItemPreview.displayName = 'ItemPreview';
 const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: MessageBubbleProps) => {
   // Tambahkan state untuk lightbox
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  // Tambahkan state untuk expand/collapse order detail
+  const [isOrderExpanded, setIsOrderExpanded] = useState(false);
   
   // Cek jika message memiliki source_content dengan order_sn
   const hasOrderReference = message.type === 'order' || 
@@ -312,40 +314,60 @@ const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: Messa
             )}
           </div>
         ) : message.type === 'order' && message.orderData ? (
-          <div className="flex flex-col cursor-pointer hover:opacity-90">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
+          <div className="flex flex-col">
+            {/* Header order yang selalu ditampilkan */}
+            <div 
+              className="flex items-center justify-between w-full cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setIsOrderExpanded(!isOrderExpanded)}
+            >
+              <div className="flex items-center gap-2 mr-3 flex-1 min-w-0">
                 <ShoppingBag className="h-4 w-4 flex-shrink-0" />
-                <span className="break-words text-xs font-small">
+                <span className="break-words text-xs font-medium truncate">
                   Pesanan #{message.orderData.orderSn}
                 </span>
               </div>
-              {orderInfo && orderInfo.order_status && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                  orderInfo.order_status === 'PAID'
-                    ? 'bg-green-500 text-white dark:bg-green-600'
-                    : orderInfo.order_status === 'UNPAID'
-                    ? 'bg-yellow-500 text-white dark:bg-yellow-600'
-                    : orderInfo.order_status === 'CANCELLED'
-                    ? 'bg-red-500 text-white dark:bg-red-600'
-                    : orderInfo.order_status === 'COMPLETED'
-                    ? 'bg-blue-500 text-white dark:bg-blue-600'
-                    : orderInfo.order_status === 'PROCESSED'
-                    ? 'bg-blue-500 text-white dark:bg-blue-600'
-                    : orderInfo.order_status === 'SHIPPED'
-                    ? 'bg-blue-500 text-white dark:bg-blue-600'
-                    : orderInfo.order_status === 'DELIVERED'
-                    ? 'bg-green-500 text-white dark:bg-green-600'
-                    : orderInfo.order_status === 'IN_CANCEL'
-                    ? 'bg-red-500 text-white dark:bg-red-600'
-                    : 'bg-muted text-white dark:bg-muted/80'
-                }`}>
-                  {orderInfo.order_status}
-                </span>
-              )}
+              
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {orderInfo && orderInfo.order_status && (
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${
+                    orderInfo.order_status === 'PAID'
+                      ? 'bg-green-500 text-white dark:bg-green-600'
+                      : orderInfo.order_status === 'UNPAID'
+                      ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                      : orderInfo.order_status === 'CANCELLED'
+                      ? 'bg-red-500 text-white dark:bg-red-600'
+                      : orderInfo.order_status === 'COMPLETED'
+                      ? 'bg-blue-500 text-white dark:bg-blue-600'
+                      : orderInfo.order_status === 'PROCESSED'
+                      ? 'bg-blue-500 text-white dark:bg-blue-600'
+                      : orderInfo.order_status === 'SHIPPED'
+                      ? 'bg-blue-500 text-white dark:bg-blue-600'
+                      : orderInfo.order_status === 'DELIVERED'
+                      ? 'bg-green-500 text-white dark:bg-green-600'
+                      : orderInfo.order_status === 'IN_CANCEL'
+                      ? 'bg-red-500 text-white dark:bg-red-600'
+                      : 'bg-muted text-white dark:bg-muted/80'
+                  }`}>
+                    {orderInfo.order_status}
+                  </span>
+                )}
+                {/* Tambahkan indikator expand/collapse */}
+                <div className="flex-shrink-0 text-current opacity-70">
+                  {isOrderExpanded ? (
+                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </div>
+              </div>
             </div>
             
-            {orderInfo && (
+            {/* Detail order yang hanya ditampilkan jika di-expand */}
+            {isOrderExpanded && orderInfo && (
               <div className={`ml-5 text-xs text-muted-foreground space-y-1 mt-1 ${message.sender === 'seller' ? 'dark:text-primary-foreground/90' : 'dark:text-muted-foreground'}`}>
                 <div className="flex justify-between items-center">
                   <span>Pembayaran:</span>
@@ -1468,7 +1490,7 @@ const WebChatPage: React.FC = () => {
           ) : (
             <div className="flex flex-col w-full h-full overflow-hidden">
               {/* Header chat dekstop */}
-              <div className="border-b bg-background z-10 p-3 flex justify-between items-center shrink-0">
+              <div className="border-b bg-background z-10 flex justify-between items-center shrink-0 h-[66px] px-3">
                 <div className="flex items-center gap-2">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={selectedConversationData?.to_avatar} />
