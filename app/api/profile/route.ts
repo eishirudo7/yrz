@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     // Ambil metadata user (profil)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('name, phone, profile_image')
+      .select('display_name, phone, profile_image')
       .eq('id', user.id)
       .single();
     
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
         id: user.id,
         email: user.email,
         email_verified: user.email_confirmed_at ? true : false,
-        name: profile?.name || user.user_metadata?.name || '',
+        name: profile?.display_name || user.user_metadata?.display_name || '',
         phone: profile?.phone || user.user_metadata?.phone || '',
         profile_image: profile?.profile_image || null,
         created_at: user.created_at

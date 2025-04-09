@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@/utils/supabase/server';
 import { getAllShops } from "@/app/services/shopeeService";
-import { UserSettingsService } from '@/app/services/userSettingsService';
+import { UserSettings, UserSettingsService } from '@/app/services/userSettingsService';
 
 async function getUserIdFromSession() {
   try {
@@ -82,12 +82,16 @@ export async function GET(req: NextRequest) {
         status: 'active',
         start_date: new Date().toISOString(),
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
-        plan: [{
-          id: freePlan?.id || 'default-plan',
+        plan: freePlan || {
+          id: 'default-plan',
           name: 'Basic',
-          max_shops: freePlan?.max_shops || 1,
-          features: freePlan?.features || {}
-        }]
+          features: {
+            feature_chat_ai: false,
+            feature_flashsale: false,
+            feature_bulk_actions: false
+          },
+          max_shops: 1
+        }
       };
     }
 
@@ -131,8 +135,7 @@ export async function GET(req: NextRequest) {
           shop_id: item.shop_id,
           shop_name: shopMap[item.shop_id] || `Toko ${item.shop_id}`,
           status_chat: item.status_chat || false,
-          status_ship: item.status_ship || false,
-          premium_plan: planName.toLowerCase()
+          status_ship: item.status_ship || false
         })) || [];
         
         // Tambahkan toko yang belum memiliki entri di auto_ship_chat
@@ -143,8 +146,7 @@ export async function GET(req: NextRequest) {
               shop_id: shop.shop_id,
               shop_name: shop.shop_name || `Toko ${shop.shop_id}`,
               status_chat: false,
-              status_ship: false,
-              premium_plan: planName.toLowerCase()
+              status_ship: false
             });
           }
         });
@@ -173,6 +175,7 @@ export async function GET(req: NextRequest) {
         auto_ship: pengaturan?.auto_ship !== undefined ? pengaturan.auto_ship : true,
         auto_ship_interval: pengaturan?.auto_ship_interval || 5,
         in_cancel_msg: pengaturan?.in_cancel_msg || null,
+        in_cancel_status: pengaturan?.in_cancel_status !== undefined ? pengaturan.in_cancel_status : false,
         user_id: userId
       },
       subscription: subscription,
@@ -249,27 +252,21 @@ export async function POST(req: NextRequest) {
         status: 'active',
         start_date: new Date().toISOString(),
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
-        plan: [{
-          id: freePlan?.id || 'default-plan',
+        plan: freePlan || {
+          id: 'default-plan',
           name: 'Basic',
-          max_shops: freePlan?.max_shops || 1,
-          features: freePlan?.features || {}
-        }]
+          features: {
+            feature_chat_ai: false,
+            feature_flashsale: false,
+            feature_bulk_actions: false
+          },
+          max_shops: 1
+        }
       };
     }
 
-    // Dapatkan paket berlangganan user
-    let maxShops = 1;
-    let planName = 'basic';
-    
-    if (subscription && subscription.plan && subscription.plan.length > 0) {
-      const plan = subscription.plan[0];
-      maxShops = plan.max_shops || 1;
-      planName = plan.name || 'basic';
-    }
-
     // Sanitasi dan validasi updatedSettings
-    const sanitizedSettings = {
+    const sanitizedSettings: UserSettings = {
       openai_api: updatedSettings.openai_api || null,
       openai_model: updatedSettings.openai_model || 'gpt-3.5-turbo',
       openai_temperature: typeof updatedSettings.openai_temperature === 'number' ? 
@@ -280,14 +277,20 @@ export async function POST(req: NextRequest) {
       auto_ship_interval: typeof updatedSettings.auto_ship_interval === 'number' ? 
         updatedSettings.auto_ship_interval : 5,
       in_cancel_msg: updatedSettings.in_cancel_msg !== undefined ? updatedSettings.in_cancel_msg : null,
+      in_cancel_status: updatedSettings.in_cancel_status !== undefined ? updatedSettings.in_cancel_status : false,
       user_id: userId,
-      subscription: subscription,
+      subscription: {
+        id: subscription!.id,
+        status: subscription!.status,
+        start_date: subscription!.start_date,
+        end_date: subscription!.end_date,
+        plan: Array.isArray(subscription!.plan) ? subscription!.plan[0] : subscription!.plan
+      },
       shops: updatedAutoShip.map(item => ({
         shop_id: item.shop_id,
         shop_name: item.shop_name,
         status_chat: Boolean(item.status_chat),
-        status_ship: Boolean(item.status_ship),
-        premium_plan: subscription?.plan?.[0]?.name?.toLowerCase() || 'basic'
+        status_ship: Boolean(item.status_ship)
       }))
     };
 
@@ -302,6 +305,7 @@ export async function POST(req: NextRequest) {
         auto_ship: sanitizedSettings.auto_ship,
         auto_ship_interval: sanitizedSettings.auto_ship_interval,
         in_cancel_msg: sanitizedSettings.in_cancel_msg,
+        in_cancel_status: sanitizedSettings.in_cancel_status,
         user_id: userId
       }, {
         onConflict: 'user_id'
@@ -350,6 +354,7 @@ export async function POST(req: NextRequest) {
           auto_ship: sanitizedSettings.auto_ship,
           auto_ship_interval: sanitizedSettings.auto_ship_interval,
           in_cancel_msg: sanitizedSettings.in_cancel_msg,
+          in_cancel_status: sanitizedSettings.in_cancel_status,
           user_id: userId
         },
         subscription: subscription,

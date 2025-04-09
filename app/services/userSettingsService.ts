@@ -6,7 +6,23 @@ export interface Shop {
   shop_name: string;
   status_chat: boolean;
   status_ship: boolean;
-  premium_plan: string; // 'free', 'basic', 'premium', 'enterprise'
+}
+
+export interface Subscription {
+  id: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  plan: {
+    id: string;
+    name: string;
+    features: {
+      feature_chat_ai: boolean;
+      feature_flashsale: boolean;
+      feature_bulk_actions: boolean;
+    };
+    max_shops: number;
+  };
 }
 
 export interface UserSettings {
@@ -20,9 +36,10 @@ export interface UserSettings {
   auto_ship?: boolean;
   auto_ship_interval?: number;
   in_cancel_msg?: string | null;
+  in_cancel_status?: boolean;
   
   // Informasi langganan
-  subscription?: any;
+  subscription?: Subscription;
   
   // Daftar toko pengguna
   shops: Shop[];
@@ -40,6 +57,10 @@ export class UserSettingsService {
     return `shop_to_user:${shopId}`;
   }
   
+  private static getShopTokenKey(shopId: number): string {
+    return `shopee:token:${shopId}`;
+  }
+  
   /**
    * Mendapatkan pengaturan user dari Redis
    */
@@ -47,7 +68,6 @@ export class UserSettingsService {
     try {
       const data = await redis.get(this.getSettingsKey(userId));
       if (!data) {
-        // Jika tidak ada data, kembalikan objek kosong
         return {
           shops: []
         };
@@ -66,6 +86,22 @@ export class UserSettingsService {
       return {
         shops: []
       };
+    }
+  }
+  
+  /**
+   * Mendapatkan informasi toko dari Redis
+   */
+  static async getShopInfo(shopId: number): Promise<any> {
+    try {
+      const data = await redis.get(this.getShopTokenKey(shopId));
+      if (!data) {
+        return null;
+      }
+      return JSON.parse(data);
+    } catch (error) {
+      console.error(`Error getting shop info for ${shopId}:`, error);
+      return null;
     }
   }
   
@@ -156,8 +192,7 @@ export class UserSettingsService {
           shop_id: shopId,
           shop_name: shopSettings.shop_name || `Toko ${shopId}`,
           status_chat: shopSettings.status_chat || false,
-          status_ship: shopSettings.status_ship || false,
-          premium_plan: shopSettings.premium_plan || 'free'
+          status_ship: shopSettings.status_ship || false
         });
       } else {
         // Update toko yang sudah ada
@@ -180,9 +215,13 @@ export class UserSettingsService {
   static async getPremiumShops(userId: string): Promise<Shop[]> {
     try {
       const settings = await this.getUserSettings(userId);
-      return settings.shops.filter(
-        shop => shop.premium_plan === 'premium' || shop.premium_plan === 'enterprise'
-      );
+      const isPremium = settings.subscription?.plan?.name === 'Admin';
+      
+      if (!isPremium) {
+        return [];
+      }
+      
+      return settings.shops;
     } catch (error) {
       console.error(`Error getting premium shops for ${userId}:`, error);
       return [];

@@ -1,6 +1,7 @@
 import { prosesOrder } from '@/app/services/prosesOrder';
 import { withRetry } from '@/app/services/databaseOperations';
 import { UserSettingsService, Shop } from '@/app/services/userSettingsService';
+import { redis } from '@/app/services/redis';
 
 /**
  * Service untuk mengelola fitur-fitur premium dalam aplikasi
@@ -8,26 +9,19 @@ import { UserSettingsService, Shop } from '@/app/services/userSettingsService';
  * PremiumFeatureService bertanggung jawab untuk:
  * 1. Memverifikasi apakah pengguna memiliki paket premium
  * 2. Mengelola fitur auto-ship (hanya untuk pengguna premium)
- * 3. Mengelola fitur auto-chat (hanya untuk pengguna premium)
+ * 3. Mengelola fitur auto-cancel-chat (hanya untuk pengguna premium)
  */
 export class PremiumFeatureService {
   /**
-   * Memeriksa apakah toko memiliki paket premium
-   * 
-   * @param userId - ID pengguna pemilik toko
-   * @param shopId - ID toko yang akan diperiksa
-   * @returns Boolean yang menunjukkan apakah toko memiliki paket premium
+   * Memproses template string dengan mengganti variabel
+   * @param template Template string yang akan diproses
+   * @param variables Objek berisi variabel yang akan diganti
+   * @returns String yang sudah diproses
    */
-  static async isPremiumShop(userId: string, shopId: number): Promise<boolean> {
-    try {
-      const shop = await UserSettingsService.getShopSettings(userId, shopId);
-      
-      // Cek apakah shop memiliki premium_plan premium atau lebih tinggi
-      return shop?.premium_plan === 'premium' || shop?.premium_plan === 'enterprise';
-    } catch (error) {
-      console.error('Error checking premium status:', error);
-      return false;
-    }
+  private static processTemplate(template: string, variables: Record<string, string>): string {
+    return template.replace(/\${(\w+)}/g, (match, key) => {
+      return variables[key] || match;
+    });
   }
 
   /**
@@ -39,15 +33,20 @@ export class PremiumFeatureService {
   static async isPremiumShopByShopId(shopId: number): Promise<boolean> {
     try {
       // Dapatkan pengaturan toko dari shopId
-      const { shop } = await UserSettingsService.getShopSettingsByShopId(shopId);
+      const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
       
-      if (!shop) {
+      if (!shop || !userId) {
         console.warn(`Tidak menemukan pengaturan untuk toko ${shopId}`);
         return false;
       }
+
+      // Dapatkan pengaturan user untuk mengecek subscription
+      const userSettings = await UserSettingsService.getUserSettings(userId);
       
-      // Cek apakah shop memiliki paket selain Basic
-      return shop.premium_plan !== 'basic';
+      // Cek apakah user memiliki subscription dan plan name adalah 'Admin'
+      const isPremium = userSettings.subscription?.plan?.name === 'Admin';
+      
+      return isPremium;
     } catch (error) {
       console.error(`Error checking premium status for shop ${shopId}:`, error);
       return false;
@@ -58,53 +57,11 @@ export class PremiumFeatureService {
    * Menangani auto-ship untuk toko premium
    * Hanya berjalan jika toko memiliki paket premium dan status_ship diaktifkan
    * 
-   * @param userId - ID pengguna pemilik toko
    * @param shopId - ID toko
    * @param orderSn - Nomor pesanan
    * @returns Boolean yang menunjukkan keberhasilan proses
    */
-  static async handleAutoShip(userId: string, shopId: number, orderSn: string): Promise<boolean> {
-    try {
-      // Verifikasi status premium
-      const isPremium = await this.isPremiumShop(userId, shopId);
-      if (!isPremium) {
-        console.log(`Toko ${shopId} bukan premium user, auto-ship tidak dijalankan`);
-        return false;
-      }
-
-      // Cek status auto-ship untuk toko
-      const shop = await UserSettingsService.getShopSettings(userId, shopId);
-      
-      if (!shop) {
-        return false;
-      }
-      
-      if (shop.status_ship) {
-        // Jalankan auto-ship untuk toko premium
-        const result = await withRetry(
-          () => prosesOrder(shopId, orderSn),
-          3,
-          2000
-        );
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error(`Error handling auto-ship for shop ${shopId}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Menangani auto-ship untuk toko premium hanya dengan shopId
-   * Untuk digunakan di webhook yang hanya mengirim shopId
-   * 
-   * @param shopId - ID toko
-   * @param orderSn - Nomor pesanan
-   * @returns Boolean yang menunjukkan keberhasilan proses
-   */
-  static async handleAutoShipByShopId(shopId: number, orderSn: string): Promise<boolean> {
+  static async handleAutoShip(shopId: number, orderSn: string): Promise<boolean> {
     try {
       // Dapatkan pengaturan toko dan userId dari shopId
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
@@ -114,14 +71,17 @@ export class PremiumFeatureService {
         return false;
       }
       
-      // Verifikasi status premium (semua paket selain Basic)
-      const isPremium = shop.premium_plan !== 'basic';
+      // Dapatkan pengaturan user untuk mengecek subscription
+      const userSettings = await UserSettingsService.getUserSettings(userId);
+      
+      // Verifikasi status premium berdasarkan plan name
+      const isPremium = userSettings.subscription?.plan?.name === 'Admin';
       if (!isPremium) {
         console.log(`Toko ${shopId} bukan premium user, auto-ship tidak dijalankan`);
         return false;
       }
       
-      // Cek status auto-ship
+      // Cek status auto-ship dari pengaturan toko
       if (!shop.status_ship) {
         console.log(`Auto-ship tidak aktif untuk toko ${shopId}`);
         return false;
@@ -143,113 +103,16 @@ export class PremiumFeatureService {
   }
 
   /**
-   * Menangani auto-chat untuk toko premium
+   * Menangani auto-cancel-chat untuk toko premium
    * Hanya berjalan jika toko memiliki paket premium dan status_chat diaktifkan
    * 
-   * Mengirim pesan ke pembeli saat status pesanan IN_CANCEL
-   * 
-   * @param userId - ID pengguna pemilik toko
    * @param shopId - ID toko
    * @param orderSn - Nomor pesanan
    * @param buyerUserId - ID pengguna pembeli
    * @param buyerUsername - Nama pengguna pembeli
    * @returns Boolean yang menunjukkan keberhasilan proses
    */
-  static async handleAutoChat(
-    userId: string,
-    shopId: number, 
-    orderSn: string, 
-    buyerUserId: string, 
-    buyerUsername: string
-  ): Promise<boolean> {
-    try {
-      // Verifikasi status premium
-      const isPremium = await this.isPremiumShop(userId, shopId);
-      if (!isPremium) {
-        console.log(`Toko ${shopId} bukan premium user, auto-chat tidak dijalankan`);
-        return false;
-      }
-
-      // Cek status auto-chat untuk toko
-      const shop = await UserSettingsService.getShopSettings(userId, shopId);
-      
-      if (!shop) {
-        return false;
-      }
-      
-      if (shop.status_chat) {
-        const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:10000';
-
-        // Kirim pesan pertama dengan tipe 'order'
-        console.log('Memulai pengiriman pesan pertama ke pembeli');
-        const orderResponse = await fetch(`${API_BASE_URL}/api/msg/send_message`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            toId: buyerUserId,
-            messageType: 'order',
-            content: {
-              order_sn: orderSn
-            },
-            shopId: shopId
-          })
-        });
-
-        if (!orderResponse.ok) {
-          throw new Error(`Gagal mengirim pesan order ke pembeli ${buyerUsername}`);
-        }
-
-        // Tunggu sebentar sebelum mengirim pesan kedua
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Ambil pengaturan user untuk mendapatkan template pesan
-        const userSettings = await UserSettingsService.getUserSettings(userId);
-        const cancelMsg = userSettings.in_cancel_msg || 
-          `Halo ${buyerUsername},\n\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nDitunggu ya kak responnya.`;
-
-        // Kirim pesan kedua dengan teks informasi
-        console.log('Memulai pengiriman pesan kedua ke pembeli');
-        const textResponse = await fetch(`${API_BASE_URL}/api/msg/send_message`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            toId: buyerUserId,
-            messageType: 'text',
-            content: cancelMsg,
-            shopId: shopId
-          })
-        });
-
-        if (!textResponse.ok) {
-          throw new Error(`Gagal mengirim pesan teks ke pembeli ${buyerUsername}`);
-        }
-
-        console.log(`Pesan pembatalan berhasil dikirim ke pembeli untuk order ${orderSn}`);
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error(`Error handling auto-chat for shop ${shopId}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Menangani auto-chat untuk toko premium hanya dengan shopId
-   * Untuk digunakan di webhook yang hanya mengirim shopId
-   * 
-   * @param shopId - ID toko
-   * @param orderSn - Nomor pesanan
-   * @param buyerUserId - ID pengguna pembeli
-   * @param buyerUsername - Nama pengguna pembeli
-   * @returns Boolean yang menunjukkan keberhasilan proses
-   */
-  static async handleAutoChatByShopId(
+  static async handleChatCancel(
     shopId: number, 
     orderSn: string, 
     buyerUserId: string, 
@@ -264,19 +127,22 @@ export class PremiumFeatureService {
         return false;
       }
       
-      // Verifikasi status premium (semua paket selain Basic)
-      const isPremium = shop.premium_plan !== 'basic';
+      // Dapatkan pengaturan user untuk mengecek subscription
+      const userSettings = await UserSettingsService.getUserSettings(userId);
+      
+      // Verifikasi status premium berdasarkan plan name
+      const isPremium = userSettings.subscription?.plan?.name === 'Admin';
       if (!isPremium) {
         console.log(`Toko ${shopId} bukan premium user, auto-chat tidak dijalankan`);
         return false;
       }
       
-      // Cek status auto-chat
+      // Cek status auto-chat dari pengaturan toko
       if (!shop.status_chat) {
         console.log(`Auto-chat tidak aktif untuk toko ${shopId}`);
         return false;
       }
-      
+
       const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:10000';
 
       // Kirim pesan pertama dengan tipe 'order'
@@ -304,9 +170,14 @@ export class PremiumFeatureService {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Ambil pengaturan user untuk mendapatkan template pesan
-      const userSettings = await UserSettingsService.getUserSettings(userId);
-      const cancelMsg = userSettings.in_cancel_msg || 
+      const template = userSettings.in_cancel_msg || 
         `Halo ${buyerUsername},\n\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nDitunggu ya kak responnya.`;
+
+      // Proses template dengan variabel
+      const processedMessage = this.processTemplate(template, {
+        buyerUsername,
+        orderSn
+      }).replace(/\\n/g, '\n');
 
       // Kirim pesan kedua dengan teks informasi
       console.log('Memulai pengiriman pesan kedua ke pembeli');
@@ -318,7 +189,7 @@ export class PremiumFeatureService {
         body: JSON.stringify({
           toId: buyerUserId,
           messageType: 'text',
-          content: cancelMsg,
+          content: processedMessage,
           shopId: shopId
         })
       });
@@ -338,35 +209,10 @@ export class PremiumFeatureService {
   /**
    * Dapatkan informasi toko berdasarkan shopId dari pengguna tertentu
    * 
-   * Method ini digunakan untuk mendapatkan data umum toko seperti nama
-   * tanpa perlu mengecek status premium
-   * 
-   * @param userId - ID pengguna pemilik toko
    * @param shopId - ID toko
    * @returns Object dengan informasi toko atau null jika tidak ditemukan
    */
-  static async getShopInfo(userId: string, shopId: number): Promise<{ shopName: string } | null> {
-    try {
-      const shop = await UserSettingsService.getShopSettings(userId, shopId);
-      
-      if (!shop) return null;
-      
-      return {
-        shopName: shop.shop_name
-      };
-    } catch (error) {
-      console.error(`Error getting shop info for shop ${shopId}:`, error);
-      return null;
-    }
-  }
-  
-  /**
-   * Dapatkan informasi toko berdasarkan shopId saja
-   * 
-   * @param shopId - ID toko
-   * @returns Object dengan informasi toko atau null jika tidak ditemukan
-   */
-  static async getShopInfoByShopId(shopId: number): Promise<{ shopName: string, userId: string } | null> {
+  static async getShopInfo(shopId: number): Promise<{ shopName: string, userId: string } | null> {
     try {
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
       
@@ -389,6 +235,18 @@ export class PremiumFeatureService {
    * @returns Array toko yang memiliki paket premium
    */
   static async getPremiumShops(userId: string): Promise<Shop[]> {
-    return UserSettingsService.getPremiumShops(userId);
+    try {
+      const userSettings = await UserSettingsService.getUserSettings(userId);
+      const isPremium = userSettings.subscription?.plan?.name === 'Admin';
+      
+      if (!isPremium) {
+        return [];
+      }
+      
+      return userSettings.shops;
+    } catch (error) {
+      console.error(`Error getting premium shops for ${userId}:`, error);
+      return [];
+    }
   }
 } 
