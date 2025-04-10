@@ -17,10 +17,11 @@ interface Settings {
   openai_model: string | null;
   openai_temperature: number | null;
   openai_prompt: string | null;
-  auto_ship: boolean;
   auto_ship_interval: number;
   in_cancel_status: boolean;
   in_cancel_msg: string | null;
+  in_return_status: boolean;
+  in_return_msg: string | null;
 }
 
 export function SettingsForm({ children }: { children: React.ReactNode }) {
@@ -45,11 +46,12 @@ export function SettingsForm({ children }: { children: React.ReactNode }) {
       openai_temperature: formData.get('openai_temperature') ? 
         parseFloat(formData.get('openai_temperature') as string) : null,
       openai_prompt: formData.get('openai_prompt')?.toString() || null,
-      auto_ship: formData.get('auto_ship') === 'on',
       auto_ship_interval: formData.get('auto_ship_interval') ? 
         parseInt(formData.get('auto_ship_interval') as string) : 5,
       in_cancel_status: formData.get('in_cancel_status') === 'on',
-      in_cancel_msg: formData.get('in_cancel_msg')?.toString() || null
+      in_cancel_msg: formData.get('in_cancel_msg')?.toString() || null,
+      in_return_status: formData.get('in_return_status') === 'on',
+      in_return_msg: formData.get('in_return_msg')?.toString() || null
     }
 
     // Ambil data auto ship dari form dengan cara yang lebih aman

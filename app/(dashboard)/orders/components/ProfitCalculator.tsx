@@ -67,7 +67,7 @@ export default function ProfitCalculator({
   const [totalProfit, setTotalProfit] = useState<number>(0)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
   const [lastCalcTime, setLastCalcTime] = useState<Date | null>(null)
-  const [defaultMargin, setDefaultMargin] = useState<number>(0.15) // 25% default margin
+  const [defaultMargin] = useState<number>(0.15) // 25% default margin
   const [skuProfitData, setSkuProfitData] = useState<{
     [key: string]: {
       cost_price: number | null,

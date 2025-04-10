@@ -183,7 +183,6 @@ export default function PengaturanPage() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                
                 <TemperatureSlider defaultValue={settings?.openai_temperature || 0.4} />
               </div>
               <div className="grid gap-2">
@@ -205,47 +204,53 @@ export default function PengaturanPage() {
 
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Pengaturan Auto Ship</CardTitle>
-            <CardDescription>Konfigurasi Auto Ship</CardDescription>
+            <CardTitle>Pengaturan Auto Chat</CardTitle>
+            <CardDescription>Konfigurasi pesan otomatis untuk berbagai status order</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4">
-              <div className="flex items-center space-x-2">
-                <Switch 
-                  id="auto_ship" 
-                  name="auto_ship"
-                  defaultChecked={settings?.auto_ship}
-                />
-                <Label htmlFor="auto_ship">Aktifkan Auto Ship</Label>
+            <div className="grid gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Switch 
+                    id="in_cancel_status" 
+                    name="in_cancel_status"
+                    defaultChecked={settings?.in_cancel_status}
+                  />
+                  <Label htmlFor="in_cancel_status">Aktifkan Pesan Cancel Order</Label>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="in_cancel_msg">Pesan Cancel Order</Label>
+                  <Textarea 
+                    id="in_cancel_msg" 
+                    name="in_cancel_msg"
+                    defaultValue={settings?.in_cancel_msg || ''}
+                    placeholder="Masukkan pesan untuk pembatalan pesanan"
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="auto_ship_interval">Interval Auto Ship (menit)</Label>
-                <Input
-                  id="auto_ship_interval"
-                  name="auto_ship_interval"
-                  type="number"
-                  defaultValue={settings?.auto_ship_interval || 5}
-                  min={1}
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch 
-                  id="in_cancel_status" 
-                  name="in_cancel_status"
-                  defaultChecked={settings?.in_cancel_status}
-                />
-                <Label htmlFor="in_cancel_status">Aktifkan Pesan Cancel Order</Label>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="in_cancel_msg">Pesan Cancel Order</Label>
-                <Textarea 
-                  id="in_cancel_msg" 
-                  name="in_cancel_msg"
-                  defaultValue={settings?.in_cancel_msg || ''}
-                  placeholder="Masukkan pesan untuk pembatalan pesanan"
-                  rows={3}
-                  className="resize-none"
-                />
+
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Switch 
+                    id="in_return_status" 
+                    name="in_return_status"
+                    defaultChecked={settings?.in_return_status}
+                  />
+                  <Label htmlFor="in_return_status">Aktifkan Pesan Return Order</Label>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="in_return_msg">Pesan Return Order</Label>
+                  <Textarea 
+                    id="in_return_msg" 
+                    name="in_return_msg"
+                    defaultValue={settings?.in_return_msg || ''}
+                    placeholder="Masukkan pesan untuk pengembalian pesanan"
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
               </div>
             </div>
           </CardContent>
@@ -253,37 +258,53 @@ export default function PengaturanPage() {
 
         <Card className="mb-4">
           <CardHeader>
-            <CardTitle>Status Auto Ship per Toko</CardTitle>
+            <CardTitle>Pengaturan Auto Ship per Toko</CardTitle>
+            <CardDescription>Konfigurasi auto ship untuk setiap toko</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nama Toko</TableHead>
-                  <TableHead>Status Chat</TableHead>
-                  <TableHead>Status Ship</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {autoShip?.map((shop: any) => (
-                  <TableRow key={shop.shop_id} data-shop-id={shop.shop_id}>
-                    <TableCell data-shop-name>{shop.shop_name}</TableCell>
-                    <TableCell>
-                      <Switch 
-                        name="status_chat"
-                        defaultChecked={shop.status_chat} 
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Switch 
-                        name="status_ship"
-                        defaultChecked={shop.status_ship} 
-                      />
-                    </TableCell>
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="auto_ship_interval">Interval Auto Ship (detik)</Label>
+                <Input
+                  id="auto_ship_interval"
+                  name="auto_ship_interval"
+                  type="number"
+                  defaultValue={settings?.auto_ship_interval || 5}
+                  min={1}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Auto ship diaktifkan per toko di tabel Status Auto Ship per Toko. Interval dalam detik (1-10 detik)
+                </p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nama Toko</TableHead>
+                    <TableHead>Status Chat</TableHead>
+                    <TableHead>Status Ship</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {autoShip?.map((shop: any) => (
+                    <TableRow key={shop.shop_id} data-shop-id={shop.shop_id}>
+                      <TableCell data-shop-name>{shop.shop_name}</TableCell>
+                      <TableCell>
+                        <Switch 
+                          name="status_chat"
+                          defaultChecked={shop.status_chat} 
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Switch 
+                          name="status_ship"
+                          defaultChecked={shop.status_ship} 
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -293,27 +314,29 @@ export default function PengaturanPage() {
             <CardDescription>Detail paket langganan saat ini</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Paket</span>
-                <span className="font-bold">{subscription?.plan?.name || 'Basic'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Jumlah Toko</span>
-                <span className="font-bold">{autoShip?.length || 0} / {subscription?.plan?.max_shops || 1}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Status</span>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  {subscription?.status || 'active'}
-                </span>
-              </div>
-              {subscription?.end_date && (
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Berlaku Hingga</span>
-                  <span className="font-medium">{new Date(subscription.end_date).toLocaleDateString('id-ID')}</span>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Paket</p>
+                  <p className="text-lg font-semibold">{subscription?.plan?.name || 'Basic'}</p>
                 </div>
-              )}
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Jumlah Toko</p>
+                  <p className="text-lg font-semibold">{autoShip?.length || 0} / {subscription?.plan?.max_shops || 1}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-muted-foreground">Status</p>
+                  <p className="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                    {subscription?.status || 'active'}
+                  </p>
+                </div>
+                {subscription?.end_date && (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">Berlaku Hingga</p>
+                    <p className="text-lg font-semibold">{new Date(subscription.end_date).toLocaleDateString('id-ID')}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

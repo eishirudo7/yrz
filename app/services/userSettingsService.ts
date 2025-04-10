@@ -46,6 +46,10 @@ export interface UserSettings {
   
   // User ID
   user_id?: string;
+  
+  // New properties
+  in_return_msg?: string;
+  in_return_status?: boolean;
 }
 
 export class UserSettingsService {

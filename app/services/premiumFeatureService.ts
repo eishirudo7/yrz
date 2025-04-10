@@ -1,7 +1,15 @@
-import { prosesOrder } from '@/app/services/prosesOrder';
 import { withRetry } from '@/app/services/databaseOperations';
 import { UserSettingsService, Shop } from '@/app/services/userSettingsService';
-import { redis } from '@/app/services/redis';
+import { processReadyToShipOrders } from "@/app/services/shopeeService";
+
+export async function prosesOrder(shopId: number, orderSn: string, shippingMethod: string = 'dropoff', interval: number = 5): Promise<any> {
+    // Menambahkan delay sesuai interval dalam detik
+    await new Promise(resolve => setTimeout(resolve, interval * 1000));
+    
+    const shipResult = await processReadyToShipOrders(shopId, orderSn, shippingMethod);
+    
+    return shipResult;
+}
 
 /**
  * Service untuk mengelola fitur-fitur premium dalam aplikasi
@@ -87,14 +95,14 @@ export class PremiumFeatureService {
         return false;
       }
       
-      // Jalankan auto-ship untuk toko premium
+      // Jalankan auto-ship untuk toko premium dengan interval dalam detik
       const result = await withRetry(
-        () => prosesOrder(shopId, orderSn),
+        () => prosesOrder(shopId, orderSn, 'dropoff', userSettings.auto_ship_interval),
         3,
         2000
       );
       
-      console.log(`Auto-ship berhasil dijalankan untuk toko ${shopId}, pesanan ${orderSn}`);
+      console.log(`Auto-ship berhasil dijalankan untuk toko ${shopId}, pesanan ${orderSn} dengan interval ${userSettings.auto_ship_interval} detik`);
       return true;
     } catch (error) {
       console.error(`Error handling auto-ship for shop ${shopId}:`, error);
@@ -103,20 +111,21 @@ export class PremiumFeatureService {
   }
 
   /**
-   * Menangani auto-cancel-chat untuk toko premium
-   * Hanya berjalan jika toko memiliki paket premium dan status_chat diaktifkan
+   * Menangani pengiriman pesan otomatis untuk berbagai status order
    * 
    * @param shopId - ID toko
    * @param orderSn - Nomor pesanan
    * @param buyerUserId - ID pengguna pembeli
    * @param buyerUsername - Nama pengguna pembeli
+   * @param statusType - Tipe status ('cancel' | 'return')
    * @returns Boolean yang menunjukkan keberhasilan proses
    */
-  static async handleChatCancel(
+  private static async handleAutoChat(
     shopId: number, 
     orderSn: string, 
     buyerUserId: string, 
-    buyerUsername: string
+    buyerUsername: string,
+    statusType: 'cancel' | 'return'
   ): Promise<boolean> {
     try {
       // Dapatkan pengaturan toko dan userId dari shopId
@@ -138,6 +147,16 @@ export class PremiumFeatureService {
       }
       
       // Cek status auto-chat dari pengaturan toko
+      if (statusType === 'cancel' && !userSettings.in_cancel_status) {
+        console.log(`Auto-chat cancel tidak aktif untuk toko ${shopId}`);
+        return false;
+      }
+      if (statusType === 'return' && !userSettings.in_return_status) {
+        console.log(`Auto-chat return tidak aktif untuk toko ${shopId}`);
+        return false;
+      }
+
+      // Cek status_chat hanya jika status cancel/return aktif
       if (!shop.status_chat) {
         console.log(`Auto-chat tidak aktif untuk toko ${shopId}`);
         return false;
@@ -169,9 +188,15 @@ export class PremiumFeatureService {
       // Tunggu sebentar sebelum mengirim pesan kedua
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Ambil pengaturan user untuk mendapatkan template pesan
-      const template = userSettings.in_cancel_msg || 
-        `Halo ${buyerUsername},\n\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\n\nDitunggu ya kak responnya.`;
+      // Ambil template pesan berdasarkan status
+      let template: string;
+      if (statusType === 'cancel') {
+        template = userSettings.in_cancel_msg || 
+          `Halo ${buyerUsername},\\n\\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\\n\\nDitunggu ya kak responnya.`;
+      } else {
+        template = userSettings.in_return_msg || 
+          `Halo ${buyerUsername},\\n\\nPengembalian pesanan ${orderSn} harus dengan alasan yang jelas ya kak, jika terkesan tidak jelas atau mempermainkan seller maka akan kami banding juga ke shopee \\n\\nTerima kasih..`;
+      }
 
       // Proses template dengan variabel
       const processedMessage = this.processTemplate(template, {
@@ -198,12 +223,36 @@ export class PremiumFeatureService {
         throw new Error(`Gagal mengirim pesan teks ke pembeli ${buyerUsername}`);
       }
 
-      console.log(`Pesan pembatalan berhasil dikirim ke pembeli untuk order ${orderSn}`);
+      console.log(`Pesan ${statusType} berhasil dikirim ke pembeli untuk order ${orderSn}`);
       return true;
     } catch (error) {
       console.error(`Error handling auto-chat for shop ${shopId}:`, error);
       return false;
     }
+  }
+
+  /**
+   * Menangani auto-cancel-chat untuk toko premium
+   */
+  static async handleChatCancel(
+    shopId: number, 
+    orderSn: string, 
+    buyerUserId: string, 
+    buyerUsername: string
+  ): Promise<boolean> {
+    return this.handleAutoChat(shopId, orderSn, buyerUserId, buyerUsername, 'cancel');
+  }
+
+  /**
+   * Menangani auto-chat untuk return order
+   */
+  static async handleChatReturn(
+    shopId: number, 
+    orderSn: string, 
+    buyerUserId: string, 
+    buyerUsername: string
+  ): Promise<boolean> {
+    return this.handleAutoChat(shopId, orderSn, buyerUserId, buyerUsername, 'return');
   }
 
   /**

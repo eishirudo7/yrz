@@ -172,10 +172,11 @@ export async function GET(req: NextRequest) {
         openai_model: pengaturan?.openai_model || 'gpt-3.5-turbo',
         openai_temperature: pengaturan?.openai_temperature || 0.4,
         openai_prompt: pengaturan?.openai_prompt || '',
-        auto_ship: pengaturan?.auto_ship !== undefined ? pengaturan.auto_ship : true,
         auto_ship_interval: pengaturan?.auto_ship_interval || 5,
         in_cancel_msg: pengaturan?.in_cancel_msg || null,
         in_cancel_status: pengaturan?.in_cancel_status !== undefined ? pengaturan.in_cancel_status : false,
+        in_return_msg: pengaturan?.in_return_msg || null,
+        in_return_status: pengaturan?.in_return_status !== undefined ? pengaturan.in_return_status : false,
         user_id: userId
       },
       subscription: subscription,
@@ -272,12 +273,12 @@ export async function POST(req: NextRequest) {
       openai_temperature: typeof updatedSettings.openai_temperature === 'number' ? 
         updatedSettings.openai_temperature : 0.4,
       openai_prompt: updatedSettings.openai_prompt || '',
-      auto_ship: typeof updatedSettings.auto_ship === 'boolean' ? 
-        updatedSettings.auto_ship : true,
       auto_ship_interval: typeof updatedSettings.auto_ship_interval === 'number' ? 
         updatedSettings.auto_ship_interval : 5,
       in_cancel_msg: updatedSettings.in_cancel_msg !== undefined ? updatedSettings.in_cancel_msg : null,
       in_cancel_status: updatedSettings.in_cancel_status !== undefined ? updatedSettings.in_cancel_status : false,
+      in_return_msg: updatedSettings.in_return_msg !== undefined ? updatedSettings.in_return_msg : null,
+      in_return_status: updatedSettings.in_return_status !== undefined ? updatedSettings.in_return_status : false,
       user_id: userId,
       subscription: {
         id: subscription!.id,
@@ -302,10 +303,11 @@ export async function POST(req: NextRequest) {
         openai_model: sanitizedSettings.openai_model,
         openai_temperature: sanitizedSettings.openai_temperature,
         openai_prompt: sanitizedSettings.openai_prompt,
-        auto_ship: sanitizedSettings.auto_ship,
         auto_ship_interval: sanitizedSettings.auto_ship_interval,
         in_cancel_msg: sanitizedSettings.in_cancel_msg,
         in_cancel_status: sanitizedSettings.in_cancel_status,
+        in_return_msg: sanitizedSettings.in_return_msg,
+        in_return_status: sanitizedSettings.in_return_status,
         user_id: userId
       }, {
         onConflict: 'user_id'
@@ -351,10 +353,11 @@ export async function POST(req: NextRequest) {
           openai_model: sanitizedSettings.openai_model,
           openai_temperature: sanitizedSettings.openai_temperature,
           openai_prompt: sanitizedSettings.openai_prompt,
-          auto_ship: sanitizedSettings.auto_ship,
           auto_ship_interval: sanitizedSettings.auto_ship_interval,
           in_cancel_msg: sanitizedSettings.in_cancel_msg,
           in_cancel_status: sanitizedSettings.in_cancel_status,
+          in_return_msg: sanitizedSettings.in_return_msg,
+          in_return_status: sanitizedSettings.in_return_status,
           user_id: userId
         },
         subscription: subscription,

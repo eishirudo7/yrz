@@ -44,25 +44,57 @@ export default function ProfitabilitySettingsDialog({
   // Tambahkan state untuk kalkulator margin
   const [receivedAmount, setReceivedAmount] = useState<string>('')
   const [costAmount, setCostAmount] = useState<string>('')
+  const [adminFee, setAdminFee] = useState<string>('12')
+  const [escrowFee, setEscrowFee] = useState<string>('')
   const [calculatedMargin, setCalculatedMargin] = useState<string>('')
+  const [netProfit, setNetProfit] = useState<string>('')
   
-  // Fungsi untuk menghitung margin
+  // Fungsi untuk menghitung margin dan laba bersih
   const calculateMargin = () => {
     if (!receivedAmount || !costAmount) return
     
     const received = parseFloat(receivedAmount)
     const cost = parseFloat(costAmount)
+    const escrow = parseFloat(escrowFee) || 0
     
     if (cost <= 0 || received <= 0) return
     
-    if (cost > received) {
+    // Hitung laba bersih
+    const profit = escrow - cost
+    setNetProfit(profit.toFixed(0))
+    
+    // Margin dihitung dari escrow dan modal
+    // Rumus: (escrow - modal) / escrow * 100
+    const margin = ((escrow - cost) / escrow) * 100
+    
+    if (margin < 0) {
       setCalculatedMargin('0.00') // Hindari margin negatif
       return
     }
     
-    // Rumus margin: (harga jual - modal) / harga jual * 100
-    const margin = ((received - cost) / received) * 100
     setCalculatedMargin(margin.toFixed(2))
+  }
+  
+  // Fungsi untuk menghitung escrow berdasarkan biaya admin
+  const calculateEscrow = (price: string, adminPercent: string) => {
+    if (!price || !adminPercent) {
+      setEscrowFee('')
+      return
+    }
+    const priceValue = parseFloat(price)
+    const adminPercentValue = parseFloat(adminPercent)
+    
+    if (isNaN(priceValue) || isNaN(adminPercentValue) || priceValue <= 0 || adminPercentValue <= 0) {
+      setEscrowFee('')
+      return
+    }
+    
+    // Hitung biaya admin dalam rupiah
+    const adminFeeValue = priceValue * (adminPercentValue / 100)
+    // Escrow adalah harga jual dikurangi biaya admin
+    const escrowFeeValue = priceValue - adminFeeValue
+    
+    setEscrowFee(escrowFeeValue.toFixed(0))
   }
   
   // Gunakan useEffect dengan debounce untuk perhitungan margin yang lebih konsisten
@@ -74,7 +106,12 @@ export default function ProfitabilitySettingsDialog({
     return () => {
       clearTimeout(debounceTimeout)
     }
-  }, [receivedAmount, costAmount])
+  }, [receivedAmount, costAmount, escrowFee])
+  
+  // Effect untuk menghitung escrow saat harga jual atau biaya admin berubah
+  useEffect(() => {
+    calculateEscrow(receivedAmount, adminFee)
+  }, [receivedAmount, adminFee])
   
   // Fungsi untuk mengambil data dari database
   const fetchSkus = async () => {
@@ -316,11 +353,45 @@ export default function ProfitabilitySettingsDialog({
                       min="0"
                     />
                   </div>
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      placeholder="Biaya Admin (%)"
+                      value={adminFee}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        // Validasi input antara 0-100
+                        if (value === '' || (parseFloat(value) >= 0 && parseFloat(value) <= 100)) {
+                          setAdminFee(value)
+                        }
+                      }}
+                      className="h-7 text-xs w-full"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="text"
+                      placeholder="Escrow"
+                      value={escrowFee}
+                      readOnly
+                      className="h-7 text-xs w-full bg-muted"
+                    />
+                  </div>
                   <div className="w-[70px]">
                     <Input
                       readOnly
                       value={calculatedMargin ? `${calculatedMargin}%` : ''}
                       placeholder="Margin"
+                      className="h-7 text-xs bg-muted text-right font-medium"
+                    />
+                  </div>
+                  <div className="w-[100px]">
+                    <Input
+                      readOnly
+                      value={netProfit ? `Rp ${netProfit}` : ''}
+                      placeholder="Laba Bersih"
                       className="h-7 text-xs bg-muted text-right font-medium"
                     />
                   </div>
