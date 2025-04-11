@@ -104,7 +104,7 @@ async function handleOrder(data: any) {
     }
 
     // Ambil dan simpan escrow detail jika status PROCESSED, COMPLETED, atau CANCELED
-    if (['PROCESSED', 'COMPLETED', 'CANCELLED'].includes(orderData.status)) {
+    if (orderData.status === 'PROCESSED' || orderData.status === 'COMPLETED' || orderData.status === 'CANCELLED') {
       try {
         console.log(`Mengambil detail escrow untuk order: ${orderData.ordersn} dengan status ${orderData.status}`);
         const escrowResponse = await withRetry(
@@ -113,7 +113,7 @@ async function handleOrder(data: any) {
           2000
         );
         
-        if (escrowResponse?.success && escrowResponse.data) {
+        if (escrowResponse && escrowResponse.success && escrowResponse.data) {
           await saveEscrowDetail(data.shop_id, escrowResponse.data);
         } else {
           console.error(`Gagal mendapatkan detail escrow: ${JSON.stringify(escrowResponse)}`);
@@ -123,34 +123,9 @@ async function handleOrder(data: any) {
       }
     }
 
-    // Fungsi helper untuk mengirim notifikasi dan menangani pesan otomatis
-    const handleOrderStatus = async (
-      status: string,
-      message: string,
-      handler: (shopId: number, orderSn: string, buyerUserId: string, buyerUsername: string) => Promise<boolean>
-    ) => {
-      if (orderData.status === status) {
-        const [_, result] = await Promise.all([
-          sendEventToShopOwners({
-            shopId: data.shop_id,
-            orderSn: orderData.ordersn,
-            status: orderData.status,
-            message: message
-          }),
-          handler(
-            data.shop_id, 
-            orderData.ordersn,
-            orderData.buyer_user_id,
-            orderData.buyer_username
-          )
-        ]);
-      }
-    };
-
-    // Handle berbagai status order
-    await Promise.all([
-      // READY_TO_SHIP
-      orderData.status === 'READY_TO_SHIP' && Promise.all([
+    if (orderData.status === 'READY_TO_SHIP') {
+      // Kirim notifikasi dan cek auto-ship secara paralel
+      const [_, autoShipResult] = await Promise.all([
         sendEventToShopOwners({
           type: 'new_order',
           order_sn: orderData.ordersn,
@@ -161,22 +136,19 @@ async function handleOrder(data: any) {
           shop_name: shopName,
           shop_id: data.shop_id
         }),
+        // Gunakan PremiumFeatureService untuk auto-ship
         PremiumFeatureService.handleAutoShip(data.shop_id, orderData.ordersn)
-      ]),
-      // IN_CANCEL
-      handleOrderStatus(
-        'IN_CANCEL',
-        `Pesanan ${orderData.ordersn} meminta pembatalan`,
-        PremiumFeatureService.handleChatCancel
-      ),
-      // TO_RETURN
-      handleOrderStatus(
-        'TO_RETURN',
-        `Pesanan ${orderData.ordersn} meminta pengembalian`,
-        PremiumFeatureService.handleChatReturn
-      )
-    ]);
-
+      ]);
+    }
+    else if (orderData.status === 'IN_CANCEL') {
+      // Gunakan PremiumFeatureService untuk auto-chat
+      await PremiumFeatureService.handleChatCancel(
+        data.shop_id,
+        orderData.ordersn,
+        orderDetail.buyer_user_id,
+        orderDetail.buyer_username
+      );
+    }
   } catch (error) {
     console.error(`Gagal memproses order ${orderData.ordersn}:`, error);
   }
