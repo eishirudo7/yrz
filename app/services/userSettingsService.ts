@@ -155,7 +155,8 @@ export class UserSettingsService {
   static async getShopSettings(userId: string, shopId: number): Promise<Shop | null> {
     try {
       const settings = await this.getUserSettings(userId);
-      return settings.shops.find(shop => shop.shop_id === shopId) || null;
+      // Konversi shopId ke string untuk pencocokan
+      return settings.shops.find(shop => shop.shop_id.toString() === shopId.toString()) || null;
     } catch (error) {
       console.error(`Error getting shop settings for shop ${shopId}:`, error);
       return null;
@@ -188,7 +189,8 @@ export class UserSettingsService {
   static async updateShopSettings(userId: string, shopId: number, shopSettings: Partial<Shop>): Promise<boolean> {
     try {
       const settings = await this.getUserSettings(userId);
-      const shopIndex = settings.shops.findIndex(shop => shop.shop_id === shopId);
+      // Konversi shopId ke string untuk pencocokan
+      const shopIndex = settings.shops.findIndex(shop => shop.shop_id.toString() === shopId.toString());
       
       if (shopIndex === -1) {
         // Toko belum ada, tambahkan sebagai toko baru
