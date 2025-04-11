@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, User as UserIcon, X, Minimize, Maximize, MinusSquare, RefreshCw, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useSSE } from '@/app/services/SSEService';
 
 // Definisikan tipe Message yang sesuai dengan respons API
 interface MessageContent {
@@ -417,6 +418,8 @@ const MiniChat = React.memo(({
   const [processedOrderSns, setProcessedOrderSns] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
+  const { lastMessage } = useSSE();
+  
   // Fungsi untuk mengambil pesan
   const fetchMessages = useCallback(async () => {
     if (!conversationId || !shopId) return;
@@ -456,6 +459,16 @@ const MiniChat = React.memo(({
       fetchMessages();
     }
   }, [conversationId, shopId, fetchMessages, isMinimized]);
+  
+  // Tambahkan useEffect untuk SSE
+  useEffect(() => {
+    if (lastMessage && 
+        lastMessage.conversation_id === conversationId && 
+        lastMessage.type === 'new_message') {
+      // Refresh pesan atau tambahkan pesan baru ke state
+      fetchMessages();
+    }
+  }, [lastMessage, conversationId]);
   
   // Fungsi untuk mengirim pesan
   const handleSendMessage = useCallback(async (content: string) => {

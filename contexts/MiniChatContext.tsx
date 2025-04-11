@@ -586,7 +586,10 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const existingConversation = state.conversations.find(
           conv => conv.conversation_id === messageData.conversation_id
         );
-        
+        console.log('Update conversation list di mini chat context dipanggil', {
+          existingConversation,
+          messageData
+        });
         if (existingConversation) {
           // Jika percakapan sudah ada, langsung update dengan data pesan baru
           dispatch({ 

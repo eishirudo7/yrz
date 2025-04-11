@@ -45,7 +45,8 @@ function formatDate(timestamp: number): string {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta' // Pastikan selalu menggunakan timezone Jakarta
   });
 }
 
@@ -53,30 +54,26 @@ function formatDate(timestamp: number): string {
 function isToday(timestamp: number): boolean {
   if (!timestamp || timestamp === 0) return false;
   
-  const today = new Date();
-  const jakartaOffset = 7 * 60; // GMT+7 dalam menit
+  // Konversi timestamp UTC ke WIB
+  const jakartaTimestamp = timestamp + (7 * 60 * 60);
+  const shipDate = new Date(jakartaTimestamp * 1000);
   
-  // Menyesuaikan tanggal saat ini ke zona waktu Jakarta
-  const jakartaToday = new Date(today.getTime() + (jakartaOffset * 60 * 1000));
-  const jakartaDate = new Date(jakartaToday).setHours(0, 0, 0, 0);
+  // Dapatkan tanggal sekarang dalam WIB
+  const now = new Date();
+  const jakartaNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
   
-  // Mengubah timestamp menjadi tanggal dalam zona waktu Jakarta
-  const shipDate = new Date(timestamp * 1000);
-  const shipDateOnly = new Date(shipDate).setHours(0, 0, 0, 0);
-  
-  return jakartaDate === shipDateOnly;
+  return shipDate.getDate() === jakartaNow.getDate() &&
+         shipDate.getMonth() === jakartaNow.getMonth() &&
+         shipDate.getFullYear() === jakartaNow.getFullYear();
 }
 
 // Fungsi untuk mengecek apakah pesanan telah melewati batas waktu pengiriman
 function isOverdue(timestamp: number): boolean {
   if (!timestamp || timestamp === 0) return false;
   
-  // Mendapatkan waktu saat ini dalam detik (UNIX timestamp)
-  const now = Math.floor(Date.now() / 1000);
-  
-  // Jika timestamp (ship_by_date) lebih kecil dari waktu sekarang,
-  // berarti sudah melewati batas waktu
-  return timestamp < now;
+  // Bandingkan timestamp UTC dengan waktu sekarang dalam UTC
+  const nowUtc = Math.floor(Date.now() / 1000);
+  return timestamp < nowUtc;
 }
 
 type OrdersDetailTableProps = {
@@ -2190,12 +2187,12 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                           {(order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && order.ship_by_date && (
                             <>
                               {order.ship_by_date && isOverdue(order.ship_by_date) && (
-                                <span title="Pesanan melewati batas waktu pengiriman">
+                                <span title={`Pesanan melewati batas waktu pengiriman (${formatDate(order.ship_by_date)})`}>
                                   <AlertTriangle size={14} className="text-red-500" />
                                 </span>
                               )}
                               {order.ship_by_date && isToday(order.ship_by_date) && !isOverdue(order.ship_by_date) && (
-                                <span title="Batas pengiriman hari ini">
+                                <span title={`Batas pengiriman hari ini (${formatDate(order.ship_by_date)})`}>
                                   <AlertCircle size={14} className="text-amber-500" />
                                 </span>
                               )}

@@ -844,6 +844,11 @@ const WebChatPage: React.FC = () => {
     hasMoreMessages
   } = useConversationMessages(selectedConversation, selectedShop || 0);
 
+  // Tambahkan useEffect untuk monitoring perubahan conversations
+  useEffect(() => {
+    console.log('Conversations updated:', conversations);
+  }, [conversations]);
+
   // Fungsi untuk memilih percakapan
   const handleConversationSelect = useCallback((conversation: Conversation) => {
     console.log("handleConversationSelect called:", {

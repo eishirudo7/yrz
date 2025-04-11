@@ -19,12 +19,7 @@ export interface PerubahanPesanan {
   user_id: number | null
 }
 
-interface Chat {
-  id: number
-  sender: string
-  message: string
-  timestamp: string
-}
+
 
 interface SendMessageParams {
   toId: number;
@@ -32,6 +27,24 @@ interface SendMessageParams {
   content: string;
   shopId: number;
   conversationId: string; // Tambahkan ini
+}
+
+interface Chat {
+  id: string;
+  message: string;
+  sender: 'seller' | 'buyer';
+  timestamp: string;
+  message_type: 'text' | 'image' | 'order';
+  content: {
+    text?: string;
+    image_url?: string;
+    shop_id?: number;
+    order_sn?: string;
+  };
+  quoted_msg?: {
+    message: string;
+    image_url?: string;
+  } | null;
 }
 
 export function useUbahPesanan() {
@@ -177,10 +190,14 @@ export function useUbahPesanan() {
 
       // Jika berhasil, perbarui state chat
       const newChat: Chat = {
-        id: parseInt(data.message_id) || Date.now(),
+        id: (parseInt(data.message_id) || Date.now()).toString(),
         sender: 'seller',
         message: content,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        message_type: 'text',
+        content: {
+          text: content
+        }
       }
       setChats(prevChats => [...prevChats, newChat]);
 
@@ -213,30 +230,37 @@ export function useUbahPesanan() {
       }
       
       const formattedChats: Chat[] = response.data.response.messages.map((msg: any) => {
-        console.log('msg.from_shop_id:', msg.from_shop_id); // Log from_shop_id untuk setiap pesan
-        
-        const isSeller = msg.from_shop_id == shopId; // Gunakan == untuk perbandingan longgar
-        console.log('isSeller:', isSeller); // Log hasil perbandingan
+        const isSeller = msg.from_shop_id.toString() === shopId;
         
         return {
-          id: parseInt(msg.message_id),
+          id: msg.message_id.toString(),
           sender: isSeller ? 'seller' : 'buyer',
-          message: msg.content.text,
-          timestamp: new Date(msg.created_timestamp * 1000).toISOString()
+          message: msg.content.text || '',
+          timestamp: new Date(msg.created_timestamp * 1000).toISOString(),
+          message_type: msg.message_type || 'text',
+          content: {
+            text: msg.content.text || '',
+            image_url: msg.content.image_url,
+            shop_id: msg.from_shop_id,
+            order_sn: msg.content.order_sn
+          },
+          quoted_msg: msg.quoted_msg ? {
+            message: msg.quoted_msg.content?.text || '',
+            image_url: msg.quoted_msg.content?.image_url
+          } : null
         };
       });
 
-      // Membalikkan urutan chat
+      // Membalikkan urutan chat agar yang terbaru di bawah
       setChats(formattedChats.reverse());
       
-      // Simpan informasi halaman berikutnya jika diperlukan
-      // const nextOffset = response.data.response.page_result.next_offset;
     } catch (error) {
       console.error('Error fetching chats:', error);
       setError('Gagal mengambil riwayat chat');
     }
   }
 
+  
   return { 
     perubahanPesanan, 
     loading, 

@@ -242,9 +242,6 @@ export const useDashboard = () => {
       return createClient().channel('logistic-empty');
     }
     
-    // Filter untuk shop_id in.(user shop ids)
-    const shopFilter = `shop_id=in.(${userShopIds.join(',')})`;
-    
     return createClient()
       .channel('logistic-changes')
       .on(
@@ -253,7 +250,7 @@ export const useDashboard = () => {
           event: 'UPDATE',
           schema: 'public',
           table: 'logistic',
-          filter: shopFilter
+          filter: `order_sn=in.(${dashboardData.orders.map(o => o.order_sn).join(',')})`
         },
         (payload) => {
           const logisticData = payload.new;
