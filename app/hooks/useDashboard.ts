@@ -250,7 +250,7 @@ export const useDashboard = () => {
           event: 'UPDATE',
           schema: 'public',
           table: 'logistic',
-          filter: `order_sn=in.(${dashboardData.orders.map(o => o.order_sn).join(',')})`
+          filter: `shop_id=in.(${userShopIds.join(',')})`
         },
         (payload) => {
           const logisticData = payload.new;

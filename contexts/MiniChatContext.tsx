@@ -138,6 +138,8 @@ const MiniChatContext = createContext<{
 
 // Buat reducer
 const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChatState => {
+  console.log('Reducer received action:', action);
+  
   switch (action.type) {
     case 'SET_CONNECTED':
       return {
@@ -324,6 +326,8 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
     case 'UPDATE_CONVERSATION': {
       const update = action.payload;
       
+      console.log('Processing UPDATE_CONVERSATION in reducer');
+      
       if (update.type === 'new_message') {
         const messageData = update.data;
         const shop_name = messageData.shop_name;
@@ -475,8 +479,16 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Tambahkan useEffect untuk SSE
   useEffect(() => {
-    if (lastMessage && lastMessage.type === 'new_message') {
-      updateConversationList({ type: 'new_message', data: lastMessage });
+    if (lastMessage) {
+      console.log('SSE message received in MiniChatContext:', lastMessage);
+      
+      if (lastMessage.type === 'new_message') {
+        console.log('Updating conversation list with new message');
+        updateConversationList({ 
+          type: 'new_message', 
+          data: lastMessage 
+        });
+      }
     }
   }, [lastMessage]);
 
@@ -579,68 +591,17 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Fungsi untuk update conversation list
   const updateConversationList = useCallback((update: ConversationUpdate) => {
+    console.log('updateConversationList called with:', update);
+    
     switch (update.type) {
       case 'new_message':
         const messageData = update.data;
-        // Cek apakah conversation sudah ada di daftar percakapan
-        const existingConversation = state.conversations.find(
-          conv => conv.conversation_id === messageData.conversation_id
-        );
-        console.log('Update conversation list di mini chat context dipanggil', {
-          existingConversation,
-          messageData
+        console.log('Processing new message update:', messageData);
+        
+        dispatch({ 
+          type: 'UPDATE_CONVERSATION', 
+          payload: { type: 'new_message', data: messageData } 
         });
-        if (existingConversation) {
-          // Jika percakapan sudah ada, langsung update dengan data pesan baru
-          dispatch({ 
-            type: 'UPDATE_CONVERSATION', 
-            payload: { type: 'new_message', data: messageData } 
-          });
-        } else {
-          // Jika percakapan belum ada, ambil data lengkap dari API
-          const fetchConversationDetails = async () => {
-            try {
-              // Ambil detail percakapan
-              const timestamp = new Date().getTime();
-              const response = await fetch(
-                `/api/msg/get_one_conversation?conversationId=${messageData.conversation_id}&shopId=${messageData.shop_id}&_=${timestamp}`
-              );
-              
-              if (!response.ok) {
-                throw new Error('Gagal mengambil detail percakapan');
-              }
-              
-              const data = await response.json();
-              
-              if (data.response) {
-                // Gunakan data lengkap untuk menambahkan percakapan baru
-                dispatch({ 
-                  type: 'UPDATE_CONVERSATION', 
-                  payload: { 
-                    type: 'new_conversation',
-                    data: data.response 
-                  } 
-                });
-              } else {
-                // Fallback jika gagal mendapatkan detail, gunakan data dari SSE
-                dispatch({ 
-                  type: 'UPDATE_CONVERSATION', 
-                  payload: { type: 'new_message', data: messageData } 
-                });
-              }
-            } catch (error) {
-              console.error('Error fetching conversation details:', error);
-              // Fallback ke data SSE jika gagal
-              dispatch({ 
-                type: 'UPDATE_CONVERSATION', 
-                payload: { type: 'new_message', data: messageData } 
-              });
-            }
-          };
-          
-          // Eksekusi fetch detail percakapan
-          fetchConversationDetails();
-        }
         break;
         
       case 'mark_as_read':
@@ -654,7 +615,7 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         fetchConversations();
         break;
     }
-  }, [fetchConversations, state.conversations]);
+  }, [fetchConversations]);
   
   // Fungsi untuk send message
   const sendMessage = useCallback(async (conversationId: string, message: string, onSuccess?: (messageId: string) => void) => {
