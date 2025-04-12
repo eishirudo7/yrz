@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getAllShops } from '@/app/services/shopeeService';
+import { startOfDay, endOfDay } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 
 // Pastikan fungsi GET diekspor dengan benar
 export async function GET(req: NextRequest) {
@@ -41,25 +43,145 @@ export async function GET(req: NextRequest) {
     // Ambil shop_ids untuk filter
     const shopIds = shops.map(shop => shop.shop_id);
     
-    // Ambil data pesanan
-    const { data: orders, error: ordersError } = await supabase
-      .from('dashboard_view')
-      .select('*')
-      .in('shop_id', shopIds)
-      .order('pay_time', { ascending: false });
+    // Konversi waktu ke zona Jakarta dan ambil timestamp
+    const jakartaDate = toZonedTime(new Date(), 'Asia/Jakarta');
+    const startTimestamp = Math.floor(startOfDay(jakartaDate).getTime() / 1000);
+    const endTimestamp = Math.floor(endOfDay(jakartaDate).getTime() / 1000);
     
-    if (ordersError) {
-      console.error('Gagal mengambil data pesanan:', ordersError);
+    // Query semua data secara paralel
+    const [
+      { data: normalOrdersData, error: normalOrdersError },
+      { data: cancelledOrdersData, error: cancelledOrdersError },
+      { data: shippedOrdersData, error: shippedOrdersError }
+    ] = await Promise.all([
+      // Query untuk mendapatkan orders dengan status non-SHIPPED dan CANCELLED
+      supabase
+        .from('orders')
+        .select(`
+          order_sn,
+          shop_id,
+          order_status,
+          buyer_user_id,
+          create_time,
+          update_time,
+          pay_time,
+          buyer_username,
+          escrow_amount_after_adjustment,
+          shipping_carrier,
+          cod
+        `)
+        .in('shop_id', shopIds)
+        .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
+        .order('pay_time', { ascending: false }),
+
+      // Query untuk mendapatkan orders dengan status CANCELLED
+      supabase
+        .from('orders')
+        .select(`
+          order_sn,
+          shop_id,
+          order_status,
+          buyer_user_id,
+          create_time,
+          update_time,
+          pay_time,
+          buyer_username,
+          escrow_amount_after_adjustment,
+          shipping_carrier,
+          cod
+        `)
+        .in('shop_id', shopIds)
+        .eq('order_status', 'CANCELLED')
+        .gte('pay_time', startTimestamp)
+        .lte('pay_time', endTimestamp)
+        .order('pay_time', { ascending: false }),
+
+      // Query untuk mendapatkan orders dengan status SHIPPED
+      supabase
+        .from('orders')
+        .select(`
+          order_sn,
+          ship_by_date,
+          shop_id,
+          order_status,
+          buyer_user_id,
+          create_time,
+          update_time,
+          pay_time,
+          buyer_username,
+          shipping_carrier,
+          cod
+        `)
+        .in('shop_id', shopIds)
+        .eq('order_status', 'SHIPPED')
+        .gte('update_time', startTimestamp)
+        .lte('update_time', endTimestamp)
+        .order('update_time', { ascending: false })
+    ]);
+
+    if (normalOrdersError || cancelledOrdersError || shippedOrdersError) {
+      console.error('Gagal mengambil data pesanan:', normalOrdersError || cancelledOrdersError || shippedOrdersError);
       return NextResponse.json({
         success: false,
         message: 'Gagal mengambil data pesanan',
-        error: ordersError.message
+        error: (normalOrdersError || cancelledOrdersError || shippedOrdersError)?.message
       }, { status: 500 });
     }
-    
-    console.log('Orders found:', orders?.length || 0);
-    
-    // Proses data untuk ringkasan (hanya pesanan, tidak termasuk iklan)
+
+    // Gabungkan hasil ketiga query
+    const ordersData = [
+      ...(normalOrdersData || []),
+      ...(cancelledOrdersData || []),
+      ...(shippedOrdersData || [])
+    ];
+
+    if (!ordersData || ordersData.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          summary: {
+            pesananPerToko: {},
+            omsetPerToko: {},
+            totalOrders: 0,
+            totalOmset: 0
+          },
+          orders: [],
+          shops: shops
+        }
+      });
+    }
+
+    // Ambil order_items dan logistic secara paralel
+    const orderSns = ordersData.map(order => order.order_sn);
+    const [
+      { data: orderItemsData, error: orderItemsError },
+      { data: logisticData, error: logisticError }
+    ] = await Promise.all([
+      supabase
+        .from('order_items')
+        .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku')
+        .in('order_sn', orderSns),
+      
+      supabase
+        .from('logistic')
+        .select('order_sn, tracking_number, document_status, is_printed')
+        .in('order_sn', orderSns)
+    ]);
+
+    if (orderItemsError) {
+      console.error('Gagal mengambil data order items:', orderItemsError);
+      return NextResponse.json({
+        success: false,
+        message: 'Gagal mengambil data order items',
+        error: orderItemsError.message
+      }, { status: 500 });
+    }
+
+    if (logisticError) {
+      console.error('Gagal mengambil data logistik:', logisticError);
+    }
+
+    // Proses data untuk summary
     const status_yang_dihitung = ['IN_CANCEL', 'PROCESSED', 'READY_TO_SHIP', 'SHIPPED'];
     const summary = {
       pesananPerToko: {} as Record<string, number>,
@@ -67,46 +189,53 @@ export async function GET(req: NextRequest) {
       totalOrders: 0,
       totalOmset: 0
     };
-    
+
     // Inisialisasi data per toko
     shops.forEach(shop => {
       summary.pesananPerToko[shop.shop_name] = 0;
       summary.omsetPerToko[shop.shop_name] = 0;
     });
-    
-    // Hitung data pesanan
-    const today = new Date();
-    // Konversi ke zona waktu Indonesia (WIB)
-    const jakartaOffset = 7 * 60; // WIB adalah UTC+7 (dalam menit)
-    const todayInWIB = new Date(today.getTime() + (today.getTimezoneOffset() + jakartaOffset) * 60000);
-    const todayStr = `${todayInWIB.getFullYear()}-${String(todayInWIB.getMonth() + 1).padStart(2, '0')}-${String(todayInWIB.getDate()).padStart(2, '0')}`;
-    
-    if (orders && orders.length > 0) {
-      orders.forEach(order => {
-        const payTimestamp = order.pay_time * 1000;
-        const payDate = new Date(payTimestamp);
-        // Konversi waktu pembayaran ke zona waktu Indonesia (WIB)
-        const payDateInWIB = new Date(payDate.getTime() + (payDate.getTimezoneOffset() + jakartaOffset) * 60000);
-        const payDateStr = `${payDateInWIB.getFullYear()}-${String(payDateInWIB.getMonth() + 1).padStart(2, '0')}-${String(payDateInWIB.getDate()).padStart(2, '0')}`;
-        
-        const isSameDay = payDateStr === todayStr;
-        
-        if (isSameDay && status_yang_dihitung.includes(order.order_status)) {
-          summary.totalOrders++;
-          summary.totalOmset += Number(order.total_amount);
-          
-          const toko = order.shop_name || 'Tidak diketahui';
-          summary.pesananPerToko[toko] = (summary.pesananPerToko[toko] || 0) + 1;
-          summary.omsetPerToko[toko] = (summary.omsetPerToko[toko] || 0) + Number(order.total_amount);
-        }
-      });
-    }
-    
+
+    // Gabungkan dan proses data
+    const processedOrders = ordersData.map(order => {
+      const shop = shops.find(s => s.shop_id === order.shop_id);
+      const items = orderItemsData?.filter(item => item.order_sn === order.order_sn) || [];
+      const logistic = logisticData?.find(l => l.order_sn === order.order_sn);
+
+      // Proses items tanpa order_sn
+      const processedItems = items.map(({ order_sn, ...item }) => ({
+        ...item,
+        model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
+        model_discounted_price: parseFloat(item.model_discounted_price || '0')
+      }));
+
+      return {
+        ...order,
+        shop_name: shop?.shop_name || 'Tidak diketahui',
+        tracking_number: logistic?.tracking_number,
+        document_status: logistic?.document_status,
+        is_printed: logistic?.is_printed || false,
+        items: processedItems
+      };
+    });
+
+    // Urutkan processedOrders berdasarkan pay_time (dari terbaru ke lama)
+    processedOrders.sort((a, b) => {
+      const aTime = a.pay_time || a.create_time;
+      const bTime = b.pay_time || b.create_time;
+      return bTime - aTime;
+    });
+
     return NextResponse.json({
       success: true,
       data: {
-        summary,
-        orders: orders || [],
+        summary: {
+          pesananPerToko: {},
+          omsetPerToko: {},
+          totalOrders: 0,
+          totalOmset: 0
+        },
+        orders: processedOrders,
         shops: shops
       }
     });

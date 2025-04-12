@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { OrderItem } from '@/app/hooks/useDashboard'
+import { Order } from '@/app/hooks/useDashboard'
 import {
   Table,
   TableBody,
- 
   TableCell,
   TableHead,
   TableHeader,
@@ -77,8 +76,8 @@ function isOverdue(timestamp: number): boolean {
 }
 
 type OrdersDetailTableProps = {
-  orders: OrderItem[]
-  onOrderUpdate?: (orderSn: string, updates: Partial<OrderItem>) => void
+  orders: Order[]
+  onOrderUpdate?: (orderSn: string, updates: Partial<Order>) => void
   isLoading?: boolean
 }
 
@@ -125,8 +124,8 @@ const getStatusIcon = (status: OrderStatus) => {
 // Update tipe props StatusBadge
 type StatusBadgeProps = {
   status: OrderStatus;
-  order: OrderItem;
-  onProcess: (order: OrderItem) => void;
+  order: Order;
+  onProcess: (order: Order) => void;
   onCancellationAction: (orderSn: string, action: 'ACCEPT' | 'REJECT') => void;
 };
 
@@ -421,14 +420,14 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   // Konsolidasikan semua derived data dalam satu useMemo
   const derivedData = useMemo(() => {
     // Fungsi helper untuk menentukan apakah order dapat dicentang
-    const isOrderCheckable = (order: OrderItem): boolean => {
+    const isOrderCheckable = (order: Order): boolean => {
       return order.document_status === 'READY' &&
         (order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL');
     };
 
     // Hitung semua data turunan dalam satu iterasi
-    const unprintedOrders: OrderItem[] = [];
-    const printableOrders: OrderItem[] = [];
+    const unprintedOrders: Order[] = [];
+    const printableOrders: Order[] = [];
     const uniqueShops = new Set<string>();
     const uniqueCouriers = new Set<string>();
     const statusCounts: Record<string, number> = {};
@@ -607,11 +606,10 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   } = useShippingDocument();
 
   // Ganti fungsi handleDownloadDocument yang lama
-  const handleDownloadDocument = useCallback(async (order: OrderItem) => {
+  const handleDownloadDocument = useCallback(async (order: Order) => {
     try {
       const params = {
         order_sn: order.order_sn,
-        package_number: order.package_number,
         shipping_document_type: "THERMAL_AIR_WAYBILL" as const,
         shipping_carrier: order.shipping_carrier
       };
@@ -663,7 +661,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   };
 
   // Update fungsi processPrintingAndReport dengan pendekatan paralel
-  const processPrintingAndReport = async (ordersToPrint: OrderItem[]) => {
+  const processPrintingAndReport = async (ordersToPrint: Order[]) => {
     let totalSuccess = 0;
     let totalFailed = 0;
     const shopReports: {
@@ -676,7 +674,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
     try {
       // Kelompokkan berdasarkan shop_id
-      const ordersByShop = ordersToPrint.reduce((groups: { [key: number]: OrderItem[] }, order) => {
+      const ordersByShop = ordersToPrint.reduce((groups: { [key: number]: Order[] }, order) => {
         const shopId = order.shop_id;
         if (!groups[shopId]) {
           groups[shopId] = [];
@@ -713,7 +711,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             currentShop: shopName
           }));
 
-          const ordersByCarrier = shopOrders.reduce((groups: { [key: string]: OrderItem[] }, order) => {
+          const ordersByCarrier = shopOrders.reduce((groups: { [key: string]: Order[] }, order) => {
             const carrier = order.shipping_carrier || 'unknown';
             if (!groups[carrier]) {
               groups[carrier] = [];
@@ -738,7 +736,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
               const orderParams = carrierOrders.map(order => ({
                 order_sn: order.order_sn,
-                package_number: order.package_number,
                 shipping_document_type: "THERMAL_AIR_WAYBILL" as const,
                 shipping_carrier: order.shipping_carrier
               }));
@@ -923,7 +920,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   };
 
   // Update fungsi handleBulkPrint
-  const handleBulkPrint = async (specificOrders?: OrderItem[]) => {
+  const handleBulkPrint = async (specificOrders?: Order[]) => {
     const ordersToPrint = specificOrders || (
       tableState.selectedOrders.length > 0 
         ? orders.filter(order => tableState.selectedOrders.includes(order.order_sn))
@@ -1020,7 +1017,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   }, [tableState.selectedOrders, orders, derivedData.printableOrders, processPrintingAndReport]);
 
   // Update URL endpoint untuk memproses pesanan
-  const handleProcessOrder = async (order: OrderItem) => {
+  const handleProcessOrder = async (order: Order) => {
     try {
       toast.promise(
         async () => {
@@ -1270,14 +1267,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     action: 'ACCEPT' | 'REJECT';
   }>({ orderSn: '', action: 'ACCEPT' });
 
-  // 3. Gunakan CATEGORY_LIST untuk membuat categories dengan useMemo
-  const categories = useMemo(() => CATEGORY_LIST, []);
-
-  // Fungsi helper
-  const isOrderCheckable = useCallback((order: OrderItem): boolean => {
-    return derivedData.isOrderCheckable(order);
-  }, [derivedData.isOrderCheckable]);
-
+  
   // Update fungsi handleMobileCategoryChange
   const handleMobileCategoryChange = useCallback((value: string) => {
     handleCategoryChange(value);
@@ -2144,7 +2134,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             ) : (
               // Konten tabel asli saat tidak loading
               filteredOrders.length > 0 ? (
-                filteredOrders.map((order: OrderItem, index: number) => (
+                filteredOrders.map((order: Order, index: number) => (
                   <TableRow 
                     key={`${order.order_sn}`} 
                     className={`
@@ -2233,7 +2223,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                             shopId={order.shop_id}
                             toId={order.buyer_user_id}
                             toName={order.buyer_username || "Pembeli"}
-                            toAvatar={order.buyer_avatar || ""} 
+                            toAvatar={""} 
                             shopName={order.shop_name}
                             iconSize={14}
                             iconOnly={true}
@@ -2244,12 +2234,14 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                       </div>
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      Rp {(order.total_amount || 0).toLocaleString('id-ID')}
+                      Rp {calculateOrderTotal(order).toLocaleString('id-ID')}
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
                     </TableCell>
-                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{order.sku_qty || '-'}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      {formatSkuQty(order.items)}
+                    </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
                     </TableCell>
@@ -2776,3 +2768,23 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     </div>
   );
 }
+
+// Helper functions
+const calculateOrderTotal = (order: Order): number => {
+  return order.items?.reduce((total, item) => 
+    total + (item.model_quantity_purchased * item.model_discounted_price), 
+  0) || 0;
+};
+
+const formatSkuQty = (items: Order['items']): string => {
+  if (!items?.length) return '-';
+  
+  const skuMap = items.reduce((acc, item) => {
+    acc[item.item_sku] = (acc[item.item_sku] || 0) + item.model_quantity_purchased;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return Object.entries(skuMap)
+    .map(([sku, qty]) => `${sku} (${qty})`)
+    .join(', ');
+};

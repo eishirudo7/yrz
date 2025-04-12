@@ -11,119 +11,133 @@ interface OrderItem {
   shipping_carrier: string | null;
 }
 
-
-
 export async function GET(req: NextRequest) {
   try {
+    // 1. Validasi di awal lebih detail
     const searchParams = req.nextUrl.searchParams;
     const shopId = parseInt(searchParams.get('shopId') || '0');
-    const orderSns = searchParams.get('orderSns')?.split(',') || [];
+    const orderSns = searchParams.get('orderSns')?.split(',').filter(Boolean) || [];
     const carrier = searchParams.get('carrier');
 
     if (!shopId || orderSns.length === 0) {
-      return new NextResponse('Parameter tidak valid', { status: 400 });
+      return NextResponse.json({
+        error: "invalid_parameters",
+        message: "Parameter shopId dan orderSns harus diisi"
+      }, { status: 400 });
+    }
+
+    // 2. Batasi jumlah maksimum order yang bisa diproses
+    const MAX_ORDERS = 2000;
+    if (orderSns.length > MAX_ORDERS) {
+      return NextResponse.json({
+        error: "too_many_orders",
+        message: `Maksimal ${MAX_ORDERS} order dalam satu request`
+      }, { status: 400 });
     }
 
     const pdfBlobs: Buffer[] = [];
-    let remainingOrders = [...orderSns];
-    const failedOrders: string[] = []; // Tambahkan array untuk menyimpan order yang gagal
-    
-    while (remainingOrders.length > 0) {
-      const currentBatch = remainingOrders.slice(0, BATCH_SIZE);
-      const orderList: OrderItem[] = currentBatch.map(orderSn => ({
-        order_sn: orderSn,
-        shipping_document_type: "THERMAL_AIR_WAYBILL",
-        shipping_carrier: carrier
-      }));
+    const failedOrders: string[] = [];
 
-      try {
-        const response = await downloadShippingDocument(shopId, orderList);
-        
-        if (response instanceof Buffer) {
-          pdfBlobs.push(response);
-          remainingOrders = remainingOrders.filter(sn => !currentBatch.includes(sn));
-        } else if (response.error === 'logistics.package_print_failed' || response.error === 'logistics.shipping_document_should_print_first' || response.error === 'logistics.package_print_failed') {
-          const failedOrderMatch = response.message.match(/order_sn: (\w+) print failed/);
-          if (failedOrderMatch) {
-            const failedOrderSn = failedOrderMatch[1];
-            
-            try {
-              // Dapatkan tracking number terlebih dahulu
-              const trackingResponse = await getShopeeTrackingNumber(shopId, failedOrderSn);
-              const trackingNumber = trackingResponse?.response?.tracking_number;
-
-              // Buat dokumen dengan tracking number
-              const createResponse = await createShippingDocument(shopId, [{
-                order_sn: failedOrderSn,
-                tracking_number: trackingNumber || undefined
-              }]);
-              
-              // Periksa status dari result_list
-              const orderResult = createResponse.response?.result_list?.[0];
-              
-              if (createResponse.error || !orderResult || orderResult.status === "FAILED") {
-                console.error('Gagal membuat dokumen:', orderResult?.fail_message || createResponse.message);
-                failedOrders.push(failedOrderSn);
-                remainingOrders = remainingOrders.filter(sn => sn !== failedOrderSn);
-              } else if (orderResult.status === "SUCCESS") {
-                // Tunggu sebentar sebelum mencoba download ulang
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                // Tambahkan kembali order ke remainingOrders untuk dicoba download ulang
-                remainingOrders = [...remainingOrders, failedOrderSn];
-              }
-            } catch (createError) {
-              console.error('Error saat membuat dokumen baru:', createError);
-              failedOrders.push(failedOrderSn);
-              remainingOrders = remainingOrders.filter(sn => sn !== failedOrderSn);
-            }
-            
-            const remainingBatchOrders = currentBatch.filter(sn => sn !== failedOrderSn);
-            if (remainingBatchOrders.length > 0) {
-              remainingOrders = [...remainingBatchOrders, ...remainingOrders.filter(sn => !currentBatch.includes(sn))];
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error saat memproses batch:', error);
-        currentBatch.forEach(sn => failedOrders.push(sn)); // Tambahkan semua order dalam batch yang error
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // Bagi orders menjadi batches
+    const batches = [];
+    for (let i = 0; i < orderSns.length; i += BATCH_SIZE) {
+      batches.push(orderSns.slice(i, i + BATCH_SIZE));
     }
 
-    // Periksa hasil akhir
+    // Proses batches secara parallel dengan rate limiting
+    await Promise.all(
+      batches.map(async (batch, index) => {
+        // Rate limiting dengan delay bertahap
+        await new Promise(resolve => setTimeout(resolve, index * 1000));
+
+        const orderList = batch.map(orderSn => ({
+          order_sn: orderSn,
+          shipping_document_type: "THERMAL_AIR_WAYBILL",
+          shipping_carrier: carrier
+        }));
+
+        try {
+          const response = await downloadShippingDocument(shopId, orderList);
+          
+          if (response instanceof Buffer) {
+            pdfBlobs.push(response);
+            return;
+          }
+
+          if (response.error) {
+            const failedOrderMatch = response.message.match(/order_sn: (\w+) print failed/);
+            if (failedOrderMatch) {
+              const failedOrderSn = failedOrderMatch[1];
+              
+              // Retry dengan tracking number
+              try {
+                const trackingResponse = await getShopeeTrackingNumber(shopId, failedOrderSn);
+                if (trackingResponse?.response?.tracking_number) {
+                  const createResponse = await createShippingDocument(shopId, [{
+                    order_sn: failedOrderSn,
+                    tracking_number: trackingResponse.response.tracking_number
+                  }]);
+
+                  if (createResponse.response?.result_list?.[0]?.status === "SUCCESS") {
+                    // Tunggu sebentar lalu coba download lagi
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    const retryResponse = await downloadShippingDocument(shopId, [{
+                      order_sn: failedOrderSn,
+                      shipping_document_type: "THERMAL_AIR_WAYBILL"
+                    }]);
+
+                    if (retryResponse instanceof Buffer) {
+                      pdfBlobs.push(retryResponse);
+                      return;
+                    }
+                  }
+                }
+              } catch (retryError) {
+                console.error('Retry failed:', retryError);
+              }
+              
+              failedOrders.push(failedOrderSn);
+            }
+          }
+        } catch (error) {
+          console.error('Batch processing error:', error);
+          failedOrders.push(...batch);
+        }
+      })
+    );
+
+    // 8. Handle hasil dengan lebih baik
     if (pdfBlobs.length === 0) {
       return NextResponse.json({
         error: "no_documents",
         message: "Tidak ada dokumen yang berhasil diproses",
-        failedOrders // Sertakan failedOrders dalam response
-      }, { status: 404 });
+        failedOrders
+      }, { 
+        status: 404,
+        headers: { 'X-Failed-Orders': JSON.stringify(failedOrders) }
+      });
     }
 
-    // Buat response dengan header yang menyertakan informasi failedOrders
-    const headers = {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="shipping-labels-${Date.now()}.pdf"`,
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'X-Failed-Orders': JSON.stringify(failedOrders) // Tambahkan failed orders ke header
-    };
+    // 9. Optimize PDF merging
+    const mergedPDF = pdfBlobs.length === 1 
+      ? pdfBlobs[0]
+      : await mergePDFs(pdfBlobs.map(buffer => new Blob([buffer], { type: 'application/pdf' })));
 
-    if (pdfBlobs.length === 1) {
-      return new NextResponse(pdfBlobs[0], { status: 200, headers });
-    }
-
-    const pdfBlobArray = pdfBlobs.map(buffer => new Blob([buffer], { type: 'application/pdf' }));
-    const mergedPDF = await mergePDFs(pdfBlobArray);
-    
-    return new NextResponse(mergedPDF, { status: 200, headers });
+    return new NextResponse(mergedPDF, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="shipping-labels-${Date.now()}.pdf"`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-Failed-Orders': JSON.stringify(failedOrders)
+      }
+    });
 
   } catch (error) {
-    console.error('Error saat mengambil PDF:', error);
-    return NextResponse.json(
-      { error: "internal_server_error", message: "Terjadi kesalahan internal server" },
-      { status: 500 }
-    );
+    console.error('API Error:', error);
+    return NextResponse.json({
+      error: "internal_server_error",
+      message: error instanceof Error ? error.message : "Terjadi kesalahan internal server"
+    }, { status: 500 });
   }
 } 

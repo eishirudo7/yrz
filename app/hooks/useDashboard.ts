@@ -8,18 +8,47 @@ export type OrderItem = {
   [key: string]: any;
 }
 
+export type Shop = {
+  shop_id: number;
+  shop_name: string;
+}
+
+export type Order = {
+  order_sn: string;
+  shop_id: number;
+  shop_name: string;
+  order_status: string;
+  buyer_user_id: number;
+  create_time: number;
+  update_time: number;
+  ship_by_date: number;
+  pay_time: number;
+  buyer_username: string;
+  escrow_amount_after_adjustment: number;
+  shipping_carrier: string;
+  cod: boolean;
+  tracking_number?: string;
+  document_status?: string;
+  is_printed?: boolean;
+  items: Array<{
+    model_quantity_purchased: number;
+    model_discounted_price: number;
+    item_sku: string;
+  }>;
+}
+
 export type DashboardSummary = {
   pesananPerToko: Record<string, number>;
   omsetPerToko: Record<string, number>;
   totalOrders: number;
   totalOmset: number;
   totalIklan: number;
-  iklanPerToko: { [key: string]: number }
+  iklanPerToko: Record<string, number>;
 }
 
 export type DashboardData = {
   summary: DashboardSummary;
-  orders: OrderItem[];
+  orders: Order[];
   shops?: any[]; // Tambahkan shops untuk menyimpan data toko
 }
 
@@ -28,41 +57,70 @@ const timeZone = 'Asia/Jakarta';
 
 const status_yang_dihitung = ['IN_CANCEL', 'PROCESSED', 'READY_TO_SHIP', 'SHIPPED'];
 
-const processOrder = (order: OrderItem, summary: DashboardSummary) => {
+const calculateOrderTotal = (order: Order): number => {
+  return order.items?.reduce((total, item) => 
+    total + (item.model_quantity_purchased * item.model_discounted_price), 
+  0) || 0;
+};
+
+const processOrder = (order: Order, summary: DashboardSummary) => {
   const payDate = toZonedTime(new Date(order.pay_time * 1000), timeZone);
   const orderDate = format(payDate, 'yyyy-MM-dd');
   const today = format(toZonedTime(new Date(), timeZone), 'yyyy-MM-dd');
 
   if (orderDate === today && status_yang_dihitung.includes(order.order_status)) {
     summary.totalOrders++;
-    summary.totalOmset += order.total_amount;
+    summary.totalOmset += calculateOrderTotal(order);
 
     const toko = order.shop_name || 'Tidak diketahui';
     summary.pesananPerToko[toko] = (summary.pesananPerToko[toko] || 0) + 1;
-    summary.omsetPerToko[toko] = (summary.omsetPerToko[toko] || 0) + order.total_amount;
+    summary.omsetPerToko[toko] = (summary.omsetPerToko[toko] || 0) + calculateOrderTotal(order);
   }
 };
 
 async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): Promise<any | null> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const { data, error } = await createClient().rpc('get_sku_qty_and_total_price', { 
-        order_sn_input: order_sn,
-        shop_id_input: shop_id
-      });
+      // Ambil order_items dan logistic secara parallel
+      const [
+        { data: itemsData, error: itemsError },
+        { data: logisticData, error: logisticError }
+      ] = await Promise.all([
+        createClient()
+          .from('order_items')
+          .select('model_quantity_purchased, model_discounted_price, item_sku')
+          .eq('order_sn', order_sn),
+        
+        createClient()
+          .from('logistic')
+          .select('tracking_number, document_status, is_printed')
+          .eq('order_sn', order_sn)
+          .single()
+      ]);
       
-      if (error) throw error;
+      if (itemsError) throw itemsError;
       
-      if (!data || data.length === 0) {
+      if (!itemsData || itemsData.length === 0) {
         return null;
       }
-      
-      return data[0];
+
+      return {
+        items: itemsData.map(item => ({
+          model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
+          model_discounted_price: parseFloat(item.model_discounted_price || '0'),
+          item_sku: item.item_sku
+        })),
+        // Tambahkan data logistic jika ada
+        ...(logisticData && {
+          tracking_number: logisticData.tracking_number,
+          document_status: logisticData.document_status,
+          is_printed: logisticData.is_printed
+        })
+      };
     } catch (error) {
       if (attempt === retries - 1) {
         return null;
       }
-      
       await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
     }
   }
@@ -107,7 +165,7 @@ export const useDashboard = () => {
     // Filter untuk shop_id in.(user shop ids) dan order_status in.(tracked statuses)
     // Format filter Supabase: "column=in.(val1,val2,val3)"
     const shopFilter = `shop_id=in.(${userShopIds.join(',')})`;
-    const statusFilter = `order_status=in.(${trackedStatuses.join(',')})`;
+    
     
     return createClient()
       .channel('orders')
@@ -117,7 +175,7 @@ export const useDashboard = () => {
         table: 'orders',
         filter: `${shopFilter}`,
       }, async (payload) => {
-        const newOrder = payload.new as OrderItem;
+        const newOrder = payload.new as Order;
         
         // Verifikasi additional filter secara manual karena Supabase hanya mendukung
         // satu filter pada saat ini
@@ -157,14 +215,21 @@ export const useDashboard = () => {
           });
 
           try {
-            const orderDetails = await getOrderDetails(newOrder.order_sn, newOrder.shop_id);
+            const orderDetails = await getOrderDetails(newOrder.order_sn, newOrder.shop_id.toString());
             console.log('Detail pesanan diterima:', orderDetails);
             
             if (orderDetails) {
               setDashboardData(prevData => {
                 const updatedOrders = prevData.orders.map(order => 
                   order.order_sn === newOrder.order_sn 
-                    ? { ...order, ...orderDetails, total_amount: orderDetails.total_price ?? order.total_amount }
+                    ? { 
+                        ...order, 
+                        ...newOrder, 
+                        items: orderDetails.items,
+                        tracking_number: orderDetails.tracking_number,
+                        document_status: orderDetails.document_status,
+                        is_printed: orderDetails.is_printed
+                      }
                     : order
                 );
                 
@@ -232,54 +297,6 @@ export const useDashboard = () => {
       });
   };
 
-  const createLogisticSubscription = () => {
-    // Mendapatkan daftar shop_id dari daftar toko user
-    const userShopIds = shops.map(shop => shop.shop_id.toString());
-    
-    // Jika tidak ada toko, jangan buat subscription
-    if (userShopIds.length === 0) {
-      console.log('Tidak ada toko yang ditemukan, subscription logistic tidak dibuat');
-      return createClient().channel('logistic-empty');
-    }
-    
-    return createClient()
-      .channel('logistic-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'logistic',
-          filter: `shop_id=in.(${userShopIds.join(',')})`
-        },
-        (payload) => {
-          const logisticData = payload.new;
-          
-          setDashboardData(prevData => {
-            const updatedOrders = prevData.orders.map(order => {
-              if (order.order_sn === logisticData.order_sn) {
-                return {
-                  ...order,
-                  tracking_number: logisticData.tracking_number,
-                  document_status: logisticData.document_status
-                };
-              }
-              return order;
-            });
-
-            if (JSON.stringify(updatedOrders) !== JSON.stringify(prevData.orders)) {
-              return {
-                ...prevData,
-                orders: updatedOrders
-              };
-            }
-
-            return prevData;
-          });
-        }
-      );
-  };
-
   // Fungsi untuk mengambil data iklan dari API
   const fetchAdsData = async () => {
     const supabase = createClient();
@@ -322,12 +339,12 @@ export const useDashboard = () => {
   };
 
   // Fungsi untuk memproses shipping documents
-  const processOrders = async (orders: OrderItem[]) => {
+  const processOrders = async (orders: Order[]) => {
     for (const order of orders) {
       if (
         order.order_status === 'PROCESSED' && 
         order.document_status !== 'READY' ||
-        order.status === 'PROCESSED' &&
+        order.order_status === 'PROCESSED' &&
         order.tracking_number === null
       ) {
         console.log('Mencoba membuat shipping document untuk:', {
@@ -428,22 +445,45 @@ export const useDashboard = () => {
           throw new Error(dashboardResult.message || 'Gagal mengambil data dashboard');
         }
         
-        console.log('Data dashboard berhasil diambil');
-        
         // 2. Ekstrak data dari respons
-        const { summary, orders, shops } = dashboardResult.data;
+        const { orders, shops } = dashboardResult.data;
         
-        // 3. Tambahkan properti iklan yang kosong untuk sementara
-        const initialSummary = {
-          ...summary,
+        // 3. Hitung summary dari data mentah
+        const newSummary: DashboardSummary = {
+          pesananPerToko: {},
+          omsetPerToko: {},
+          totalOrders: 0,
+          totalOmset: 0,
           totalIklan: 0,
           iklanPerToko: {}
         };
-        
-        // 4. Set data dashboard awal (tanpa data iklan)
+
+        // Inisialisasi data per toko
+        shops.forEach((shop: Shop) => {
+          newSummary.pesananPerToko[shop.shop_name] = 0;
+          newSummary.omsetPerToko[shop.shop_name] = 0;
+        });
+
+        // Proses setiap order untuk summary
+        orders.forEach((order: Order) => {
+          const payDate = toZonedTime(new Date(order.pay_time * 1000), timeZone);
+          const orderDate = format(payDate, 'yyyy-MM-dd');
+          const today = format(toZonedTime(new Date(), timeZone), 'yyyy-MM-dd');
+
+          if (orderDate === today && status_yang_dihitung.includes(order.order_status)) {
+            newSummary.totalOrders++;
+            newSummary.totalOmset += calculateOrderTotal(order);
+
+            const toko = order.shop_name || 'Tidak diketahui';
+            newSummary.pesananPerToko[toko] = (newSummary.pesananPerToko[toko] || 0) + 1;
+            newSummary.omsetPerToko[toko] = (newSummary.omsetPerToko[toko] || 0) + calculateOrderTotal(order);
+          }
+        });
+
+        // 4. Set data dashboard dengan summary yang baru dihitung
         setDashboardData({
-          summary: initialSummary,
-          orders: orders || [],
+          summary: newSummary,
+          orders: orders,
           shops: shops
         });
         
@@ -503,34 +543,19 @@ export const useDashboard = () => {
       fetchDashboardData();
 
       // Buat subscription awal
-      const channels = {
-        orderChannel: createOrderSubscription(),
-        logisticChannel: createLogisticSubscription()
-      };
+      const orderChannel = createOrderSubscription();
 
       // Subscribe ke channel
-      channels.orderChannel.subscribe((status) => {
+      orderChannel.subscribe((status) => {
         console.log(`Status koneksi orders: ${status}`);
         if (status === 'SUBSCRIBED') {
           console.log('Berhasil berlangganan ke perubahan orders untuk toko user');
         }
       });
 
-      channels.logisticChannel.subscribe((status) => {
-        console.log(`Status koneksi logistic: ${status}`);
-        if (status === 'SUBSCRIBED') {
-          console.log('Berhasil berlangganan ke perubahan logistic untuk toko user');
-        }
-      });
-
       // Tambahkan ping interval untuk menjaga koneksi tetap aktif
       const pingInterval = setInterval(() => {
-        channels.orderChannel.send({
-          type: 'broadcast',
-          event: 'ping',
-          payload: {}
-        });
-        channels.logisticChannel.send({
+        orderChannel.send({
           type: 'broadcast',
           event: 'ping',
           payload: {}
@@ -539,8 +564,7 @@ export const useDashboard = () => {
 
       return () => {
         clearInterval(pingInterval);
-        channels.orderChannel.unsubscribe();
-        channels.logisticChannel.unsubscribe();
+        orderChannel.unsubscribe();
       };
     } else {
       // Jika tidak ada toko, hanya fetch data dashboard
