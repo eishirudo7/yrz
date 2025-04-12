@@ -6,6 +6,7 @@ import { MiniChatProvider } from '@/contexts/MiniChatContext';
 import MiniChatContainer from '@/components/MiniChatContainer';
 import { UserDataProvider } from '@/contexts/UserDataContext'
 import { SSEProvider } from '@/app/services/SSEService';
+import { GlobalNotification } from '@/components/GlobalNotification';
 
 import type { Viewport } from 'next'
 
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className={`h-full ${inter.className}`}>
         <UserDataProvider>
           <SSEProvider>
+            <GlobalNotification />
             <MiniChatProvider>
               <ThemeProvider
                 attribute="class"
