@@ -49,7 +49,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className={`h-full ${inter.className}`}>
         <UserDataProvider>
           <SSEProvider>
-            <GlobalNotification />
+            
             <MiniChatProvider>
               <ThemeProvider
                 attribute="class"
@@ -57,6 +57,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 enableSystem
                 disableTransitionOnChange
               >
+                <GlobalNotification />
                 {children}
               </ThemeProvider>
               <MiniChatContainer />
