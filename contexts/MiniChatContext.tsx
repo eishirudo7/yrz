@@ -96,7 +96,6 @@ interface ChatInfo {
 
 // Tipe untuk update conversation
 type ConversationUpdate = 
-  | { type: 'new_message'; data: SSEMessageData }
   | { type: 'mark_as_read'; conversation_id: string }
   | { type: 'refresh' };
 
@@ -326,88 +325,6 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
     case 'UPDATE_CONVERSATION': {
       const update = action.payload;
       
-      console.log('Processing UPDATE_CONVERSATION in reducer');
-      
-      if (update.type === 'new_message') {
-        const messageData = update.data;
-        const shop_name = messageData.shop_name;
-
-        const existingConversationIndex = state.conversations.findIndex(
-          conv => conv.conversation_id === messageData.conversation_id
-        );
-
-        let updatedConversations = [...state.conversations];
-        
-        if (existingConversationIndex !== -1) {
-          const existingConversation = updatedConversations[existingConversationIndex];
-          const updatedConversation: Conversation = {
-            ...existingConversation,
-            shop_name,
-            latest_message_content: {
-              text: messageData.content.text
-            },
-            latest_message_id: messageData.message_id,
-            last_read_message_id: messageData.message_id,
-            latest_message_from_id: messageData.sender,
-            last_message_timestamp: messageData.timestamp * 1000000,
-            unread_count: existingConversation.unread_count + 1
-          };
-
-          updatedConversations.splice(existingConversationIndex, 1);
-          updatedConversations.unshift(updatedConversation);
-        } else {
-          const newConversation: Conversation = {
-            conversation_id: messageData.conversation_id,
-            to_id: messageData.sender === messageData.shop_id ? messageData.receiver : messageData.sender,
-            to_name: messageData.sender === messageData.shop_id ? messageData.receiver_name : messageData.sender_name,
-            to_avatar: "",
-            shop_id: messageData.shop_id,
-            shop_name,
-            latest_message_content: {
-              text: messageData.content.text
-            },
-            latest_message_id: messageData.message_id,
-            last_read_message_id: messageData.message_id,
-            latest_message_from_id: messageData.sender,
-            last_message_timestamp: messageData.timestamp * 1000000,
-            unread_count: 1,
-            pinned: false,
-            latest_message_type: "text",
-            last_message_option: 0,
-            max_general_option_hide_time: "9223372036854775",
-            mute: false
-          };
-          
-          updatedConversations.unshift(newConversation);
-        }
-
-        return {
-          ...state,
-          conversations: updatedConversations
-        };
-      } 
-      
-      if (update.type === 'new_conversation') {
-        // Data dari getOneConversation
-        const conversationData = update.data;
-        
-        // Cek apakah conversation sudah ada (untuk keamanan)
-        const existingConversationIndex = state.conversations.findIndex(
-          conv => conv.conversation_id === conversationData.conversation_id
-        );
-        
-        // Jika sudah ada, tidak perlu ditambahkan
-        if (existingConversationIndex !== -1) {
-          return state;
-        }
-        
-        // Tambahkan conversation baru dengan data lengkap ke posisi teratas
-        return {
-          ...state,
-          conversations: [conversationData, ...state.conversations]
-        };
-      }
-      
       if (update.type === 'mark_as_read') {
         const conversationId = update.data;
         const updatedConversations = state.conversations.map(conv => {
@@ -477,21 +394,6 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     dispatch({ type: 'SET_CONNECTED', payload: isConnected });
   }, [isConnected]);
   
-  // Tambahkan useEffect untuk SSE
-  useEffect(() => {
-    if (lastMessage) {
-      console.log('SSE message received in MiniChatContext:', lastMessage);
-      
-      if (lastMessage.type === 'new_message') {
-        console.log('Updating conversation list with new message');
-        updateConversationList({ 
-          type: 'new_message', 
-          data: lastMessage 
-        });
-      }
-    }
-  }, [lastMessage]);
-
   // Tambahkan hook untuk mendeteksi mobile
   useEffect(() => {
     const checkMobile = () => {
@@ -594,16 +496,6 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     console.log('updateConversationList called with:', update);
     
     switch (update.type) {
-      case 'new_message':
-        const messageData = update.data;
-        console.log('Processing new message update:', messageData);
-        
-        dispatch({ 
-          type: 'UPDATE_CONVERSATION', 
-          payload: { type: 'new_message', data: messageData } 
-        });
-        break;
-        
       case 'mark_as_read':
         dispatch({ 
           type: 'UPDATE_CONVERSATION', 
