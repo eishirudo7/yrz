@@ -114,9 +114,9 @@ export async function GET(req: NextRequest) {
         `)
         .in('shop_id', shopIds)
         .eq('order_status', 'SHIPPED')
-        .gte('update_time', startTimestamp)
-        .lte('update_time', endTimestamp)
-        .order('update_time', { ascending: false })
+        .gte('pickup_done_time', startTimestamp)
+        .lte('pickup_done_time', endTimestamp)
+        .order('pickup_done_time', { ascending: false })
     ]);
 
     if (normalOrdersError || cancelledOrdersError || shippedOrdersError) {

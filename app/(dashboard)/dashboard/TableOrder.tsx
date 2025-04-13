@@ -2240,15 +2240,15 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                       Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      <Popover>
+                      <Popover >
                         <PopoverTrigger asChild>
                           <button className="hover:text-primary">
                             {getSkuSummary(order.items)}
                           </button>
                         </PopoverTrigger>
                         <PopoverContent 
-                          className="w-80 p-0 shadow-lg" 
-                          align="start"
+                          className="w-[90vw] max-w-[280px] sm:w-80 p-0 shadow-xl dark:shadow-lg dark:shadow-gray-900/50"
+                          align="center"
                           side="top"
                           sideOffset={5}
                         >
@@ -2275,7 +2275,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                                         <div key={itemIndex} className="flex justify-between items-start text-[11px] leading-tight">
                                           <div className="flex-1">
                                             <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                                              {item.model_name.replace(/,/, '-')}
+                                              {item.model_name?.replace(/,/, '-') || '-'}
                                             </span>
                                             <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">
                                               ({item.model_quantity_purchased}x)

@@ -89,7 +89,7 @@ async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): 
       ] = await Promise.all([
         createClient()
           .from('order_items')
-          .select('model_quantity_purchased, model_discounted_price, item_sku')
+          .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
           .eq('order_sn', order_sn),
         
         createClient()
@@ -109,7 +109,8 @@ async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): 
         items: itemsData.map(item => ({
           model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
           model_discounted_price: parseFloat(item.model_discounted_price || '0'),
-          item_sku: item.item_sku
+          item_sku: item.item_sku,
+          model_name: item.model_name
         })),
         // Tambahkan data logistic jika ada
         ...(logisticData && {
@@ -129,8 +130,8 @@ async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): 
 }
 
 export const useDashboard = () => {
-  const FETCH_INTERVAL = 60000; // 1 menit dalam milidetik
-  const MAX_AGE = 24 * 60 * 60 * 1000; // 24 jam dalam milidetik
+  const FETCH_INTERVAL = 60000;
+  const MAX_AGE = 24 * 60 * 60 * 1000;
   const LAST_FETCH_KEY = 'ads_last_fetch_time';
   const CACHED_ADS_DATA_KEY = 'cached_ads_data';
   const hasInitialFetch = useRef(false);
@@ -539,26 +540,17 @@ export const useDashboard = () => {
       }
     };
 
-    if (!hasInitialFetch.current) {
-      hasInitialFetch.current = true;
-      
-      // Hanya buat subscription jika ada toko yang dimiliki user
+    // Pisahkan logika subscription
+    const setupSubscription = () => {
       if (shops.length > 0) {
-        // Panggil fungsi untuk ambil data
-        fetchDashboardData();
-
-        // Buat subscription awal
         const orderChannel = createOrderSubscription();
 
-        // Subscribe ke channel
         orderChannel.subscribe((status) => {
-          console.log(`Status koneksi orders: ${status}`);
           if (status === 'SUBSCRIBED') {
             console.log('Berhasil berlangganan ke perubahan orders untuk toko user');
           }
         });
 
-        // Tambahkan ping interval untuk menjaga koneksi tetap aktif
         const pingInterval = setInterval(() => {
           orderChannel.send({
             type: 'broadcast',
@@ -571,12 +563,16 @@ export const useDashboard = () => {
           clearInterval(pingInterval);
           orderChannel.unsubscribe();
         };
-      } else {
-        // Jika tidak ada toko, hanya fetch data dashboard
-        fetchDashboardData();
       }
+    };
+
+    if (!hasInitialFetch.current) {
+      hasInitialFetch.current = true;
+      fetchDashboardData();
     }
-  }, [shops]); // Tambahkan shops sebagai dependency
+
+    return setupSubscription();
+  }, [shops]);
 
   const refreshData = () => {
     // Tambahkan fungsi untuk refresh data manual jika diperlukan
