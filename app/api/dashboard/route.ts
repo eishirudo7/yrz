@@ -101,7 +101,6 @@ export async function GET(req: NextRequest) {
         .from('orders')
         .select(`
           order_sn,
-          ship_by_date,
           shop_id,
           order_status,
           buyer_user_id,
@@ -109,6 +108,7 @@ export async function GET(req: NextRequest) {
           update_time,
           pay_time,
           buyer_username,
+          escrow_amount_after_adjustment,
           shipping_carrier,
           cod
         `)
