@@ -153,32 +153,71 @@ export async function GET(req: NextRequest) {
 
     // Ambil order_items dan logistic secara paralel
     const orderSns = ordersData.map(order => order.order_sn);
-    const [
-      { data: orderItemsData, error: orderItemsError },
-      { data: logisticData, error: logisticError }
-    ] = await Promise.all([
-      supabase
+    
+    // Implementasi batching untuk order_items
+    const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
+    
+    interface OrderItem {
+      order_sn: string;
+      model_quantity_purchased: string | number;
+      model_discounted_price: string | number;
+      item_sku: string;
+      model_name: string;
+    }
+
+    interface LogisticItem {
+      order_sn: string;
+      tracking_number: string | null;
+      document_status: string | null;
+      is_printed: boolean;
+    }
+
+    let allOrderItemsData: OrderItem[] = [];
+    let allLogisticData: LogisticItem[] = [];
+
+    // Batch processing untuk order_items
+    for (let i = 0; i < orderSns.length; i += batchSize) {
+      const batchOrderSns = orderSns.slice(i, i + batchSize);
+      const { data: itemsBatchData, error: itemsBatchError } = await supabase
         .from('order_items')
         .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku, model_name')
-        .in('order_sn', orderSns),
+        .in('order_sn', batchOrderSns);
+
+      if (itemsBatchError) {
+        console.error(`Gagal mengambil batch order items ${i}:`, itemsBatchError);
+        continue;
+      }
       
-      supabase
+      if (itemsBatchData) {
+        allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
+      }
+    }
+
+    // Batch processing untuk logistic
+    for (let i = 0; i < orderSns.length; i += batchSize) {
+      const batchOrderSns = orderSns.slice(i, i + batchSize);
+      const { data: logisticBatchData, error: logisticBatchError } = await supabase
         .from('logistic')
         .select('order_sn, tracking_number, document_status, is_printed')
-        .in('order_sn', orderSns)
-    ]);
+        .in('order_sn', batchOrderSns);
 
-    if (orderItemsError) {
-      console.error('Gagal mengambil data order items:', orderItemsError);
+      if (logisticBatchError) {
+        console.error(`Gagal mengambil batch logistic ${i}:`, logisticBatchError);
+        continue;
+      }
+      
+      if (logisticBatchData) {
+        allLogisticData = [...allLogisticData, ...logisticBatchData];
+      }
+    }
+
+    if (allOrderItemsData.length === 0) {
+      console.error('Gagal mengambil data order items: Tidak ada data yang berhasil diambil');
       return NextResponse.json({
         success: false,
         message: 'Gagal mengambil data order items',
-        error: orderItemsError.message
+        error: 'Tidak ada data yang berhasil diambil'
       }, { status: 500 });
-    }
-
-    if (logisticError) {
-      console.error('Gagal mengambil data logistik:', logisticError);
     }
 
     // Proses data untuk summary
@@ -199,14 +238,14 @@ export async function GET(req: NextRequest) {
     // Gabungkan dan proses data
     const processedOrders = ordersData.map(order => {
       const shop = shops.find(s => s.shop_id === order.shop_id);
-      const items = orderItemsData?.filter(item => item.order_sn === order.order_sn) || [];
-      const logistic = logisticData?.find(l => l.order_sn === order.order_sn);
+      const items = allOrderItemsData.filter(item => item.order_sn === order.order_sn) || [];
+      const logistic = allLogisticData.find(l => l.order_sn === order.order_sn);
 
       // Proses items tanpa order_sn
       const processedItems = items.map(({ order_sn, ...item }) => ({
         ...item,
-        model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
-        model_discounted_price: parseFloat(item.model_discounted_price || '0')
+        model_quantity_purchased: parseInt(String(item.model_quantity_purchased || '0')),
+        model_discounted_price: parseFloat(String(item.model_discounted_price || '0'))
       }));
 
       return {
