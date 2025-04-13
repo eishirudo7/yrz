@@ -38,6 +38,10 @@ interface Chat {
   content: {
     text?: string;
     image_url?: string;
+    url?: string;
+    thumb_url?: string;
+    thumb_height?: number;
+    thumb_width?: number;
     shop_id?: number;
     order_sn?: string;
   };
@@ -52,18 +56,32 @@ export function useUbahPesanan() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [chats, setChats] = useState<Chat[]>([])
-  const [isLoadingSend, setIsLoadingSend] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [userShopIds, setUserShopIds] = useState<string[]>([]);
-  const supabase = createClient();
+  const [isLoadingSend, setIsLoadingSend] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [userShopIds, setUserShopIds] = useState<string[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+  const [itemsPerPage, setItemsPerPage] = useState(21)
+  const [pageSize, setPageSize] = useState(21)
+  const [statusFilter, setStatusFilter] = useState<string>('semua') // Filter status
+  const supabase = createClient()
 
   useEffect(() => {
     // Pertama, ambil daftar toko yang dimiliki user
-    fetchUserShops().then(() => {
-      // Setelah mendapatkan toko user, ambil perubahan pesanan
-      fetchPerubahanPesanan();
+    fetchUserShops().then((shops) => {
+      if (shops.length > 0) {
+        // Setelah mendapatkan toko user, ambil perubahan pesanan
+        fetchPerubahanPesanan();
+      }
     });
-  }, [])
+  }, []) // Initial load
+
+  // Tambahkan useEffect baru untuk memantau perubahan filter
+  useEffect(() => {
+    if (userShopIds.length > 0) {
+      fetchPerubahanPesanan(1, itemsPerPage);
+    }
+  }, [statusFilter]) // Dipicu ketika filter berubah
 
   // Fungsi untuk mengambil daftar toko user
   async function fetchUserShops() {
@@ -92,60 +110,118 @@ export function useUbahPesanan() {
     }
   }
 
-  async function fetchPerubahanPesanan() {
+  async function fetchPerubahanPesanan(page: number = currentPage, size: number = itemsPerPage) {
     try {
-      setLoading(true);
+      setLoading(true)
       
-      // Jika belum ada data toko user, ambil dulu
-      let shops = userShopIds;
+      let shops = userShopIds
       if (shops.length === 0) {
-        shops = await fetchUserShops();
+        shops = await fetchUserShops()
       }
       
       if (shops.length === 0) {
-        // Jika tetap tidak ada toko, kembalikan array kosong
-        setPerubahanPesanan([]);
-        setLoading(false);
-        return;
+        setPerubahanPesanan([])
+        setLoading(false)
+        return
       }
-      
-      // Query dengan filter berdasarkan toko milik user
-      const { data, error } = await supabase
-        .from('perubahan_pesanan')
-        .select('*')
-        .in('shop_id', shops)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
 
-      setPerubahanPesanan(data || []);
+      const offset = (page - 1) * size
+      
+      // Query dasar dengan filter shop_id
+      let query = supabase
+        .from('perubahan_pesanan')
+        .select('*', { count: 'exact' })
+        .in('shop_id', shops)
+
+      // Tambahkan filter status jika bukan 'semua'
+      if (statusFilter !== 'semua') {
+        query = query.eq('status', statusFilter)
+      }
+
+      // Log untuk debugging
+      console.log('Fetching with filter:', statusFilter, 'page:', page)
+
+      // Ambil total items dengan filter yang sama
+      const { count } = await query
+
+      setTotalItems(count || 0)
+      
+      // Query untuk data dengan pagination dan filter yang sama
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .range(offset, offset + size - 1)
+      
+      if (error) throw error
+
+      // Log hasil query
+      console.log('Query result:', data?.length, 'items')
+
+      setPerubahanPesanan(data || [])
+      setCurrentPage(page)
+      setItemsPerPage(size)
     } catch (error) {
-      setError('Terjadi kesalahan saat mengambil data perubahan pesanan');
-      console.error('Error:', error);
+      setError('Terjadi kesalahan saat mengambil data perubahan pesanan')
+      console.error('Error:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
+  // Fungsi untuk mengubah jumlah item per halaman
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize)
+    setItemsPerPage(newSize)
+    setCurrentPage(1) // Reset ke halaman pertama
+    fetchPerubahanPesanan(1, newSize)
+  }
+
+  // Fungsi untuk mengubah halaman
+  const changePage = (page: number) => {
+    fetchPerubahanPesanan(page);
+  };
+
+  // Fungsi untuk mengubah status pesanan
   async function updateStatusPesanan(id: number, newStatus: string) {
     try {
       const { error } = await supabase
         .from('perubahan_pesanan')
-        .update({ status: newStatus })
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id)
-      
+
       if (error) throw error
 
-      // Memperbarui state lokal
-      setPerubahanPesanan(prevState =>
-        prevState.map(order =>
-          order.id === id ? { ...order, status: newStatus } : order
+      // Jika ada filter aktif dan status baru tidak sesuai filter
+      if (statusFilter !== 'semua' && statusFilter !== newStatus) {
+        // Hapus item dari tampilan
+        setPerubahanPesanan(prevState => prevState.filter(order => order.id !== id))
+        // Update total items
+        setTotalItems(prev => Math.max(0, prev - 1))
+      } else {
+        // Update state secara lokal
+        setPerubahanPesanan(prevState =>
+          prevState.map(order =>
+            order.id === id 
+              ? { 
+                  ...order, 
+                  status: newStatus,
+                  updated_at: new Date().toISOString()
+                } 
+              : order
+          )
         )
-      )
+      }
+
+      // Jika halaman saat ini kosong setelah update, kembali ke halaman sebelumnya
+      if (perubahanPesanan.length === 1 && currentPage > 1) {
+        fetchPerubahanPesanan(currentPage - 1, itemsPerPage)
+      }
+
     } catch (error) {
-      setError('Terjadi kesalahan saat memperbarui status pesanan')
-      console.error('Error:', error)
+      console.error('Error updating status:', error)
+      throw error
     }
   }
 
@@ -241,6 +317,10 @@ export function useUbahPesanan() {
           content: {
             text: msg.content.text || '',
             image_url: msg.content.image_url,
+            url: msg.content.url,
+            thumb_url: msg.content.thumb_url,
+            thumb_height: msg.content.thumb_height,
+            thumb_width: msg.content.thumb_width,
             shop_id: msg.from_shop_id,
             order_sn: msg.content.order_sn
           },
@@ -260,7 +340,13 @@ export function useUbahPesanan() {
     }
   }
 
-  
+  // Fungsi untuk mengubah filter status
+  const handleStatusFilterChange = (newStatus: string) => {
+    setStatusFilter(newStatus)
+    setCurrentPage(1) // Reset ke halaman pertama
+    // Hapus fetchPerubahanPesanan dari sini karena sudah ditangani oleh useEffect
+  }
+
   return { 
     perubahanPesanan, 
     loading, 
@@ -273,6 +359,16 @@ export function useUbahPesanan() {
     fetchChats,
     isLoadingSend,
     sendError,
-    userShopIds
+    userShopIds,
+    // Pagination
+    currentPage,
+    totalItems,
+    itemsPerPage,
+    pageSize,
+    changePage: (page: number) => fetchPerubahanPesanan(page, itemsPerPage),
+    handlePageSizeChange,
+    // Filter
+    statusFilter,
+    handleStatusFilterChange
   }
 }

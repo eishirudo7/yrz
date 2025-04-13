@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { useUbahPesanan, PerubahanPesanan } from '@/app/hooks/useUbahPesanan'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trash2, FileText, MessageSquare, Send, Printer, RefreshCcw } from "lucide-react"
+import { Trash2, FileText, MessageSquare, Send, Printer, RefreshCcw, ChevronLeft, ChevronRight } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -16,6 +16,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useShippingDocument } from '@/app/hooks/useShippingDocument'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // Interface untuk item pesanan
 interface OrderItem {
@@ -55,7 +63,14 @@ export default function UbahPesananPage() {
     chats,
     sendMessage,
     fetchChats,
-    isLoadingSend
+    isLoadingSend,
+    currentPage,
+    totalItems,
+    itemsPerPage,
+    changePage,
+    handlePageSizeChange,
+    statusFilter,
+    handleStatusFilterChange
   } = useUbahPesanan()
   
   const { toast } = useToast()
@@ -72,6 +87,16 @@ export default function UbahPesananPage() {
     downloadDocument, 
     isLoadingForOrder 
   } = useShippingDocument()
+
+  // Hitung total halaman
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
+
+  // Fungsi untuk navigasi halaman
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      changePage(newPage)
+    }
+  }
 
   // Handler untuk mengubah status pesanan
   const handleStatusClick = async (order: PerubahanPesanan) => {
@@ -248,10 +273,71 @@ export default function UbahPesananPage() {
   // Render utama
   return (
     <div className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-6">Data Perubahan Pesanan</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold">Data Perubahan Pesanan</h1>
+        <div className="flex items-center gap-4">
+          {/* Filter Status */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Status:</span>
+            <Select
+              value={statusFilter}
+              onValueChange={handleStatusFilterChange}
+            >
+              <SelectTrigger className="w-[130px]">
+                <SelectValue>
+                  {statusFilter === 'semua' ? 'Semua' : 
+                   statusFilter === 'BARU' ? (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive" className="h-4 text-[10px] font-medium py-0">Baru</Badge>
+                    </div>
+                   ) : (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default" className="h-4 text-[10px] font-medium py-0">Dicatat</Badge>
+                    </div>
+                   )}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="semua">
+                  <span>Semua</span>
+                </SelectItem>
+                <SelectItem value="BARU">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="destructive" className="h-4 text-[10px] font-medium py-0">Baru</Badge>
+                  </div>
+                </SelectItem>
+                <SelectItem value="DICATAT">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default" className="h-4 text-[10px] font-medium py-0">Dicatat</Badge>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Items Per Page */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">Tampilkan:</span>
+            <Select
+              value={itemsPerPage.toString()}
+              onValueChange={(value) => handlePageSizeChange(Number(value))}
+            >
+              <SelectTrigger className="w-[100px]">
+                <SelectValue placeholder="21" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="21">21 item</SelectItem>
+                <SelectItem value="42">42 item</SelectItem>
+                <SelectItem value="63">63 item</SelectItem>
+                <SelectItem value="84">84 item</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {/* Grid untuk kartu pesanan */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
         {perubahanPesanan.map((order) => (
           <Card key={order.id} className="overflow-hidden shadow-md">
             <CardHeader className="p-4 bg-gray-50">
@@ -306,6 +392,30 @@ export default function UbahPesananPage() {
                   <p className="text-xs">{order.detail_perubahan || 'Tidak ada detail'}</p>
                 </div>
               </div>
+
+              {/* Tambahkan informasi waktu */}
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+                <div>
+                  <span className="font-medium">Dibuat:</span>{' '}
+                  {order.created_at ? new Date(order.created_at).toLocaleString('id-ID', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : 'N/A'}
+                </div>
+                <div>
+                  <span className="font-medium">Diperbarui:</span>{' '}
+                  {order.updated_at ? new Date(order.updated_at).toLocaleString('id-ID', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : 'N/A'}
+                </div>
+              </div>
             </CardContent>
 
             <CardFooter className="p-4 bg-gray-50 flex justify-between items-center">
@@ -325,6 +435,82 @@ export default function UbahPesananPage() {
           </Card>
         ))}
       </div>
+
+      {/* Pagination yang lebih profesional */}
+      {!loading && totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 bg-white p-4 rounded-lg shadow-sm">
+          <div className="text-sm text-gray-500">
+            Menampilkan {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalItems)} dari {totalItems} item
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+              className="hidden sm:flex"
+            >
+              Pertama
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            
+            <div className="flex items-center gap-1 px-2">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`w-8 h-8 p-0`}
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+              className="hidden sm:flex"
+            >
+              Terakhir
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Dialog untuk chat dan detail pesanan */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -407,13 +593,21 @@ export default function UbahPesananPage() {
                         </p>
                       )}
 
-                      {chat.message_type === 'image' && chat.content.image_url && (
+                      {chat.message_type === 'image' && (chat.content.url || chat.content.image_url) && (
                         <div className="space-y-2">
                           <img 
-                            src={chat.content.image_url}
+                            src={chat.content.url || chat.content.image_url}
                             alt="Chat image"
                             className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => window.open(chat.content.image_url, '_blank')}
+                            style={{
+                              maxHeight: '300px',
+                              width: 'auto',
+                              maxWidth: '100%',
+                              aspectRatio: chat.content.thumb_width && chat.content.thumb_height 
+                                ? `${chat.content.thumb_width}/${chat.content.thumb_height}` 
+                                : 'auto'
+                            }}
+                            onClick={() => window.open(chat.content.url || chat.content.image_url, '_blank')}
                           />
                           {chat.content.text && (
                             <p className="text-sm whitespace-pre-wrap break-words">

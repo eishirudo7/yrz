@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       supabase
         .from('order_items')
-        .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku')
+        .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku, model_name')
         .in('order_sn', orderSns),
       
       supabase

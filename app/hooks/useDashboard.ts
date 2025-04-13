@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client'
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
@@ -33,6 +33,7 @@ export type Order = {
   items: Array<{
     model_quantity_purchased: number;
     model_discounted_price: number;
+    model_name: string;
     item_sku: string;
   }>;
 }
@@ -132,6 +133,7 @@ export const useDashboard = () => {
   const MAX_AGE = 24 * 60 * 60 * 1000; // 24 jam dalam milidetik
   const LAST_FETCH_KEY = 'ads_last_fetch_time';
   const CACHED_ADS_DATA_KEY = 'cached_ads_data';
+  const hasInitialFetch = useRef(false);
 
   // Menggunakan useUserData hook untuk mendapatkan daftar toko user
   const { shops } = useUserData();
@@ -537,38 +539,42 @@ export const useDashboard = () => {
       }
     };
 
-    // Hanya buat subscription jika ada toko yang dimiliki user
-    if (shops.length > 0) {
-      // Panggil fungsi untuk ambil data
-      fetchDashboardData();
+    if (!hasInitialFetch.current) {
+      hasInitialFetch.current = true;
+      
+      // Hanya buat subscription jika ada toko yang dimiliki user
+      if (shops.length > 0) {
+        // Panggil fungsi untuk ambil data
+        fetchDashboardData();
 
-      // Buat subscription awal
-      const orderChannel = createOrderSubscription();
+        // Buat subscription awal
+        const orderChannel = createOrderSubscription();
 
-      // Subscribe ke channel
-      orderChannel.subscribe((status) => {
-        console.log(`Status koneksi orders: ${status}`);
-        if (status === 'SUBSCRIBED') {
-          console.log('Berhasil berlangganan ke perubahan orders untuk toko user');
-        }
-      });
-
-      // Tambahkan ping interval untuk menjaga koneksi tetap aktif
-      const pingInterval = setInterval(() => {
-        orderChannel.send({
-          type: 'broadcast',
-          event: 'ping',
-          payload: {}
+        // Subscribe ke channel
+        orderChannel.subscribe((status) => {
+          console.log(`Status koneksi orders: ${status}`);
+          if (status === 'SUBSCRIBED') {
+            console.log('Berhasil berlangganan ke perubahan orders untuk toko user');
+          }
         });
-      }, 30000);
 
-      return () => {
-        clearInterval(pingInterval);
-        orderChannel.unsubscribe();
-      };
-    } else {
-      // Jika tidak ada toko, hanya fetch data dashboard
-      fetchDashboardData();
+        // Tambahkan ping interval untuk menjaga koneksi tetap aktif
+        const pingInterval = setInterval(() => {
+          orderChannel.send({
+            type: 'broadcast',
+            event: 'ping',
+            payload: {}
+          });
+        }, 30000);
+
+        return () => {
+          clearInterval(pingInterval);
+          orderChannel.unsubscribe();
+        };
+      } else {
+        // Jika tidak ada toko, hanya fetch data dashboard
+        fetchDashboardData();
+      }
     }
   }, [shops]); // Tambahkan shops sebagai dependency
 

@@ -2240,7 +2240,60 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                       Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      {formatSkuQty(order.items)}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <button className="hover:text-primary">
+                            {getSkuSummary(order.items)}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-80 p-0 shadow-lg" 
+                          align="start"
+                          side="top"
+                          sideOffset={5}
+                        >
+                          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+                            <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50">
+                              <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">Detail Item</h4>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                              {Object.entries(groupItemsBySku(order.items)).map(([sku, items], index, array) => (
+                                <div 
+                                  key={sku}
+                                  className={`flex flex-col ${
+                                    index !== array.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : ''
+                                  }`}
+                                >
+                                  <div className="px-3 bg-gray-50/50 dark:bg-gray-800/30">
+                                    <span className="font-medium text-[11px] text-gray-700 dark:text-gray-300">
+                                      SKU: {sku}
+                                    </span>
+                                  </div>
+                                  <div className="px-3 py-1.5">
+                                    <div className="space-y-1">
+                                      {items.map((item: OrderItem, itemIndex: number) => (
+                                        <div key={itemIndex} className="flex justify-between items-start text-[11px] leading-tight">
+                                          <div className="flex-1">
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                              {item.model_name.replace(/,/, '-')}
+                                            </span>
+                                            <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">
+                                              ({item.model_quantity_purchased}x)
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] text-gray-700 dark:text-gray-300 ml-3 tabular-nums">
+                                            Rp {item.model_discounted_price.toLocaleString('id-ID')}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
@@ -2776,7 +2829,56 @@ const calculateOrderTotal = (order: Order): number => {
   0) || 0;
 };
 
-const formatSkuQty = (items: Order['items']): string => {
+const formatSkuQty = (items: Order['items']): { text: string; details: string } => {
+  if (!items?.length) return { text: '-', details: '-' };
+  
+  // Kelompokkan item berdasarkan SKU
+  const skuGroups = items.reduce((acc, item) => {
+    if (!acc[item.item_sku]) {
+      acc[item.item_sku] = {
+        models: [],
+        totalQty: 0
+      };
+    }
+    acc[item.item_sku].models.push({
+      name: item.model_name || '-',
+      qty: item.model_quantity_purchased,
+      price: item.model_discounted_price
+    });
+    acc[item.item_sku].totalQty += item.model_quantity_purchased;
+    return acc;
+  }, {} as Record<string, { models: Array<{ name: string; qty: number; price: number }>; totalQty: number }>);
+
+  // Format teks untuk tampilan tabel
+  const text = Object.entries(skuGroups)
+    .map(([sku, info]) => `${sku} (${info.totalQty})`)
+    .join(', ');
+
+  // Format detail untuk tooltip
+  const details = Object.entries(skuGroups)
+    .map(([sku, info]) => {
+      const modelDetails = info.models
+        .map(model => `${model.name} (${model.qty}x) - Rp ${model.price.toLocaleString('id-ID')}`)
+        .join('\n');
+      return `SKU: ${sku}\n${modelDetails}`;
+    })
+    .join('\n\n');
+
+  return { text, details };
+};
+
+interface OrderItem {
+  model_quantity_purchased: number;
+  model_discounted_price: number;
+  model_name: string;
+  item_sku: string;
+}
+
+interface GroupedItems {
+  [sku: string]: OrderItem[];
+}
+
+const getSkuSummary = (items: OrderItem[] | undefined): string => {
   if (!items?.length) return '-';
   
   const skuMap = items.reduce((acc, item) => {
@@ -2787,4 +2889,16 @@ const formatSkuQty = (items: Order['items']): string => {
   return Object.entries(skuMap)
     .map(([sku, qty]) => `${sku} (${qty})`)
     .join(', ');
+};
+
+const groupItemsBySku = (items: OrderItem[] | undefined): GroupedItems => {
+  if (!items?.length) return {};
+  
+  return items.reduce((groups, item) => {
+    if (!groups[item.item_sku]) {
+      groups[item.item_sku] = [];
+    }
+    groups[item.item_sku].push(item);
+    return groups;
+  }, {} as GroupedItems);
 };
