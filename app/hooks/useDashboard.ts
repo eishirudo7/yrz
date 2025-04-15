@@ -254,7 +254,10 @@ export const useDashboard = () => {
                 ...updatedOrders[existingOrderIndex],
                 order_status: newOrder.order_status,
                 shipping_carrier: newOrder.shipping_carrier,
-                escrow_amount_after_adjustment: newOrder.escrow_amount_after_adjustment
+                escrow_amount_after_adjustment: newOrder.escrow_amount_after_adjustment,
+                tracking_number: newOrder.tracking_number,
+                document_status: newOrder.document_status,
+             
               };
               
               const newSummary = {
