@@ -77,7 +77,7 @@ export function useShippingDocument() {
         successfulOrders.map(async (order) => {
           try {
             await supabase
-              .from('logistic')
+              .from('orders')
               .update({ is_printed: true })
               .eq('order_sn', order.order_sn);
           } catch (err) {

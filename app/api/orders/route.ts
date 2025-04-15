@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
       const batchOrderSns = orderSns.slice(i, i + batchSize);
       
       const { data: logisticBatchData, error: logisticBatchError } = await supabase
-        .from('logistic')
+        .from('orders')
         .select('order_sn, tracking_number, document_status, is_printed')
         .in('order_sn', batchOrderSns);
       

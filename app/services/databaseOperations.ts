@@ -199,12 +199,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
                 is_printed: false // Default value untuk is_printed
               })
               .eq('order_sn', orderSn);
-              const { error: updateLogisticError } = await supabase
-              .from('logistic')
-              .update({
-                tracking_number: trackingNo,
-              })
-              .eq('order_sn', orderSn);
+            
             if (updateError) {
               throw new Error(`Gagal memperbarui nomor pelacakan: ${updateError.message}`);
             }
