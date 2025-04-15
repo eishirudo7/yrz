@@ -16,7 +16,8 @@ import {
   Package,
   Zap,
   RotateCcw,
-  UserIcon
+  UserIcon,
+  Star
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -39,6 +40,7 @@ export const navItems = [
   { href: '/ubah_pesanan', icon: ShoppingCart, label: 'Perubahan Pesanan', proOnly: true },
   { href: '/return', icon: RotateCcw, label: 'Return', showAlways: true },
   { href: '/produk', icon: Package, label: 'Produk', showAlways: true },
+  { href: '/ulasan', icon: Star, label: 'Ulasan Produk', showAlways: true },
   { href: '/flashsale', icon: Zap, label: 'Flash Sale', showAlways: true },
   { href: '/ads', icon: Megaphone, label: 'Iklan', showAlways: true },
   { href: '/shops', icon: Store, label: 'Shops', showAlways: true },
