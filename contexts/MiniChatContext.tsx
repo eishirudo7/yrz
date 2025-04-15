@@ -113,7 +113,16 @@ type MiniChatAction =
   | { type: 'SET_SHOP_FILTER'; payload: number[] }
   | { type: 'SET_STATUS_FILTER'; payload: 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS' }
   | { type: 'UPDATE_CONVERSATION'; payload: { type: string; data: any } }
-  | { type: 'SET_CONNECTED'; payload: boolean };
+  | { type: 'SET_CONNECTED'; payload: boolean }
+  | { type: 'UPDATE_CONVERSATION_WITH_MESSAGE'; payload: {
+      conversation_id: string;
+      latest_message_content: { text?: string } | null;
+      latest_message_from_id: number;
+      latest_message_id: string;
+      last_message_timestamp: number;
+      latest_message_type?: string;
+      unread_count_increment: number;
+    }};
 
 // Buat context
 const MiniChatContext = createContext<{
@@ -133,6 +142,15 @@ const MiniChatContext = createContext<{
   filteredConversations: Conversation[];
   uniqueShops: number[];
   initializeConversation: (userId: number, orderSn: string, shopId: number) => Promise<Conversation | null>;
+  updateConversationWithMessage: (data: {
+    conversation_id: string;
+    message_id: string;
+    from_id: number;
+    content: { text?: string } | any;
+    message_type: string;
+    created_timestamp: number;
+    shop_id: number;
+  }) => void;
 } | undefined>(undefined);
 
 // Buat reducer
@@ -177,6 +195,78 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
         ...state,
         isMobile: action.payload
       };
+      
+    case 'UPDATE_CONVERSATION_WITH_MESSAGE': {
+      const { 
+        conversation_id, 
+        latest_message_content, 
+        latest_message_from_id, 
+        latest_message_id, 
+        last_message_timestamp,
+        latest_message_type,
+        unread_count_increment
+      } = action.payload;
+      
+      // Log informasi pembaruan
+      console.log(`[MiniChat] Memperbarui percakapan ${conversation_id}:`, {
+        pesan: latest_message_content?.text || '[non-text content]',
+        dari_id: latest_message_from_id,
+        timestamp: new Date(last_message_timestamp / 1000000).toLocaleString(),
+        tipe: latest_message_type,
+        unread_increment: unread_count_increment
+      });
+      
+      // Update conversation berdasarkan message baru
+      const updatedConversations = state.conversations.map(conv => {
+        if (conv.conversation_id === conversation_id) {
+          return {
+            ...conv,
+            latest_message_content,
+            latest_message_from_id,
+            latest_message_id,
+            last_message_timestamp,
+            latest_message_type: latest_message_type || conv.latest_message_type,
+            unread_count: conv.unread_count + unread_count_increment
+          };
+        }
+        return conv;
+      });
+      
+      // Pertama temukan conversation yang telah diperbarui
+      const updatedConversation = updatedConversations.find(conv => conv.conversation_id === conversation_id);
+      if (!updatedConversation) {
+        // Jika tidak ditemukan, kembalikan daftar yang diurutkan seperti biasa
+        const sortedConversations = [...updatedConversations].sort(
+          (a, b) => b.last_message_timestamp - a.last_message_timestamp
+        );
+        
+        return {
+          ...state,
+          conversations: sortedConversations
+        };
+      }
+      
+      // Hapus percakapan yang diperbarui dari daftar
+      const filteredConversations = updatedConversations.filter(
+        conv => conv.conversation_id !== conversation_id
+      );
+      
+      // Tempatkan percakapan yang diperbarui di urutan pertama
+      const newSortedConversations = [updatedConversation, ...filteredConversations];
+      
+      // Urutkan sisanya berdasarkan timestamp
+      const finalConversations = [
+        updatedConversation,
+        ...filteredConversations.sort((a, b) => b.last_message_timestamp - a.last_message_timestamp)
+      ];
+      
+      console.log(`[MiniChat] Percakapan ${conversation_id} dipindahkan ke urutan pertama`);
+      
+      return {
+        ...state,
+        conversations: finalConversations
+      };
+    }
       
     case 'OPEN_CHAT': {
       const { toId, shopId, toName, toAvatar, shopName, metadata } = action.payload;
@@ -316,11 +406,59 @@ const miniChatReducer = (state: MiniChatState, action: MiniChatAction): MiniChat
         isLoading: action.payload
       };
       
-    case 'ADD_CONVERSATION':
+    case 'ADD_CONVERSATION': {
+      const newConversation = action.payload;
+      
+      // Log informasi percakapan baru
+      console.log(`[MiniChat] Menambahkan percakapan baru ${newConversation.conversation_id}:`, {
+        dengan: newConversation.to_name,
+        toko: newConversation.shop_name,
+        pesan_terakhir: newConversation.latest_message_content?.text || '[non-text content]',
+        timestamp: new Date(newConversation.last_message_timestamp / 1000000).toLocaleString()
+      });
+      
+      // Cek apakah percakapan sudah ada (untuk mencegah duplikat)
+      const existingConversation = state.conversations.find(
+        conv => conv.conversation_id === newConversation.conversation_id
+      );
+      
+      if (existingConversation) {
+        console.log(`[MiniChat] Percakapan ${newConversation.conversation_id} sudah ada, melakukan update`);
+        
+        // Update conversation yang sudah ada
+        const filteredConversations = state.conversations.filter(
+          conv => conv.conversation_id !== newConversation.conversation_id
+        );
+        
+        // Prioritaskan percakapan yang baru diperbarui di urutan pertama
+        // Kemudian urutkan sisanya berdasarkan timestamp
+        const finalConversations = [
+          newConversation,
+          ...filteredConversations.sort((a, b) => b.last_message_timestamp - a.last_message_timestamp)
+        ];
+        
+        console.log(`[MiniChat] Percakapan ${newConversation.conversation_id} dipindahkan ke urutan pertama`);
+        
+        return {
+          ...state,
+          conversations: finalConversations
+        };
+      }
+      
+      // Tambahkan percakapan baru di urutan pertama
+      // Tidak perlu sorting karena kita tahu ini adalah yang terbaru
+      const finalConversations = [
+        newConversation,
+        ...state.conversations.sort((a, b) => b.last_message_timestamp - a.last_message_timestamp)
+      ];
+      
+      console.log(`[MiniChat] Percakapan baru ${newConversation.conversation_id} ditambahkan di urutan pertama`);
+      
       return {
         ...state,
-        conversations: [...state.conversations, action.payload]
+        conversations: finalConversations
       };
+    }
 
     case 'UPDATE_CONVERSATION': {
       const update = action.payload;
@@ -381,7 +519,7 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   
   // Dapatkan status user login dari UserDataContext
-  const { userId, isLoading: isUserLoading } = useUserData();
+  const { userId, isLoading: isUserLoading, shops } = useUserData();
   
   // Tambahkan state untuk total unread messages
   const [totalUnread, setTotalUnread] = useState(0);
@@ -450,6 +588,7 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Fungsi untuk menghitung ulang total pesan yang belum dibaca
   const recalculateTotalUnread = () => {
     const total = state.conversations.filter(conv => conv.unread_count > 0).length;
+    console.log(`[MiniChat] Menghitung ulang total unread: ${total} percakapan belum dibaca`);
     setTotalUnread(total);
   };
   
@@ -461,24 +600,164 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Fungsi untuk mengambil daftar percakapan
   const fetchConversations = useCallback(async () => {
     try {
+      console.log('[MiniChat] Mengambil daftar percakapan dari server...');
       dispatch({ type: 'SET_LOADING', payload: true });
       
       const timestamp = new Date().getTime();
       const response = await fetch(`/api/msg/get_conversation_list?_=${timestamp}`);
       
       if (!response.ok) {
+        console.error('[MiniChat] Gagal mengambil daftar percakapan:', response.status, response.statusText);
         throw new Error('Gagal mengambil daftar percakapan');
       }
       
       const data = await response.json();
+      console.log(`[MiniChat] Berhasil mengambil ${data.length} percakapan`);
       dispatch({ type: 'SET_CONVERSATIONS', payload: data });
       
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      console.error('[MiniChat] Error saat mengambil daftar percakapan:', error);
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
+  
+  // Fungsi untuk memperbarui percakapan berdasarkan pesan baru dari webhook
+  const updateConversationWithMessage = useCallback(async (data: {
+    conversation_id: string;
+    message_id: string;
+    from_id: number;
+    content: { text?: string } | any;
+    message_type: string;
+    created_timestamp: number;
+    shop_id: number;
+  }) => {
+    console.log(`[MiniChat] Menerima pesan baru untuk conversation_id: ${data.conversation_id}`);
+    
+    // Buat format pesan sesuai dengan struktur conversation
+    const messageContent = data.content.text 
+      ? { text: data.content.text } 
+      : data.content;
+      
+    // Cek jika conversation sudah ada
+    const existingConversation = state.conversations.find(
+      conv => conv.conversation_id === data.conversation_id
+    );
+    
+    if (existingConversation) {
+      console.log(`[MiniChat] Percakapan dengan ID ${data.conversation_id} ditemukan, melakukan update`);
+      
+      // Tentukan apakah perlu menambah unread count
+      // Tambah unread jika pengirim bukan dari toko kita
+      const unreadIncrement = data.from_id !== data.shop_id ? 1 : 0;
+      
+      dispatch({
+        type: 'UPDATE_CONVERSATION_WITH_MESSAGE',
+        payload: {
+          conversation_id: data.conversation_id,
+          latest_message_content: { text: typeof messageContent === 'string' ? messageContent : messageContent.text },
+          latest_message_from_id: data.from_id,
+          latest_message_id: data.message_id,
+          last_message_timestamp: data.created_timestamp,
+          latest_message_type: data.message_type,
+          unread_count_increment: unreadIncrement
+        }
+      });
+      
+      // Jika ada pesan masuk baru dan ada unread, update total unread
+      if (unreadIncrement > 0) {
+        recalculateTotalUnread();
+      }
+    } else {
+      // Percakapan belum ada, ambil detail dari API
+      console.log(`[MiniChat] Percakapan dengan ID ${data.conversation_id} tidak ditemukan, mengambil dari API...`);
+      
+      try {
+        const response = await fetch(
+          `/api/msg/get_one_conversation?conversationId=${data.conversation_id}&shopId=${data.shop_id}`
+        );
+        
+        if (response.ok) {
+          const conversationData = await response.json();
+          console.log(`[MiniChat] Berhasil mendapatkan data percakapan dari API:`, {
+            conversationId: data.conversation_id,
+            shopId: data.shop_id
+          });
+          
+          // Dapatkan shop_name dari UserDataContext
+          const shopInfo = shops.find(shop => shop.shop_id === data.shop_id);
+          const shopName = shopInfo ? shopInfo.shop_name : '';
+          
+          if (!shopInfo) {
+            console.warn(`[MiniChat] Shop dengan ID ${data.shop_id} tidak ditemukan di UserDataContext`);
+          }
+          
+          // Cek apakah respons valid
+          if (conversationData.response) {
+            // Sesuaikan dengan format get_one_conversation yang sesungguhnya
+            const conv = conversationData.response;
+            
+            // Konversi data ke format Conversation
+            const newConversation: Conversation = {
+              conversation_id: conv.conversation_id,
+              to_id: conv.to_id,
+              to_name: conv.to_name,
+              to_avatar: conv.to_avatar,
+              shop_id: data.shop_id,
+              shop_name: shopName, // Gunakan shop_name dari UserDataContext
+              latest_message_content: conv.latest_message_content,
+              latest_message_from_id: conv.latest_message_from_id,
+              latest_message_id: conv.latest_message_id,
+              last_message_timestamp: conv.last_message_timestamp,
+              unread_count: conv.unread_count || 1,
+              pinned: conv.pinned,
+              last_read_message_id: conv.last_read_message_id,
+              latest_message_type: conv.latest_message_type
+            };
+            
+            // Tambahkan percakapan baru ke state
+            dispatch({
+              type: 'ADD_CONVERSATION',
+              payload: newConversation
+            });
+            
+            // Recalculate total unread
+            recalculateTotalUnread();
+          } else {
+            console.error('[MiniChat] Format respons get_one_conversation tidak valid:', conversationData);
+            console.log('[MiniChat] Fallback ke refresh percakapan');
+            fetchConversations();
+          }
+        } else {
+          // Fallback ke metode yang ada jika API gagal
+          console.error('[MiniChat] Gagal mengambil detail percakapan, status:', response.status);
+          console.log('[MiniChat] Fallback ke refresh percakapan');
+          fetchConversations();
+        }
+      } catch (error) {
+        console.error('[MiniChat] Error saat mengambil detail percakapan:', error);
+        // Fallback ke refresh list
+        console.log('[MiniChat] Fallback ke refresh percakapan setelah error');
+        fetchConversations();
+      }
+    }
+  }, [state.conversations, dispatch, recalculateTotalUnread, fetchConversations, shops]);
+  
+  // Mendengarkan event SSE untuk pesan baru
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'new_message' && lastMessage.for_chat_context) {
+      console.log('[MiniChat] Menerima event SSE baru:', {
+        type: lastMessage.type,
+        conversationId: lastMessage.for_chat_context.conversation_id,
+        senderId: lastMessage.for_chat_context.from_id,
+        content: lastMessage.for_chat_context.content.text || '[non-text content]'
+      });
+      
+      // Update conversation dengan pesan baru (sekarang async)
+      updateConversationWithMessage(lastMessage.for_chat_context)
+        .catch(error => console.error('[MiniChat] Error saat menangani pesan baru:', error));
+    }
+  }, [lastMessage, updateConversationWithMessage]);
   
   // Ambil daftar percakapan ketika user login berhasil (userId tersedia dan loading selesai)
   useEffect(() => {
@@ -493,10 +772,11 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Fungsi untuk update conversation list
   const updateConversationList = useCallback((update: ConversationUpdate) => {
-    console.log('updateConversationList called with:', update);
+    console.log('[MiniChat] updateConversationList dipanggil dengan:', update);
     
     switch (update.type) {
       case 'mark_as_read':
+        console.log(`[MiniChat] Menandai percakapan ${update.conversation_id} sebagai dibaca`);
         dispatch({ 
           type: 'UPDATE_CONVERSATION', 
           payload: { type: 'mark_as_read', data: update.conversation_id } 
@@ -504,15 +784,22 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         break;
         
       case 'refresh':
+        console.log('[MiniChat] Melakukan refresh seluruh daftar percakapan');
         fetchConversations();
         break;
     }
-  }, [fetchConversations]);
+  }, [fetchConversations, dispatch]);
   
   // Fungsi untuk send message
   const sendMessage = useCallback(async (conversationId: string, message: string, onSuccess?: (messageId: string) => void) => {
     const conversation = state.conversations.find(conv => conv.conversation_id === conversationId);
-    if (!conversation) throw new Error('Conversation not found');
+    if (!conversation) {
+      console.error(`[MiniChat] Gagal mengirim pesan: Conversation dengan ID ${conversationId} tidak ditemukan`);
+      throw new Error('Conversation not found');
+    }
+    
+    console.log(`[MiniChat] Mengirim pesan ke ${conversation.to_name} (ID: ${conversation.to_id}) dari toko ${conversation.shop_name}:`);
+    console.log(`[MiniChat] Konten pesan: ${message.length > 50 ? message.substring(0, 50) + '...' : message}`);
     
     try {
       const response = await fetch('/api/msg/send_message', {
@@ -528,10 +815,37 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
       
       if (!response.ok) {
+        console.error(`[MiniChat] Error saat mengirim pesan:`, response.status, response.statusText);
         throw new Error('Gagal mengirim pesan');
       }
       
       const data = await response.json();
+      console.log(`[MiniChat] Pesan berhasil dikirim:`, {
+        messageId: data.data?.message_id,
+        conversationId: conversationId,
+        status: 'success'
+      });
+      
+      // Jika pengiriman berhasil, update conversation dengan pesan baru
+      if (data.success && data.data) {
+        const responseData = data.data;
+        
+        console.log(`[MiniChat] Memperbarui conversation_list dengan pesan terkirim`);
+        
+        // Update conversation dengan pesan yang dikirim
+        dispatch({
+          type: 'UPDATE_CONVERSATION_WITH_MESSAGE',
+          payload: {
+            conversation_id: conversationId,
+            latest_message_content: { text: message },
+            latest_message_from_id: conversation.shop_id, // pesan dari toko
+            latest_message_id: responseData.message_id,
+            last_message_timestamp: responseData.created_timestamp || Date.now(),
+            latest_message_type: 'text',
+            unread_count_increment: 0 // Tidak menambah unread count untuk pesan sendiri
+          }
+        });
+      }
       
       // Mark as read after sending message
       updateConversationList({
@@ -546,10 +860,10 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       return data;
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[MiniChat] Error mengirim pesan:', error);
       throw error;
     }
-  }, [state.conversations, updateConversationList]);
+  }, [state.conversations, updateConversationList, dispatch]);
   
   // Fungsi untuk initialize conversation
   const initializeConversation = useCallback(async (userId: number, orderSn: string, shopId: number) => {
@@ -758,7 +1072,8 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updateConversationList,
       filteredConversations,
       uniqueShops,
-      initializeConversation
+      initializeConversation,
+      updateConversationWithMessage
     }}>
       {children}
     </MiniChatContext.Provider>

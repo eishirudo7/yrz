@@ -316,7 +316,7 @@ export default function ProductCommentsPage() {
       setIsFetchingAllComments(true);
       setLoadingComments(true);
       
-      let url = `/api/product-comments?shop_id=${shopIdToUse}&page_size=${pageSize}`;
+      let url = `/api/ulasan?shop_id=${shopIdToUse}&page_size=${pageSize}`;
       if (itemIdToUse) url += `&item_id=${itemIdToUse}`;
       
       let allFetchedComments: CommentItem[] = [];
@@ -428,7 +428,7 @@ export default function ProductCommentsPage() {
     // Update URL tanpa me-refresh halaman
     const params = new URLSearchParams();
     params.set('shop_id', value);
-    router.push(`/product-comments?${params.toString()}`);
+    router.push(`/ulasan?${params.toString()}`);
   };
 
   const handleItemChange = (value: string) => {
@@ -443,7 +443,7 @@ export default function ProductCommentsPage() {
     const params = new URLSearchParams();
     if (selectedShopId) params.set('shop_id', selectedShopId);
     if (itemIdToUse) params.set('item_id', itemIdToUse);
-    router.push(`/product-comments?${params.toString()}`);
+    router.push(`/ulasan?${params.toString()}`);
   };
 
   const handleResetFilters = () => {
@@ -452,7 +452,7 @@ export default function ProductCommentsPage() {
     
     const params = new URLSearchParams();
     if (selectedShopId) params.set('shop_id', selectedShopId);
-    router.push(`/product-comments?${params.toString()}`);
+    router.push(`/ulasan?${params.toString()}`);
   };
 
   const formatDate = (timestamp: number) => {
@@ -637,7 +637,7 @@ export default function ProductCommentsPage() {
       try {
         setIsReplying(true);
         
-        const response = await fetch('/api/product-comments', {
+        const response = await fetch('/api/ulasan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

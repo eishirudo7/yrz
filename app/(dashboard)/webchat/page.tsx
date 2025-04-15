@@ -455,87 +455,21 @@ const ChatContent = React.memo(({
   selectedConversation
 }: ChatContentProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  // Menghitung estimasi tinggi pesan berdasarkan kontennya
-  const estimateSize = useCallback((index: number) => {
-    const message = messages[index];
-    if (!message) return 80; // Default height
-
-    // Perkiraan tinggi berdasarkan tipe pesan
-    if (message.type === 'text') {
-      // Perkiraan tinggi berdasarkan panjang teks
-      const textLength = message.content.length;
-      // Untuk mobile, kita perlu estimasi lebih tinggi karena lebar container lebih kecil
-      const width = parentRef.current ? parentRef.current.clientWidth - 32 : window.innerWidth - 32; // 32px untuk padding
-      const charsPerLine = Math.max(20, Math.floor(width / 8)); // Estimate 8px per character
-      const lineCount = Math.ceil(textLength / charsPerLine);
-      return Math.max(80, lineCount * 20 + 40); // Base height + height per line
-    } else if (message.type === 'image' || message.type === 'image_with_text') {
-      return message.type === 'image_with_text' ? 350 : 300; // Image dengan/tanpa teks
-    }
-    
-    return 80; // Default untuk tipe lain
-  }, [messages]);
-
-  // Menghitung jumlah item yang akan ditampilkan (termasuk loading indicator jika diperlukan)
-  const itemCount = hasMoreMessages && isLoading ? messages.length + 1 : messages.length;
-
-  // Inisialisasi virtualizer dengan measureElement untuk mengukur tinggi secara akurat
-  const virtualizer = useVirtualizer({
-    count: itemCount,
-    getScrollElement: () => parentRef.current,
-    estimateSize,
-    overscan: 5, // Jumlah item yang dirender di luar viewport
-    measureElement: (element) => {
-      // Mengukur tinggi elemen sebenarnya dengan type casting
-      if (!element) return 0;
-      const htmlElement = element as HTMLElement;
-      return element.getBoundingClientRect().height || 
-        estimateSize(Number(htmlElement.dataset?.index) || 0);
-    },
-  });
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Scroll ke bawah ketika pesan baru ditambahkan atau percakapan dibuka
   useEffect(() => {
-    // Periksa kondisi yang tepat untuk scroll
-    const shouldScroll = 
-      messages.length > 0 && 
-      parentRef.current && 
-      (!isLoading || !isLoadingConversation);
-    
-    if (shouldScroll) {
-      // Gunakan timeout untuk memastikan virtualizer dan DOM sudah siap
+    if (messages.length > 0 && scrollContainerRef.current && !isLoading) {
+      // Gunakan timeout untuk memastikan render selesai dahulu
       const timeoutId = setTimeout(() => {
-        // Scroll with smooth behavior
-        virtualizer.scrollToIndex(messages.length - 1, {
-          align: 'end',
-          behavior: 'smooth'
-        });
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
       }, 150);
       
       return () => clearTimeout(timeoutId);
     }
-  }, [messages.length, isLoading, isLoadingConversation, virtualizer]);
-
-  // Tambahkan backup scroll untuk percakapan yang baru dibuka
-  useEffect(() => {
-    // Khusus untuk transisi dari loading ke loaded
-    if (selectedConversation && !isLoadingConversation && messages.length > 0) {
-      // Reset sizeMap jika perlu untuk memastikan ukuran terukur dengan benar
-      virtualizer.measure();
-    }
-  }, [isLoadingConversation, selectedConversation, messages.length, virtualizer]);
-
-  // Efek untuk resize virtualizer ketika ukuran window berubah
-  useEffect(() => {
-    const handleResize = () => {
-      virtualizer.measure();
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [virtualizer]);
+  }, [messages.length, isLoading]);
 
   if (isLoadingConversation) {
     return (
@@ -578,84 +512,34 @@ const ChatContent = React.memo(({
 
   return (
     <div ref={containerRef} className="h-full w-full overflow-hidden">
-      <div
-        ref={parentRef}
-        className="h-full w-full overflow-auto scrollbar-thin"
-        style={{
-          position: 'relative',
-          height: '100%',
-          width: '100%',
-          overflow: 'auto',
-          padding: '0.5rem 1rem 0.5rem 1rem', /* 8px atas bawah, 16px kiri kanan */
-        }}
-      >
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualItem) => {
-            const index = virtualItem.index;
-            
-            // Loading indicator untuk pesan lama
-            if (index === 0 && hasMoreMessages && isLoading) {
-              return (
-                <div
-                  key="loading"
-                  data-index={index}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: `${virtualItem.size}px`,
-                    transform: `translateY(${virtualItem.start}px)`,
-                  }}
-                  className="flex justify-center p-2"
-                >
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Memuat pesan lama</span>
-                  </div>
-                </div>
-              );
-            }
-            
-            const adjustedIndex = hasMoreMessages && isLoading ? index - 1 : index;
-            const message = messages[adjustedIndex];
-            
-            if (!message) return null;
-            
-            return (
-              <div
-                key={message.id}
-                data-index={index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: 'auto', // Height auto untuk diukur dengan measureElement
-                  transform: `translateY(${virtualItem.start}px)`,
-                }}
-              >
-                <MessageBubble
-                  message={message}
-                  orders={orders}
-                  onShowOrderDetails={onShowOrderDetails}
-                />
-              </div>
-            );
-          })}
+      {/* Loading indicator untuk pesan lama */}
+      {hasMoreMessages && isLoading && (
+        <div className="flex justify-center p-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Memuat pesan lama</span>
+          </div>
         </div>
+      )}
+      
+      <div
+        ref={scrollContainerRef}
+        className="h-full w-full overflow-auto scrollbar-thin p-4"
+      >
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            orders={orders}
+            onShowOrderDetails={onShowOrderDetails}
+          />
+        ))}
+        <div ref={messagesEndRef} />
       </div>
-      <div ref={messagesEndRef} />
     </div>
   );
 });
+
 // Tambahkan displayName
 ChatContent.displayName = 'ChatContent';
 

@@ -41,14 +41,24 @@ export async function POST(req: NextRequest) {
       if (result.response && result.response.message_id) {
         console.log('Pesan berhasil dikirim:', result.response);
         
-        // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
-        return new NextResponse(JSONStringify({
+        // Format respons untuk MiniChatContext
+        // Pastikan semua field yang dibutuhkan untuk pembaruan conversation_list tersedia
+        const responseData = {
           success: true,
           data: {
-            ...result.response,
-            conversation_id: String(result.response.conversation_id) // Pastikan conversation_id adalah string
+            message_id: result.response.message_id,
+            conversation_id: String(result.response.conversation_id), // Pastikan conversation_id adalah string
+            to_id: parsedToId,
+            message_type: result.response.message_type || messageType,
+            content: result.response.content || { text: content },
+            created_timestamp: result.response.created_timestamp || Math.floor(Date.now() / 1000),
+            shop_id: parsedShopId, // Tambahkan shop_id untuk keperluan MiniChatContext
+            from_id: parsedShopId // Sender adalah toko (untuk tracking di MiniChatContext)
           }
-        }), {
+        };
+        
+        // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
+        return new NextResponse(JSONStringify(responseData), {
           headers: {
             'Content-Type': 'application/json',
           },

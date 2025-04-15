@@ -61,6 +61,7 @@ async function handleChat(data: any) {
       }
     }
 
+    // Format data untuk SSE - termasuk data yang diperlukan untuk updateConversationWithMessage
     const chatData = {
       type: 'new_message',
       message_type: messageContent.message_type,
@@ -73,10 +74,20 @@ async function handleChat(data: any) {
       content: messageContent.content,
       timestamp: messageContent.created_timestamp,
       shop_id: data.shop_id,
-      shop_name: shopName
+      shop_name: shopName,
+      // Data untuk updateConversationWithMessage di MiniChatContext
+      for_chat_context: {
+        conversation_id: messageContent.conversation_id,
+        message_id: messageContent.message_id,
+        from_id: messageContent.from_id,
+        content: messageContent.content,
+        message_type: messageContent.message_type,
+        created_timestamp: messageContent.created_timestamp,
+        shop_id: data.shop_id
+      }
     };
     
-    console.log('Received chat message from Shopee', chatData);
+    // Kirim event ke semua klien terkoneksi
     sendEventToShopOwners(chatData);
   }
 }
