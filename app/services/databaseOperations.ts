@@ -228,7 +228,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
         .from('orders')
         .update({ 
           document_status: 'READY',
-          is_printed: true // Menandai dokumen sudah dicetak
+         
         })
         .eq('order_sn', orderSn);
 

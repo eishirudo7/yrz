@@ -103,10 +103,9 @@ export async function GET(req: NextRequest) {
           order_sn, shop_id, order_status, cod, buyer_user_id,
           total_amount, create_time, update_time, pay_time,
           buyer_username, shipping_carrier, escrow_amount_after_adjustment,
-          cancel_reason
+          cancel_reason, tracking_number, document_status, is_printed
         `)
-        .filter('create_time', 'gte', startTimestampValue)
-        .filter('create_time', 'lte', endTimestampValue)
+        .or(`and(create_time.gte.${startTimestamp},create_time.lte.${endTimestamp}),and(pay_time.gte.${startTimestamp},pay_time.lte.${endTimestamp},cod.eq.false)`)
         .in('shop_id', userShopIds)
         .order('create_time', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -148,27 +147,11 @@ export async function GET(req: NextRequest) {
     // Ambil unique order_sn untuk query selanjutnya
     const orderSns = Array.from(new Set(allOrdersData.map(o => o.order_sn)));
     
-    // 3. Query untuk data logistic dengan batching jika diperlukan
-    const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
-    let allLogisticData: any[] = [];
+    // Data tracking sekarang sudah tersedia dalam allOrdersData, tidak perlu query terpisah
     
-    for (let i = 0; i < orderSns.length; i += batchSize) {
-      const batchOrderSns = orderSns.slice(i, i + batchSize);
-      
-      const { data: logisticBatchData, error: logisticBatchError } = await supabase
-        .from('orders')
-        .select('order_sn, tracking_number, document_status, is_printed')
-        .in('order_sn', batchOrderSns);
-      
-      if (logisticBatchError) {
-        console.error(`Error fetching logistics batch ${i}:`, logisticBatchError);
-      } else if (logisticBatchData) {
-        allLogisticData = [...allLogisticData, ...logisticBatchData];
-      }
-    }
-    
-    // 4. Query untuk data order_items dengan batching
+    // Query untuk data order_items dengan batching
     let allOrderItemsData: any[] = [];
+    const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
     
     for (let i = 0; i < orderSns.length; i += batchSize) {
       const batchOrderSns = orderSns.slice(i, i + batchSize);
@@ -189,13 +172,6 @@ export async function GET(req: NextRequest) {
     const allOrders = allOrdersData.map(order => {
       // Cari data toko
       const shop = shopsData?.find(s => s.shop_id === order.shop_id) || { shop_name: 'Tidak diketahui' };
-      
-      // Cari data logistic
-      const logistic = allLogisticData?.find(l => l.order_sn === order.order_sn) || { 
-        tracking_number: null, 
-        document_status: null,
-        is_printed: false
-      };
       
       // Kumpulkan item untuk format sku_qty dan hitung total
       const items = allOrderItemsData?.filter(i => i.order_sn === order.order_sn) || [];
@@ -226,9 +202,9 @@ export async function GET(req: NextRequest) {
         pay_time: order.pay_time,
         buyer_username: order.buyer_username,
         shipping_carrier: order.shipping_carrier,
-        tracking_number: logistic.tracking_number,
-        document_status: logistic.document_status,
-        is_printed: logistic.is_printed,
+        tracking_number: order.tracking_number,
+        document_status: order.document_status,
+        is_printed: order.is_printed,
         sku_qty: skuQty,
         cancel_reason: order.cancel_reason,
         escrow_amount_after_adjustment: order.escrow_amount_after_adjustment

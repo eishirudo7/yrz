@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Ambil order_items dan logistic secara paralel
+    // Ambil order_items secara paralel
     const orderSns = ordersData.map(order => order.order_sn);
     
     // Implementasi batching untuk order_items
