@@ -150,9 +150,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
       const trackingNo = data.data.tracking_no;
       const packageNumber = data.data.package_number;
       
-  
       console.log(`Menerima pembaruan pelacakan: OrderSN: ${orderSn}, Nomor Pelacakan: ${trackingNo}`);
-      
       
       // Cek apakah nomor pesanan (order_sn) tersedia di tabel 'orders'
       try {
@@ -188,24 +186,32 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
               document_status = 'FAILED';
             }
           }
+          
           console.log(`OrderSN ${orderSn} ditemukan di tabel orders`);
+          
           try {
-            const { data: logisticData, error: logisticError } = await supabase
-              .from('logistic')
-              .upsert({
-                order_sn: orderSn,
+            // Update tracking information di tabel orders saja
+            const { data: updatedOrder, error: updateError } = await supabase
+              .from('orders')
+              .update({
                 tracking_number: trackingNo,
-                package_number: packageNumber,
-                document_status: document_status
-              });
-  
-            if (logisticError) throw logisticError;
-  
-            if (logisticData) {
-              console.log(`Nomor pelacakan berhasil diperbarui untuk OrderSN: ${orderSn}`);
+                document_status: document_status,
+                is_printed: false // Default value untuk is_printed
+              })
+              .eq('order_sn', orderSn);
+              const { error: updateLogisticError } = await supabase
+              .from('logistic')
+              .update({
+                tracking_number: trackingNo,
+              })
+              .eq('order_sn', orderSn);
+            if (updateError) {
+              throw new Error(`Gagal memperbarui nomor pelacakan: ${updateError.message}`);
             }
+
+            console.log(`Nomor pelacakan berhasil diperbarui untuk OrderSN: ${orderSn}`);
           } catch (error) {
-            console.error('Gagal memperbarui nomor pelacakan:', error);
+            console.error('Gagal memperbarui nomor pelacakan di orders:', error);
           }
         } else {
           console.warn(`OrderSN ${orderSn} tidak ditemukan di tabel orders`);
@@ -216,21 +222,20 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
     } catch (error) {
       console.error('Terjadi kesalahan saat menangani callback pesanan:', error);
     }
-
-    
   }
 
-  export async function updateDocumentStatus(orderSn: string, packageNumber: string): Promise<void> {
+  export async function updateDocumentStatus(orderSn: string): Promise<void> {
     try {
       console.log(`Memperbarui status dokumen: OrderSN: ${orderSn}`);
 
+      // Update status dokumen hanya di tabel orders
       const { error } = await supabase
-        .from('logistic')
-        .update({ document_status: 'READY' })
-        .match({ 
-          order_sn: orderSn,
-          package_number: packageNumber 
-        });
+        .from('orders')
+        .update({ 
+          document_status: 'READY',
+          is_printed: true // Menandai dokumen sudah dicetak
+        })
+        .eq('order_sn', orderSn);
 
       if (error) {
         throw new Error(`Gagal memperbarui status dokumen: ${error.message}`);

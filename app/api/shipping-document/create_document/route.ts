@@ -40,7 +40,7 @@ export async function POST(request: Request) {
             
             // Update tracking number di database
             const { error: updateError } = await supabase
-                .from('logistic')
+                .from('orders')
                 .update({ tracking_number: finalTrackingNumber })
                 .eq('order_sn', order_sn);
                 
@@ -102,7 +102,7 @@ async function createDocument(shopId: number, order_sn: string, tracking_number:
 
     // Update status dokumen menjadi READY
     const { error: updateError } = await supabase
-        .from('logistic')
+        .from('orders')
         .update({ document_status: 'READY' })
         .eq('order_sn', order_sn);
 

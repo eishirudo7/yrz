@@ -82,22 +82,11 @@ const processOrder = (order: Order, summary: DashboardSummary) => {
 async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): Promise<any | null> {
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      // Ambil order_items dan logistic secara parallel
-      const [
-        { data: itemsData, error: itemsError },
-        { data: logisticData, error: logisticError }
-      ] = await Promise.all([
-        createClient()
-          .from('order_items')
-          .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
-          .eq('order_sn', order_sn),
-        
-        createClient()
-          .from('logistic')
-          .select('tracking_number, document_status, is_printed')
-          .eq('order_sn', order_sn)
-          .single()
-      ]);
+      // Hanya perlu ambil order_items, data tracking sudah ada di response API
+      const { data: itemsData, error: itemsError } = await createClient()
+        .from('order_items')
+        .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
+        .eq('order_sn', order_sn);
       
       if (itemsError) throw itemsError;
       
@@ -111,13 +100,8 @@ async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): 
           model_discounted_price: parseFloat(item.model_discounted_price || '0'),
           item_sku: item.item_sku,
           model_name: item.model_name
-        })),
-        // Tambahkan data logistic jika ada
-        ...(logisticData && {
-          tracking_number: logisticData.tracking_number,
-          document_status: logisticData.document_status,
-          is_printed: logisticData.is_printed
-        })
+        }))
+        // Tidak perlu ambil tracking data lagi karena sudah ada di response API
       };
     } catch (error) {
       if (attempt === retries - 1) {
@@ -234,10 +218,8 @@ export const useDashboard = () => {
                     ? { 
                         ...order, 
                         ...newOrder, 
-                        items: orderDetails.items,
-                        tracking_number: orderDetails.tracking_number,
-                        document_status: orderDetails.document_status,
-                        is_printed: orderDetails.is_printed
+                        items: orderDetails.items
+                        // Tidak lagi mengambil tracking_number, document_status, dan is_printed dari orderDetails
                       }
                     : order
                 );

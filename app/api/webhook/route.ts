@@ -214,7 +214,7 @@ async function handleOther(data: any) {
 
 async function handleDocumentUpdate(data: any) {
   console.log('Menangani pembaruan dokumen', data);
-  await updateDocumentStatus(data.data.ordersn, data.data.package_number);
+  await updateDocumentStatus(data.data.ordersn);
 }
 
 async function handlePenalty(data: any) {

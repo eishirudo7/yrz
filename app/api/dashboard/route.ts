@@ -68,7 +68,10 @@ export async function GET(req: NextRequest) {
           buyer_username,
           escrow_amount_after_adjustment,
           shipping_carrier,
-          cod
+          cod,
+          tracking_number,
+          document_status,
+          is_printed
         `)
         .in('shop_id', shopIds)
         .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
@@ -88,7 +91,10 @@ export async function GET(req: NextRequest) {
           buyer_username,
           escrow_amount_after_adjustment,
           shipping_carrier,
-          cod
+          cod,
+          tracking_number,
+          document_status,
+          is_printed
         `)
         .in('shop_id', shopIds)
         .eq('order_status', 'CANCELLED')
@@ -110,7 +116,10 @@ export async function GET(req: NextRequest) {
           buyer_username,
           escrow_amount_after_adjustment,
           shipping_carrier,
-          cod
+          cod,
+          tracking_number,
+          document_status,
+          is_printed
         `)
         .in('shop_id', shopIds)
         .eq('order_status', 'SHIPPED')
@@ -165,15 +174,7 @@ export async function GET(req: NextRequest) {
       model_name: string;
     }
 
-    interface LogisticItem {
-      order_sn: string;
-      tracking_number: string | null;
-      document_status: string | null;
-      is_printed: boolean;
-    }
-
     let allOrderItemsData: OrderItem[] = [];
-    let allLogisticData: LogisticItem[] = [];
 
     // Batch processing untuk order_items
     for (let i = 0; i < orderSns.length; i += batchSize) {
@@ -190,24 +191,6 @@ export async function GET(req: NextRequest) {
       
       if (itemsBatchData) {
         allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
-      }
-    }
-
-    // Batch processing untuk logistic
-    for (let i = 0; i < orderSns.length; i += batchSize) {
-      const batchOrderSns = orderSns.slice(i, i + batchSize);
-      const { data: logisticBatchData, error: logisticBatchError } = await supabase
-        .from('logistic')
-        .select('order_sn, tracking_number, document_status, is_printed')
-        .in('order_sn', batchOrderSns);
-
-      if (logisticBatchError) {
-        console.error(`Gagal mengambil batch logistic ${i}:`, logisticBatchError);
-        continue;
-      }
-      
-      if (logisticBatchData) {
-        allLogisticData = [...allLogisticData, ...logisticBatchData];
       }
     }
 
@@ -239,7 +222,6 @@ export async function GET(req: NextRequest) {
     const processedOrders = ordersData.map(order => {
       const shop = shops.find(s => s.shop_id === order.shop_id);
       const items = allOrderItemsData.filter(item => item.order_sn === order.order_sn) || [];
-      const logistic = allLogisticData.find(l => l.order_sn === order.order_sn);
 
       // Proses items tanpa order_sn
       const processedItems = items.map(({ order_sn, ...item }) => ({
@@ -251,9 +233,6 @@ export async function GET(req: NextRequest) {
       return {
         ...order,
         shop_name: shop?.shop_name || 'Tidak diketahui',
-        tracking_number: logistic?.tracking_number,
-        document_status: logistic?.document_status,
-        is_printed: logistic?.is_printed || false,
         items: processedItems
       };
     });
