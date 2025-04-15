@@ -1672,3 +1672,98 @@ export async function getOneConversation(
     throw error;
   }
 }
+
+export async function getProductComment(
+  shopId: number,
+  options: {
+    item_id?: number,
+    comment_id?: number,
+    cursor?: string,
+    page_size?: number
+  }
+): Promise<any> {
+  try {
+    const accessToken = await getValidAccessToken(shopId);
+    const result = await shopeeApi.getProductComment(shopId, accessToken, options);
+
+    if (result.error) {
+      console.error(`Error saat mengambil komentar produk: ${JSON.stringify(result)}`);
+      return {
+        success: false,
+        error: result.error,
+        message: result.message || 'Gagal mengambil komentar produk'
+      };
+    }
+
+    return {
+      success: true,
+      data: result.response,
+      request_id: result.request_id
+    };
+  } catch (error) {
+    console.error('Kesalahan saat mengambil komentar produk:', error);
+    return {
+      success: false,
+      error: "internal_server_error",
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+    };
+  }
+}
+
+/**
+ * Membalas komentar produk dari pembeli secara batch
+ * @param shopId ID toko
+ * @param commentList Daftar komentar yang akan dibalas
+ * @returns Hasil dari proses membalas komentar
+ */
+export async function replyProductComment(
+  shopId: number,
+  commentList: Array<{
+    comment_id: number,
+    comment: string
+  }>
+): Promise<any> {
+  try {
+    // Validasi input
+    if (!commentList || commentList.length === 0) {
+      return {
+        success: false,
+        error: "invalid_input",
+        message: 'Daftar komentar tidak boleh kosong'
+      };
+    }
+    
+    if (commentList.length > 100) {
+      return {
+        success: false,
+        error: "invalid_input",
+        message: 'Jumlah komentar tidak boleh lebih dari 100'
+      };
+    }
+
+    const accessToken = await getValidAccessToken(shopId);
+    const result = await shopeeApi.replyProductComment(shopId, accessToken, commentList);
+
+    if (result.error) {
+      console.error(`Error saat membalas komentar produk: ${JSON.stringify(result)}`);
+      return {
+        success: false,
+        error: result.error,
+        message: result.message || 'Gagal membalas komentar produk'
+      };
+    }
+
+    return {
+      success: true,
+      data: result.response,
+      request_id: result.request_id
+    };
+  } catch (error) {
+    console.error('Kesalahan saat membalas komentar produk:', error);
+    return {
+      success: false,
+      error: "internal_server_error",
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+    };
+  }
+}

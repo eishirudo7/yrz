@@ -186,6 +186,12 @@ export const useDashboard = () => {
           return; // Lewati jika status tidak dalam daftar yang dipantau
         }
         
+        // Tambahkan shop_name dari UserDataContext
+        const shop = shops.find(s => s.shop_id === newOrder.shop_id);
+        if (shop) {
+          newOrder.shop_name = shop.shop_name;
+        }
+        
         if (newOrder.order_status === 'READY_TO_SHIP') {
           setDashboardData(prevData => {
             const existingOrderIndex = prevData.orders.findIndex(
@@ -451,6 +457,25 @@ export const useDashboard = () => {
         // 2. Ekstrak data dari respons
         const { orders, shops } = dashboardResult.data;
         
+        // Tambahkan shop_name ke setiap order jika belum ada
+        const ordersWithShopName = orders.map((order: Order) => {
+          // Jika order sudah memiliki shop_name, gunakan yang ada
+          if (order.shop_name) {
+            return order;
+          }
+          
+          // Cari shop_name dari UserDataContext
+          const shop = shops.find((s: Shop) => s.shop_id === order.shop_id);
+          if (shop) {
+            return {
+              ...order,
+              shop_name: shop.shop_name
+            };
+          }
+          
+          return order;
+        });
+        
         // 3. Hitung summary dari data mentah
         const newSummary: DashboardSummary = {
           pesananPerToko: {},
@@ -468,7 +493,7 @@ export const useDashboard = () => {
         });
 
         // Proses setiap order untuk summary
-        orders.forEach((order: Order) => {
+        ordersWithShopName.forEach((order: Order) => {
           const payDate = toZonedTime(new Date(order.pay_time * 1000), timeZone);
           const orderDate = format(payDate, 'yyyy-MM-dd');
           const today = format(toZonedTime(new Date(), timeZone), 'yyyy-MM-dd');
@@ -486,12 +511,12 @@ export const useDashboard = () => {
         // 4. Set data dashboard dengan summary yang baru dihitung
         setDashboardData({
           summary: newSummary,
-          orders: orders,
+          orders: ordersWithShopName,
           shops: shops
         });
         
         // 5. Proses orders untuk shipping documents jika diperlukan
-        await processOrders(orders || []);
+        await processOrders(ordersWithShopName || []);
         
         // 6. Ambil data iklan dari API terpisah
         console.log('Mengambil data iklan...');

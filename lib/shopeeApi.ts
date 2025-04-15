@@ -2527,6 +2527,122 @@ async unlistItem(
     throw error;
   }
 }
+
+async getProductComment(
+  shopId: number,
+  accessToken: string,
+  options: {
+    item_id?: number,
+    comment_id?: number,
+    cursor?: string,
+    page_size?: number
+  }
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/product/get_comment';
+  const path = '/api/v2/product/get_comment';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  if (options.page_size && (options.page_size < 1 || options.page_size > 100)) {
+    throw new Error('page_size harus antara 1 dan 100');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken,
+    cursor: options.cursor || '',
+    page_size: (options.page_size || 10).toString()
+  });
+
+  if (options.item_id) {
+    params.append('item_id', options.item_id.toString());
+  }
+  if (options.comment_id) {
+    params.append('comment_id', options.comment_id.toString());
+  }
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk mendapatkan komentar produk: URL=${fullUrl}`);
+
+  try {
+    const response = await axios.get(fullUrl, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat mengambil komentar produk:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Membalas komentar produk dari pembeli secara batch
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param commentList Daftar komentar yang akan dibalas (maksimal 100)
+ * @returns Response dari API
+ */
+async replyProductComment(
+  shopId: number,
+  accessToken: string,
+  commentList: Array<{
+    comment_id: number,
+    comment: string
+  }>
+): Promise<any> {
+  if (!commentList || commentList.length === 0) {
+    throw new Error('commentList tidak boleh kosong');
+  }
+  
+  if (commentList.length > 100) {
+    throw new Error('commentList tidak boleh lebih dari 100 item');
+  }
+
+  const url = 'https://partner.shopeemobile.com/api/v2/product/reply_comment';
+  const path = '/api/v2/product/reply_comment';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken
+  });
+
+  const body = {
+    comment_list: commentList
+  };
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk membalas komentar produk: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
+
+  try {
+    const response = await axios.post(fullUrl, body, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat membalas komentar produk:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
 }
 
 export default ShopeeAPI;

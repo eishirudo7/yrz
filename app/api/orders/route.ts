@@ -105,8 +105,7 @@ export async function GET(req: NextRequest) {
           buyer_username, shipping_carrier, escrow_amount_after_adjustment,
           cancel_reason
         `)
-        .filter('create_time', 'gte', startTimestampValue)
-        .filter('create_time', 'lte', endTimestampValue)
+        .or(`create_time.gte.${startTimestampValue},create_time.lte.${endTimestampValue},pay_time.gte.${startTimestampValue},pay_time.lte.${endTimestampValue}`)
         .in('shop_id', userShopIds)
         .order('create_time', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);

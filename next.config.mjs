@@ -12,6 +12,9 @@ const nextConfig = {
     }
     return config;
   },
+  images: {
+    domains: ['mms.img.susercontent.com', 'cf.shopee.co.id'],
+  },
   env: {
     // Gunakan RENDER_EXTERNAL_URL untuk environment production
     // dan fallback ke localhost untuk development
