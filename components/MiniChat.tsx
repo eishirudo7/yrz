@@ -380,7 +380,7 @@ const Avatar = React.memo(({
 Avatar.displayName = 'Avatar';
 
 interface MiniChatProps {
-  conversationId: string;
+  conversationId?: string; // Jadikan opsional untuk mendukung chat baru
   shopId: number;
   toId: number;
   toName: string;
@@ -391,10 +391,11 @@ interface MiniChatProps {
   onClose: () => void;
   onMinimize: () => void;
   position?: number;
+  onConversationInitialized?: (conversationId: string) => void; // Callback baru
 }
 
 const MiniChat = React.memo(({
-  conversationId,
+  conversationId: initialConversationId,
   shopId: propShopId,
   toId: propToId,
   toName,
@@ -404,11 +405,15 @@ const MiniChat = React.memo(({
   metadata,
   onClose,
   onMinimize,
-  position = 0
+  position = 0,
+  onConversationInitialized
 }: MiniChatProps) => {
   // Konversi ke angka jika belum
   const shopId = typeof propShopId === 'number' ? propShopId : Number(propShopId);
   const toId = typeof propToId === 'number' ? propToId : Number(propToId);
+  
+  // State untuk conversationId yang bisa berubah setelah inisialisasi
+  const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId);
   
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -419,8 +424,12 @@ const MiniChat = React.memo(({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const processedMessagesRef = useRef<Set<string>>(new Set());
   
-  // Gunakan state.lastMessage dari MiniChatContext
-  const { state } = useMiniChat();
+  // Gunakan state dan openChat dari MiniChatContext
+  const { state, openChat } = useMiniChat();
+  
+  // Periksa apakah ada percakapan yang sedang dalam proses inisialisasi
+  const isInitializing = state.chatInitialization?.loading || false;
+  const initError = state.chatInitialization?.error || null;
   
   // Fungsi untuk mengambil pesan
   const fetchMessages = useCallback(async () => {
@@ -455,22 +464,71 @@ const MiniChat = React.memo(({
     }
   }, [conversationId, shopId]);
   
-  // Ambil pesan saat komponen dimuat
+  // Effect untuk mencari conversationId yang ada atau menginisialisasi percakapan baru
+  useEffect(() => {
+    // Jika conversationId sudah tersedia dari props, tidak perlu melakukan pencarian
+    if (initialConversationId) {
+      console.log('[MiniChat] Menggunakan conversationId dari props:', initialConversationId);
+      return;
+    }
+
+    // Hanya jika tidak ada conversationId dan chat tidak diminimalkan
+    if (!conversationId && toId && shopId && !isMinimized) {
+      console.log('[MiniChat] Tidak ada conversationId, gunakan openChat yang akan menangani inisialisasi');
+      // openChat di ChatButton.tsx sudah melakukan pencarian conversationId, 
+      // jadi disini kita bisa langsung menggunakan openChat
+      openChat({
+        toId,
+        shopId,
+        toName,
+        toAvatar,
+        shopName,
+        metadata
+      });
+    }
+  }, [initialConversationId, conversationId, toId, shopId, isMinimized, openChat, toName, toAvatar, shopName, metadata]);
+  
+  // Effect terpisah untuk fetch messages saja
   useEffect(() => {
     if (conversationId && shopId && !isMinimized) {
+      console.log('[MiniChat] Mengambil pesan untuk percakapan yang sudah ada:', conversationId);
       fetchMessages();
     }
-  }, [conversationId, shopId, fetchMessages, isMinimized]);
+  }, [conversationId, shopId, isMinimized, fetchMessages]);
   
-  // Gunakan lastMessage dari MiniChatContext daripada SSE langsung
+  // Effect untuk menerima conversationId baru setelah inisialisasi berhasil
   useEffect(() => {
-    const lastMessage = state.lastMessage;
-    
-    if (lastMessage && 
-        lastMessage.conversation_id === conversationId && 
-        lastMessage.type === 'new_message') {
+    // Jika sebelumnya tidak ada conversationId dan inisialisasi berhasil
+    if (!conversationId && state.chatInitialization?.loading === false && !state.chatInitialization?.error) {
+      // Cari chat aktif dengan toId dan shopId yang cocok
+      const newActiveChat = state.activeChats.find(chat => 
+        chat.toId === toId && chat.shopId === shopId && chat.conversationId
+      );
       
-      const messageId = lastMessage.message_id;
+      if (newActiveChat?.conversationId) {
+        setConversationId(newActiveChat.conversationId);
+        
+        // Panggil callback jika ada
+        if (onConversationInitialized) {
+          onConversationInitialized(newActiveChat.conversationId);
+        }
+        
+        // Ambil pesan setelah conversationId diperbarui
+        setTimeout(() => {
+          fetchMessages();
+        }, 500);
+      }
+    }
+  }, [state.chatInitialization, state.activeChats, conversationId, toId, shopId, onConversationInitialized, fetchMessages]);
+  
+  // Gunakan lastMessage dari MiniChatContext
+  useEffect(() => {
+    if (state.lastMessage && 
+        conversationId &&
+        state.lastMessage.conversation_id === conversationId && 
+        state.lastMessage.type === 'new_message') {
+      
+      const messageId = state.lastMessage.message_id;
       
       // Periksa apakah pesan sudah diproses sebelumnya
       if (processedMessagesRef.current.has(messageId)) {
@@ -488,16 +546,29 @@ const MiniChat = React.memo(({
   
   // Fungsi untuk mengirim pesan
   const handleSendMessage = useCallback(async (content: string) => {
+    if (!content.trim()) return;
+    
     try {
       setIsSending(true);
       
-      // Log parameter untuk debugging
-      console.log('Parameter untuk pengiriman pesan:', {
-        toId,
-        shopId,
-        conversationId,
-        message: content
-      });
+      // Jika belum ada conversationId, inisialisasi dulu dengan openChat
+      if (!conversationId) {
+        openChat({
+          toId,
+          shopId,
+          toName,
+          toAvatar,
+          shopName,
+          metadata
+        });
+        
+        // Tampilkan pesan untuk menunggu inisialisasi
+        toast.info('Memulai percakapan baru...');
+        
+        // Simpan pesan sementara untuk dikirim nanti setelah inisialisasi
+        sessionStorage.setItem(`pendingMessage_${toId}_${shopId}`, content);
+        return;
+      }
       
       // Format permintaan yang benar untuk API
       const response = await fetch('/api/msg/send_message', {
@@ -550,7 +621,21 @@ const MiniChat = React.memo(({
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, shopId, toId, fetchMessages]);
+  }, [conversationId, shopId, toId, openChat, toName, toAvatar, shopName, metadata]);
+  
+  // Effect untuk mengirim pesan yang tertunda setelah inisialisasi selesai
+  useEffect(() => {
+    // Jika conversationId sudah tersedia dan ada pesan tertunda
+    const pendingMessageKey = `pendingMessage_${toId}_${shopId}`;
+    const pendingMessage = sessionStorage.getItem(pendingMessageKey);
+    
+    if (conversationId && pendingMessage) {
+      // Kirim pesan tertunda
+      handleSendMessage(pendingMessage);
+      // Hapus dari sessionStorage
+      sessionStorage.removeItem(pendingMessageKey);
+    }
+  }, [conversationId, toId, shopId, handleSendMessage]);
   
   // Scroll ke bawah saat ada pesan baru
   useEffect(() => {
@@ -588,22 +673,23 @@ const MiniChat = React.memo(({
       // Tampilkan pesan sukses via toast saja, tanpa tambah pesan ke chat
       toast.success(`Berhasil ${action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`);
       
-      // Tidak perlu menambahkan pesan konfirmasi ke chat
-      // Tidak perlu merefresh messages
-      
     } catch (error) {
       console.error('Gagal memproses pembatalan:', error);
       toast.error(error instanceof Error ? error.message : 'Gagal memproses pembatalan');
     } finally {
       setLoadingAction(null);
     }
-  }, [shopId, toId]);
+  }, [shopId]);
   
   // Fungsi untuk navigasi ke halaman webchat
   const navigateToWebchat = useCallback(() => {
-    // Buka di tab baru
-    window.open(`/webchat?user_id=${toId}&shop_id=${shopId}`, '_blank');
-  }, [toId, shopId]);
+    // Buka di tab baru dengan conversationId jika tersedia
+    const url = conversationId 
+      ? `/webchat?user_id=${toId}&shop_id=${shopId}&conversation_id=${conversationId}` 
+      : `/webchat?user_id=${toId}&shop_id=${shopId}`;
+    
+    window.open(url, '_blank');
+  }, [toId, shopId, conversationId]);
   
   // Jika diminimalkan, tampilkan hanya header
   if (isMinimized) {
@@ -660,10 +746,10 @@ const MiniChat = React.memo(({
           <button 
             onClick={fetchMessages} 
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors"
-            disabled={isLoading}
+            disabled={isLoading || isInitializing || !conversationId}
             title="Refresh pesan"
           >
-            <RefreshCw size={14} className={`${isLoading ? "animate-spin" : ""} text-gray-600 dark:text-gray-400`} />
+            <RefreshCw size={14} className={`${isLoading || isInitializing ? "animate-spin" : ""} text-gray-600 dark:text-gray-400`} />
           </button>
           <button onClick={onMinimize} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700/70 rounded-full transition-colors">
             <MinusSquare size={14} className="text-gray-600 dark:text-gray-400" />
@@ -744,13 +830,38 @@ const MiniChat = React.memo(({
       
       {/* Messages area */}
       <div className="flex-1 p-2 overflow-y-auto bg-white dark:bg-gray-800">
-        {isLoading && messages.length === 0 ? (
-          <div className="flex justify-center items-center h-full">
+        {(isLoading || isInitializing) && messages.length === 0 ? (
+          <div className="flex flex-col justify-center items-center h-full gap-2">
             <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {isInitializing ? 'Memulai percakapan...' : 'Memuat pesan...'}
+            </p>
+          </div>
+        ) : initError ? (
+          <div className="flex flex-col justify-center items-center h-full gap-2 p-4">
+            <p className="text-xs text-red-500 text-center">
+              Gagal memulai percakapan. Silakan coba lagi.
+            </p>
+            <Button
+              size="sm"
+              onClick={() => {
+                openChat({
+                  toId, 
+                  shopId, 
+                  toName, 
+                  toAvatar, 
+                  shopName, 
+                  metadata
+                });
+              }}
+              className="mt-2 text-xs"
+            >
+              Coba Lagi
+            </Button>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex justify-center items-center h-full text-gray-400 text-xs">
-            Belum ada pesan
+            {conversationId ? 'Belum ada pesan' : 'Siap memulai percakapan'}
           </div>
         ) : (
           messages.map(message => (
@@ -766,7 +877,7 @@ const MiniChat = React.memo(({
       
       {/* Input dengan styling yang sederhana */}
       <div className="border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-b-lg">
-        <ChatInput onSend={handleSendMessage} isLoading={isSending} />
+        <ChatInput onSend={handleSendMessage} isLoading={isSending || isInitializing} />
       </div>
     </div>
   );

@@ -36,49 +36,84 @@ export interface SSEMessage {
   receiver_name?: string;
 }
 
-export interface ChatState {
-  isOpen: boolean;
-  isMinimized: boolean;
-  activeChats: {
-    conversationId: string;
-    shopId: number;
+export interface ActiveChat {
+  conversationId: string;
+  toId: number;
+  toName: string;
+  toAvatar: string;
+  shopId: number;
+  shopName: string;
+  metadata?: any;
+}
+
+// Interface untuk status inisialisasi percakapan
+export interface ChatInitialization {
+  loading: boolean;
+  error: string | null;
+  pendingInit: {
     toId: number;
+    shopId: number;
     toName: string;
     toAvatar: string;
     shopName: string;
     metadata?: any;
-  }[];
+  } | null;
+}
+
+export interface ChatState {
   conversations: Conversation[];
   isLoading: boolean;
   error: string | null;
+  isConnected: boolean;
+  totalUnread: number;
+  
+  // Chat UI state
+  isOpen: boolean;
+  isMinimized: boolean;
+  activeChats: ActiveChat[];
+  
+  // Filter
   isMobile: boolean;
   searchQuery: string;
   selectedShops: number[];
-  statusFilter: 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS';
-  isConnected: boolean;
-  totalUnread: number;
-  // Set untuk melacak pesan yang telah diproses
-  processedMessageIds: Set<string>;
-  // Timestamp terakhir kali pesan diterima, berguna untuk debouncing
-  lastMessageTimestamp: number;
-  // Pesan SSE terakhir yang diterima
+  statusFilter: string;
+  
+  // SSE tracking
   lastMessage: SSEMessage | null;
+  processedMessageIds: Set<string>;
+  lastMessageTimestamp: number;
+  
+  // Status inisialisasi percakapan
+  chatInitialization: ChatInitialization;
 }
 
 export const initialChatState: ChatState = {
-  isOpen: false,
-  isMinimized: false,
-  activeChats: [],
   conversations: [],
   isLoading: false,
   error: null,
+  isConnected: false,
+  totalUnread: 0,
+  
+  // Chat UI state
+  isOpen: false,
+  isMinimized: false,
+  activeChats: [],
+  
+  // Filter
   isMobile: false,
   searchQuery: '',
   selectedShops: [],
-  statusFilter: 'SEMUA',
-  isConnected: false,
-  totalUnread: 0,
+  statusFilter: 'all',
+  
+  // SSE tracking
+  lastMessage: null,
   processedMessageIds: new Set<string>(),
   lastMessageTimestamp: 0,
-  lastMessage: null
+  
+  // Status inisialisasi percakapan
+  chatInitialization: {
+    loading: false,
+    error: null,
+    pendingInit: null
+  }
 }; 

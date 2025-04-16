@@ -5,6 +5,7 @@ import { useUserData } from '@/contexts/UserDataContext';
 import { chatReducer } from './chatReducer';
 import { initialChatState } from './chatState';
 import { chatActions } from './chatActions';
+import { toast } from 'sonner';
 
 // Definisikan tipe untuk data percakapan dari API
 export interface Conversation {
@@ -83,6 +84,7 @@ type ConversationUpdate =
 // Buat context
 const MiniChatContext = createContext<{
   state: typeof initialChatState;
+  dispatch: React.Dispatch<any>;
   openChat: (chat: ChatInfo) => void;
   closeChat: (conversationId: string) => void;
   minimizeChat: (minimize: boolean) => void;
@@ -97,6 +99,9 @@ const MiniChatContext = createContext<{
   filteredConversations: Conversation[];
   uniqueShops: number[];
   initializeConversation: (userId: number, orderSn: string, shopId: number) => Promise<Conversation | null>;
+  setMobile: (isMobile: boolean) => void;
+  fetchConversations: (shopIds: number[]) => Promise<void>;
+  markAsRead: (conversationId: string) => void;
 } | undefined>(undefined);
 
 // Buat provider
@@ -454,18 +459,20 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   
   // Fungsi untuk membuka chat
   const openChat = useCallback((chat: ChatInfo) => {
-    dispatch(chatActions.openChat(chat));
-  }, []);
+    // Panggil openChatWithInit secara langsung tanpa dispatch
+    const thunkFunction = chatActions.openChatWithInit(chat);
+    thunkFunction(dispatch);
+  }, [dispatch]);
   
   // Fungsi untuk menutup chat
   const closeChat = useCallback((conversationId: string) => {
     dispatch(chatActions.closeChat(conversationId));
-  }, []);
+  }, [dispatch]);
   
   // Fungsi untuk meminimalkan chat
   const minimizeChat = useCallback((minimize: boolean) => {
     dispatch(chatActions.minimizeChat(minimize));
-  }, []);
+  }, [dispatch]);
   
   // Fungsi untuk refresh conversations
   const refreshConversations = useCallback(async () => {
@@ -475,17 +482,17 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Fungsi untuk set search query
   const setSearchQuery = useCallback((query: string) => {
     dispatch(chatActions.setSearchQuery(query));
-  }, []);
+  }, [dispatch]);
   
   // Fungsi untuk set shop filter
   const setShopFilter = useCallback((shops: number[]) => {
     dispatch(chatActions.setShopFilter(shops));
-  }, []);
+  }, [dispatch]);
   
   // Fungsi untuk set status filter
   const setStatusFilter = useCallback((status: 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS') => {
     dispatch(chatActions.setStatusFilter(status));
-  }, []);
+  }, [dispatch]);
   
   // Compute filtered conversations
   const filteredConversations = useMemo(() => {
@@ -522,6 +529,7 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Provide context value
   const contextValue = {
     state,
+    dispatch,
     openChat,
     closeChat,
     minimizeChat,
@@ -535,7 +543,10 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateConversationList,
     filteredConversations,
     uniqueShops,
-    initializeConversation
+    initializeConversation,
+    setMobile: (isMobile: boolean) => dispatch(chatActions.setMobile(isMobile)),
+    fetchConversations,
+    markAsRead: (conversationId: string) => dispatch(chatActions.markAsRead(conversationId))
   };
   
   return (

@@ -18,7 +18,10 @@ import {
   OpenChatAction,
   CloseChatAction,
   MinimizeChatAction,
-  UpdateLastMessageAction
+  UpdateLastMessageAction,
+  InitConversationStartedAction,
+  InitConversationSucceededAction,
+  InitConversationFailedAction
 } from './chatActions';
 import { Conversation } from './MiniChatContext';
 
@@ -324,63 +327,74 @@ export const chatReducer = (state: ChatState = initialChatState, action: ChatAct
       };
     }
     
-    case 'OPEN_CHAT': {
-      const { payload } = action as OpenChatAction;
+    case 'INIT_CONVERSATION_STARTED': {
+      const { payload } = action as InitConversationStartedAction;
       const { toId, shopId, toName, toAvatar, shopName, metadata } = payload;
       
-      // Cari conversationId dari daftar percakapan jika tidak disediakan
-      let conversationId = payload.conversationId;
-      let finalAvatar = toAvatar;
+      return {
+        ...state,
+        chatInitialization: {
+          ...state.chatInitialization,
+          loading: true,
+          error: null,
+          pendingInit: {
+            toId,
+            shopId,
+            toName,
+            toAvatar,
+            shopName,
+            metadata
+          }
+        }
+      };
+    }
+    
+    case 'INIT_CONVERSATION_SUCCEEDED': {
+      const { payload } = action as InitConversationSucceededAction;
+      
+      return {
+        ...state,
+        chatInitialization: {
+          ...state.chatInitialization,
+          loading: false,
+          error: null,
+          pendingInit: null
+        }
+      };
+    }
+    
+    case 'INIT_CONVERSATION_FAILED': {
+      const { payload } = action as InitConversationFailedAction;
+      
+      return {
+        ...state,
+        chatInitialization: {
+          ...state.chatInitialization,
+          loading: false,
+          error: payload,
+          pendingInit: null
+        }
+      };
+    }
+    
+    case 'OPEN_CHAT': {
+      const { payload } = action as OpenChatAction;
+      const { toId, shopId, toName, toAvatar, shopName, metadata, conversationId } = payload;
       
       if (!conversationId) {
-        // Cari percakapan yang cocok berdasarkan toId dan shopId
-        const matchingConversation = state.conversations.find(
-          conv => conv.to_id === toId && conv.shop_id === shopId
-        );
-        
-        if (matchingConversation) {
-          conversationId = matchingConversation.conversation_id;
-          
-          // Gunakan avatar dari daftar percakapan jika ada
-          if (matchingConversation.to_avatar) {
-            finalAvatar = matchingConversation.to_avatar;
-          }
-        } else {
-          // Buat ID sementara
-          conversationId = `temp_${toId}_${shopId}_${Date.now()}`;
-          console.log('Membuat temporary conversationId:', conversationId);
-          
-          // Tambahkan juga ke daftar percakapan
-          const tempConversation: Conversation = {
-            conversation_id: conversationId,
-            to_id: toId,
-            to_name: toName,
-            to_avatar: finalAvatar,
-            shop_id: shopId,
-            shop_name: shopName,
-            latest_message_content: null,
-            latest_message_from_id: 0,
-            last_message_timestamp: Date.now(),
-            unread_count: 0
-          };
-          
-          // Tambahkan percakapan sementara ke state
-          return {
-            ...state,
-            isOpen: true,
-            isMinimized: false,
-            conversations: [tempConversation, ...state.conversations],
-            activeChats: handleMaxChatsLimit([...state.activeChats, {
-              conversationId,
-              toId,
-              toName,
-              toAvatar: finalAvatar,
-              shopId,
-              shopName,
-              metadata
-            }], state.isMobile)
-          };
-        }
+        console.warn('[MiniChat] Mencoba membuka chat tanpa conversationId. Gunakan openChatWithInit action creator.');
+        return state;
+      }
+      
+      let finalAvatar = toAvatar;
+      
+      // Cari percakapan untuk mendapatkan avatar terbaru jika tersedia
+      const matchingConversation = state.conversations.find(
+        conv => conv.conversation_id === conversationId
+      );
+      
+      if (matchingConversation && matchingConversation.to_avatar) {
+        finalAvatar = matchingConversation.to_avatar;
       }
       
       // Cek apakah chat sudah ada

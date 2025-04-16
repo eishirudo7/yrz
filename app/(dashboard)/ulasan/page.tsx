@@ -369,10 +369,20 @@ export default function ProductCommentsPage() {
         
         allFetchedComments = [...allFetchedComments, ...commentList];
         
-        // Update state lebih sering untuk UX lebih responsif setiap 2 batch
-        if (fetchCount % 2 === 0) {
+        // Tampilkan data segera setelah batch pertama berhasil diambil
+        if (fetchCount === 1) {
+          setAllComments([...commentList]);
+          setLoadingComments(false); // Matikan loading state utama
+          
+          // Fetch detail produk untuk batch pertama
+          fetchProductDetails(commentList);
+        } else {
+          // Update state untuk batch selanjutnya
           setAllComments([...allFetchedComments]);
-          // Reset currentPage jika komentar baru di-fetch
+        }
+        
+        // Reset currentPage jika komentar baru di-fetch
+        if (fetchCount === 1) {
           setCurrentPage(1);
         }
         
@@ -385,12 +395,13 @@ export default function ProductCommentsPage() {
         }
       }
       
+      // Pastikan state terakhir memiliki semua komentar
       setAllComments(allFetchedComments);
-      // Reset ke halaman pertama setelah mendapatkan data baru
-      setCurrentPage(1);
       
-      // Mulai fetch detail produk segera setelah komentar diambil
-      fetchProductDetails(allFetchedComments);
+      // Mulai fetch detail produk untuk semua data jika belum
+      if (allFetchedComments.length > pageSize) {
+        fetchProductDetails(allFetchedComments);
+      }
       
     } catch (err) {
       console.error('Error fetching all comments:', err);
@@ -705,6 +716,11 @@ export default function ProductCommentsPage() {
                 </div>
                 {comment.rating_star === 5 && (
                   <div className="absolute -bottom-1 -right-1 bg-yellow-400 rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white dark:border-zinc-800">
+                    <StarFilledIcon className="h-2.5 w-2.5 text-white" />
+                  </div>
+                )}
+                {comment.rating_star < 3 && (
+                  <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center shadow-sm border border-white dark:border-zinc-800">
                     <StarFilledIcon className="h-2.5 w-2.5 text-white" />
                   </div>
                 )}
@@ -1041,7 +1057,7 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span>Semua</span>
-                  <Badge className="ml-1 sm:ml-1.5 bg-primary-foreground/20 text-primary-foreground border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5">
+                  <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === undefined ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating()}
                   </Badge>
                 </Button>
@@ -1155,8 +1171,8 @@ export default function ProductCommentsPage() {
     const endIndex = startIndex + itemsPerPage;
     const paginatedComments = filteredAllComments.slice(startIndex, endIndex);
     
-    if (loadingComments && !isFetchingAllComments && paginatedComments.length === 0) {
-      // Skeleton loading
+    if (loadingComments && allComments.length === 0) {
+      // Skeleton loading hanya jika tidak ada data sama sekali
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[...Array(4)].map((_, i) => (
@@ -1177,16 +1193,38 @@ export default function ProductCommentsPage() {
       );
     }
     
-    if (isFetchingAllComments) {
+    if (isFetchingAllComments && allComments.length > 0) {
+      // Tampilkan data dengan indikator loading untuk batch selanjutnya
       return (
-        <div className="flex flex-col items-center justify-center py-10">
-          <ReloadIcon className="h-8 w-8 animate-spin text-primary" />
-          <p className="mt-4 text-sm text-muted-foreground">Mengambil semua data komentar...</p>
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {paginatedComments.map((comment: CommentItem) => (
+              <CommentCard
+                key={comment.comment_id}
+                comment={comment}
+                productDetail={productsDetails[comment.item_id]}
+                selectedShopId={selectedShopId}
+              />
+            ))}
+          </div>
+          
+          {/* Tampilkan informasi bahwa masih memuat lebih banyak data */}
+          <div className="flex items-center justify-center py-3 mt-3 text-sm text-muted-foreground">
+            <ReloadIcon className="h-3 w-3 animate-spin mr-2" />
+            <span>Memuat lebih banyak ulasan...</span>
+          </div>
+          
+          {/* Pagination */}
+          <Pagination 
+            currentPage={currentPage}
+            totalItems={totalFilteredComments}
+            itemsPerPage={itemsPerPage}
+          />
+        </>
       );
     }
     
-    if (!loadingComments && paginatedComments.length === 0) {
+    if (!loadingComments && !isFetchingAllComments && paginatedComments.length === 0) {
       // Empty state
       return (
         <div className="text-center py-8 border rounded-lg bg-muted/30">

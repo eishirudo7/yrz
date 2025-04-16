@@ -4,6 +4,8 @@ import { unblockShopWebhook } from '@/app/services/shopeeService';
 import { syncOrders } from '@/app/services/orderSyncs';
 import { createClient } from '@/utils/supabase/server';
 
+
+
 export async function GET(request: NextRequest) {
     const code = request.nextUrl.searchParams.get('code');
     const shopId = request.nextUrl.searchParams.get('shop_id');
@@ -82,36 +84,27 @@ async function triggerInitialSync(shopId: number) {
 /**
  * Fungsi untuk sinkronisasi produk dari toko yang baru ditambahkan
  */
-async function syncProducts(shopId: number) {
+const syncProducts = async (shopId: number) => {
     try {
-        console.log(`Memulai sinkronisasi produk untuk toko ${shopId}...`);
-        
-        // Ambil data produk dari API
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yorozuya.me';
-        const response = await fetch(`${baseUrl}/api/produk?shop_id=${shopId}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-            throw new Error(data.error || 'Gagal mengambil data produk');
-        }
-        
-        // Buat client Supabase
-        const { createClient } = await import('@/utils/supabase/server');
-        const supabase = await createClient();
-        
-        console.log(`Memproses ${data.data.items.length} produk dari toko ${shopId}...`);
-        
-        // Simpan data produk ke database
-        let processedCount = 0;
-        for (const item of data.data.items) {
-            // Insert/Update item
-            const { error } = await supabase.from('items').upsert({
+      const supabase = await createClient();
+      
+      let totalProducts = 0
+      let processedProducts = 0
+
+      // Proses setiap toko yang dipilih
+      
+        const response = await fetch(`/api/produk?shop_id=${shopId}`)
+        const data: any = await response.json()
+
+        if (data.success) {
+          totalProducts += data.data.items.length
+
+          // Simpan data produk ke Supabase
+          for (const item of data.data.items) {
+            // Insert/Update item utama
+            const { error: itemError } = await supabase
+              .from('items')
+              .upsert({
                 item_id: item.item_id,
                 shop_id: shopId,
                 category_id: item.category_id,
@@ -134,31 +127,34 @@ async function syncProducts(shopId: number) {
                 promotion_image: item.promotion_image,
                 deboost: item.deboost === 'FALSE' ? false : true,
                 authorised_brand_id: item.authorised_brand_id
-            }, { 
+              }, { 
                 onConflict: 'item_id' 
-            });
-                
-            if (error) {
-                console.error(`Gagal menyimpan produk ${item.item_id}:`, error);
-                continue;
-            }
+              })
+
+            if (itemError) throw itemError
+
+            processedProducts++
             
-            processedCount++;
+            
+          }
+        } else {
+          throw new Error(data.error)
         }
-        
-        console.log(`Sinkronisasi produk toko ${shopId} selesai: ${processedCount}/${data.data.items.length} produk berhasil disinkronkan`);
-        
-        return {
-            success: true,
-            processed: processedCount,
-            total: data.data.items.length
-        };
-        
+      
+
+ 
+
+
+
+      return {
+        success: processedProducts,
+        total: totalProducts
+      }
     } catch (error) {
-        console.error(`Error saat melakukan sinkronisasi produk toko ${shopId}:`, error);
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
-        };
-    }
-}
+        console.log("Gagal sinkronisasi saat menambahkan toko")
+      return {
+        success: 0,
+        total: 0
+      }
+    } 
+  }
