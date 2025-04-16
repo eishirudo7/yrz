@@ -293,9 +293,12 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         to_id: messageData.to_id,
         shop_id: messageData.shop_id,
         message_type: messageData.message_type,
-        content: messageData.content,
+        content: messageData.content, // Simpan seluruh konten tanpa modifikasi
         timestamp: messageData.created_timestamp || Date.now() / 1000,
-        source_content: messageData.source_content
+        source_content: messageData.source_content,
+        created_timestamp: messageData.created_timestamp,
+        sender_name: messageData.sender_name,
+        receiver_name: messageData.receiver_name
       };
       
       // Update lastMessage untuk hooks lain yang bergantung padanya

@@ -802,26 +802,34 @@ const WebChatPage: React.FC = () => {
     }
   }, [conversations, messages, markMessageAsReadContext]);
 
-  // Efek untuk memperbarui tampilan chat saat percakapan yang dipilih mendapat pembaruan
+  // Tetap gunakan useEffect ini untuk auto mark as read
   useEffect(() => {
     if (selectedConversation && selectedConversationData) {
       // Jika percakapan yang sedang dilihat mendapat pesan yang belum dibaca
       if (selectedConversationData.unread_count > 0 && messages.length > 0 && !isLoading) {
-        // Tandai pesan sebagai dibaca setelah 500ms (memberi waktu UI dirender)
-            const timeoutId = setTimeout(() => {
-                handleMarkAsRead(selectedConversation);
-            }, 500);
-            
-            return () => clearTimeout(timeoutId);
-        }
+        // Tandai pesan sebagai dibaca setelah 1.5 detik
+        const timeoutId = setTimeout(() => {
+          handleMarkAsRead(selectedConversation);
+        }, 1500);
+        
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [selectedConversationData, selectedConversation, isLoading, messages.length, handleMarkAsRead]);
+
+  // Tambahkan useEffect untuk menangani percakapan otomatis berdasarkan lastMessage
+  useEffect(() => {
+    // Handle auto-open conversation when new message comes in
+    if (!selectedConversation && state.lastMessage && state.lastMessage.type === 'new_message') {
+      const relatedConversation = conversations.find(
+        conv => conv.conversation_id === state.lastMessage?.conversation_id
+      );
       
-      // Jika ini adalah percakapan baru yang belum pernah dibuka sebelumnya
-      if (messages.length === 0 && !isLoading) {
-        // Muat pesan-pesan dari percakapan tersebut
-      loadMoreMessages();
+      if (relatedConversation) {
+        handleConversationSelect(relatedConversation);
+      }
     }
-    }
-  }, [selectedConversationData, selectedConversation, isLoading, messages.length, handleMarkAsRead, loadMoreMessages, conversations]);
+  }, [selectedConversation, conversations, handleConversationSelect, state.lastMessage]);
 
   // Tambahkan effect untuk mengatasi loading selesai
   useEffect(() => {
@@ -831,6 +839,15 @@ const WebChatPage: React.FC = () => {
       // Scroll akan ditangani oleh efek scroll utama
     }
   }, [messages.length, isLoading, error, selectedConversation]);
+
+  // Effect untuk memuat pesan awal ketika percakapan dipilih
+  useEffect(() => {
+    // Jika ini adalah percakapan baru yang belum pernah dibuka sebelumnya
+    if (selectedConversation && messages.length === 0 && !isLoading) {
+      // Muat pesan-pesan dari percakapan tersebut
+      loadMoreMessages();
+    }
+  }, [selectedConversation, messages.length, isLoading, loadMoreMessages]);
 
   // Tambahkan flag untuk mencegah double fetch
   const [shouldFetchOrders, setShouldFetchOrders] = useState(false);

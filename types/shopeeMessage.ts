@@ -54,6 +54,10 @@ export interface UIMessage {
     shopId: number;
     orderSn: string;
   };
+  stickerData?: {
+    stickerId: string;
+    packageId: string;
+  };
   sourceContent?: SourceContent;
 }
 
@@ -70,7 +74,9 @@ export function convertToUIMessage(
       ? message.content.text || ''
       : message.message_type === 'order'
         ? 'Menampilkan detail pesanan'
-        : '',
+        : message.message_type === 'sticker'
+          ? 'Stiker'
+          : '',
     imageUrl: message.message_type === 'image'
       ? message.content.url
       : message.message_type === 'image_with_text'
@@ -89,6 +95,12 @@ export function convertToUIMessage(
       ? {
           shopId: message.content.shop_id || 0,
           orderSn: message.content.order_sn || ''
+        }
+      : undefined,
+    stickerData: message.message_type === 'sticker'
+      ? {
+          stickerId: message.content.sticker_id || '',
+          packageId: message.content.sticker_package_id || ''
         }
       : undefined,
     sourceContent: message.source_content,

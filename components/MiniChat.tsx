@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, User as UserIcon, X, Minimize, Maximize, MinusSquare, RefreshCw, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { useSSE } from '@/app/services/SSEService';
+import { useMiniChat } from '@/contexts/MiniChatContext';
 
 // Definisikan tipe Message yang sesuai dengan respons API
 interface MessageContent {
@@ -417,8 +417,10 @@ const MiniChat = React.memo(({
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [processedOrderSns, setProcessedOrderSns] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const processedMessagesRef = useRef<Set<string>>(new Set());
   
-  const { lastMessage } = useSSE();
+  // Gunakan state.lastMessage dari MiniChatContext
+  const { state } = useMiniChat();
   
   // Fungsi untuk mengambil pesan
   const fetchMessages = useCallback(async () => {
@@ -460,15 +462,29 @@ const MiniChat = React.memo(({
     }
   }, [conversationId, shopId, fetchMessages, isMinimized]);
   
-  // Tambahkan useEffect untuk SSE
+  // Gunakan lastMessage dari MiniChatContext daripada SSE langsung
   useEffect(() => {
+    const lastMessage = state.lastMessage;
+    
     if (lastMessage && 
         lastMessage.conversation_id === conversationId && 
         lastMessage.type === 'new_message') {
-      // Refresh pesan atau tambahkan pesan baru ke state
+      
+      const messageId = lastMessage.message_id;
+      
+      // Periksa apakah pesan sudah diproses sebelumnya
+      if (processedMessagesRef.current.has(messageId)) {
+        console.log(`[MiniChat] Pesan ${messageId} sudah diproses sebelumnya, diabaikan`);
+        return;
+      }
+      
+      // Tandai pesan sebagai sudah diproses
+      processedMessagesRef.current.add(messageId);
+      
+      // Refresh pesan untuk mendapatkan data lengkap
       fetchMessages();
     }
-  }, [lastMessage, conversationId]);
+  }, [state.lastMessage, conversationId, fetchMessages]);
   
   // Fungsi untuk mengirim pesan
   const handleSendMessage = useCallback(async (content: string) => {

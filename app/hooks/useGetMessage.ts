@@ -112,19 +112,37 @@ export function useConversationMessages(conversationId: string | null, shopId: n
         id: messageId,
         sender: lastMessage.from_id === shopId ? 'seller' : 'buyer',
         type: lastMessage.message_type as 'text' | 'image' | 'image_with_text' | 'order' | 'sticker',
-        content: ['text', 'image_with_text'].includes(lastMessage.message_type) ? lastMessage.content.text || '' : '',
-        imageUrl: ['image', 'image_with_text'].includes(lastMessage.message_type) ? lastMessage.content.image_url : undefined,
-        imageThumb: ['image', 'image_with_text'].includes(lastMessage.message_type) ? {
-          url: lastMessage.content.thumb_url || lastMessage.content.image_url || '',
-          height: lastMessage.content.thumb_height || 0,
-          width: lastMessage.content.thumb_width || 0
-        } : undefined,
-        orderData: lastMessage.message_type === 'order' ? {
-          shopId: lastMessage.content.shop_id || 0,
-          orderSn: lastMessage.content.order_sn || ''
-        } : undefined,
+        content: ['text', 'image_with_text'].includes(lastMessage.message_type) 
+          ? lastMessage.content.text || '' 
+          : lastMessage.message_type === 'order'
+            ? 'Menampilkan detail pesanan'
+            : lastMessage.message_type === 'sticker'
+              ? 'Stiker'
+              : '',
+        imageUrl: ['image', 'image_with_text'].includes(lastMessage.message_type) 
+          ? lastMessage.content.image_url || lastMessage.content.url
+          : undefined,
+        imageThumb: ['image', 'image_with_text'].includes(lastMessage.message_type) 
+          ? {
+              url: lastMessage.content.thumb_url || lastMessage.content.image_url || lastMessage.content.url || '',
+              height: lastMessage.content.thumb_height || 0,
+              width: lastMessage.content.thumb_width || 0
+            } 
+          : undefined,
+        orderData: lastMessage.message_type === 'order' 
+          ? {
+              shopId: lastMessage.content.shop_id || 0,
+              orderSn: lastMessage.content.order_sn || ''
+            } 
+          : undefined,
+        stickerData: lastMessage.message_type === 'sticker'
+          ? {
+              stickerId: lastMessage.content.sticker_id || '',
+              packageId: lastMessage.content.sticker_package_id || ''
+            }
+          : undefined,
         sourceContent: lastMessage.source_content || {},
-        time: new Date(lastMessage.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        time: new Date((lastMessage.created_timestamp || lastMessage.timestamp) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setMessagesState(prevMessages => {

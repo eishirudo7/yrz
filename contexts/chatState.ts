@@ -11,10 +11,29 @@ export interface SSEMessage {
   from_id: number;
   to_id: number;
   shop_id: number;
-  message_type: string;
-  content: any;
+  message_type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker';
+  content: {
+    text?: string;
+    sticker_id?: string;
+    sticker_package_id?: string;
+    image_url?: string;
+    url?: string;
+    thumb_url?: string;
+    thumb_height?: number;
+    thumb_width?: number;
+    order_sn?: string;
+    shop_id?: number;
+    [key: string]: any;
+  };
   timestamp: number;
-  source_content?: any;
+  source_content?: {
+    order_sn?: string;
+    item_id?: number;
+    [key: string]: any;
+  };
+  created_timestamp?: number;
+  sender_name?: string;
+  receiver_name?: string;
 }
 
 export interface ChatState {
