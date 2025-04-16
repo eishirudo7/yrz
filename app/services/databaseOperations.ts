@@ -196,7 +196,6 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
               .update({
                 tracking_number: trackingNo,
                 document_status: document_status,
-                is_printed: false // Default value untuk is_printed
               })
               .eq('order_sn', orderSn);
             
