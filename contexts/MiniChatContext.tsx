@@ -1,5 +1,5 @@
 'use client'
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo } from 'react';
 import { useSSE } from '@/app/services/SSEService';
 import { useUserData } from '@/contexts/UserDataContext';
 
@@ -634,17 +634,6 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }) => {
     console.log(`[MiniChat] Menerima pesan baru untuk conversation_id: ${data.conversation_id}`);
     
-    // Tambahkan debouce dengan menggunakan message_id sebagai identifier
-    // untuk mencegah pemrosesan pesan yang sama berulang kali
-    const messageKey = `processed_${data.conversation_id}_${data.message_id}`;
-    if (sessionStorage.getItem(messageKey)) {
-      console.log(`[MiniChat] Pesan dengan ID ${data.message_id} sudah diproses sebelumnya, mengabaikan`);
-      return;
-    }
-    
-    // Tandai pesan ini sudah diproses
-    sessionStorage.setItem(messageKey, Date.now().toString());
-    
     // Buat format pesan sesuai dengan struktur conversation
     const messageContent = data.content.text 
       ? { text: data.content.text } 
@@ -754,37 +743,146 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [state.conversations, dispatch, recalculateTotalUnread, fetchConversations, shops]);
   
-  // Deklarasikan variabel untuk menyimpan ID pesan terakhir yang diproses
-  const lastProcessedMessageRef = useRef<string | null>(null);
-  
-  // Mendengarkan event SSE untuk pesan baru dengan throttling
+  // Mendengarkan event SSE untuk pesan baru
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'new_message' && lastMessage.for_chat_context) {
-      const messageData = lastMessage.for_chat_context;
-      const messageId = messageData.message_id;
-      
-      // Periksa apakah ini adalah pesan yang sama dengan yang terakhir diproses
-      if (lastProcessedMessageRef.current === messageId) {
-        console.log('[MiniChat] Mengabaikan pesan duplikat:', messageId);
-        return;
-      }
-      
-      // Simpan ID pesan yang sedang diproses
-      lastProcessedMessageRef.current = messageId;
-      
       console.log('[MiniChat] Menerima event SSE baru:', {
         type: lastMessage.type,
-        conversationId: messageData.conversation_id,
-        senderId: messageData.from_id,
-        content: messageData.content.text || '[non-text content]',
-        messageId: messageId
+        conversationId: lastMessage.for_chat_context.conversation_id,
+        senderId: lastMessage.for_chat_context.from_id,
+        content: lastMessage.for_chat_context.content.text || '[non-text content]'
       });
       
-      // Update conversation dengan pesan baru (sekarang async)
-      updateConversationWithMessage(messageData)
+      // Buat fungsi handler internal yang tidak bergantung pada state
+      const handleNewMessage = async (messageData: {
+        conversation_id: string;
+        message_id: string;
+        from_id: number;
+        content: { text?: string } | any;
+        message_type: string;
+        created_timestamp: number;
+        shop_id: number;
+      }) => {
+        console.log(`[MiniChat] Menerima pesan baru untuk conversation_id: ${messageData.conversation_id}`);
+        
+        // Buat format pesan sesuai dengan struktur conversation
+        const messageContent = messageData.content.text 
+          ? { text: messageData.content.text } 
+          : messageData.content;
+          
+        // Ambil state terbaru di dalam handler - agar tidak menyebabkan dependensi
+        const currentConversations = state.conversations;
+        
+        // Cek jika conversation sudah ada
+        const existingConversation = currentConversations.find(
+          conv => conv.conversation_id === messageData.conversation_id
+        );
+        
+        if (existingConversation) {
+          console.log(`[MiniChat] Percakapan dengan ID ${messageData.conversation_id} ditemukan, melakukan update`);
+          
+          // Tentukan apakah perlu menambah unread count
+          // Tambah unread jika pengirim bukan dari toko kita
+          const unreadIncrement = messageData.from_id !== messageData.shop_id ? 1 : 0;
+          
+          dispatch({
+            type: 'UPDATE_CONVERSATION_WITH_MESSAGE',
+            payload: {
+              conversation_id: messageData.conversation_id,
+              latest_message_content: { text: typeof messageContent === 'string' ? messageContent : messageContent.text },
+              latest_message_from_id: messageData.from_id,
+              latest_message_id: messageData.message_id,
+              last_message_timestamp: messageData.created_timestamp,
+              latest_message_type: messageData.message_type,
+              unread_count_increment: unreadIncrement
+            }
+          });
+          
+          // Jika ada pesan masuk baru dan ada unread, update total unread
+          if (unreadIncrement > 0) {
+            recalculateTotalUnread();
+          }
+        } else {
+          // Percakapan belum ada, ambil detail dari API
+          console.log(`[MiniChat] Percakapan dengan ID ${messageData.conversation_id} tidak ditemukan, mengambil dari API...`);
+          
+          try {
+            const response = await fetch(
+              `/api/msg/get_one_conversation?conversationId=${messageData.conversation_id}&shopId=${messageData.shop_id}`
+            );
+            
+            if (response.ok) {
+              const conversationData = await response.json();
+              console.log(`[MiniChat] Berhasil mendapatkan data percakapan dari API:`, {
+                conversationId: messageData.conversation_id,
+                shopId: messageData.shop_id
+              });
+              
+              // Dapatkan shop_name dari UserDataContext
+              const currentShops = shops;
+              const shopInfo = currentShops.find(shop => shop.shop_id === messageData.shop_id);
+              const shopName = shopInfo ? shopInfo.shop_name : '';
+              
+              if (!shopInfo) {
+                console.warn(`[MiniChat] Shop dengan ID ${messageData.shop_id} tidak ditemukan di UserDataContext`);
+              }
+              
+              // Cek apakah respons valid
+              if (conversationData.response) {
+                // Sesuaikan dengan format get_one_conversation yang sesungguhnya
+                const conv = conversationData.response;
+                
+                // Konversi data ke format Conversation
+                const newConversation: Conversation = {
+                  conversation_id: conv.conversation_id,
+                  to_id: conv.to_id,
+                  to_name: conv.to_name,
+                  to_avatar: conv.to_avatar,
+                  shop_id: messageData.shop_id,
+                  shop_name: shopName, // Gunakan shop_name dari UserDataContext
+                  latest_message_content: conv.latest_message_content,
+                  latest_message_from_id: conv.latest_message_from_id,
+                  latest_message_id: conv.latest_message_id,
+                  last_message_timestamp: conv.last_message_timestamp,
+                  unread_count: conv.unread_count || 1,
+                  pinned: conv.pinned,
+                  last_read_message_id: conv.last_read_message_id,
+                  latest_message_type: conv.latest_message_type
+                };
+                
+                // Tambahkan percakapan baru ke state
+                dispatch({
+                  type: 'ADD_CONVERSATION',
+                  payload: newConversation
+                });
+                
+                // Recalculate total unread menggunakan fungsi yang sudah ada
+                recalculateTotalUnread();
+              } else {
+                console.error('[MiniChat] Format respons get_one_conversation tidak valid:', conversationData);
+                console.log('[MiniChat] Fallback ke refresh percakapan');
+                fetchConversations();
+              }
+            } else {
+              // Fallback ke metode yang ada jika API gagal
+              console.error('[MiniChat] Gagal mengambil detail percakapan, status:', response.status);
+              console.log('[MiniChat] Fallback ke refresh percakapan');
+              fetchConversations();
+            }
+          } catch (error) {
+            console.error('[MiniChat] Error saat mengambil detail percakapan:', error);
+            // Fallback ke refresh list
+            console.log('[MiniChat] Fallback ke refresh percakapan setelah error');
+            fetchConversations();
+          }
+        }
+      };
+      
+      // Eksekusi handler dengan pesan dari SSE
+      handleNewMessage(lastMessage.for_chat_context)
         .catch(error => console.error('[MiniChat] Error saat menangani pesan baru:', error));
     }
-  }, [lastMessage, updateConversationWithMessage]);
+  }, [lastMessage, dispatch, fetchConversations, shops, recalculateTotalUnread]); // Hilangkan state.conversations dari dependensi
   
   // Ambil daftar percakapan ketika user login berhasil (userId tersedia dan loading selesai)
   useEffect(() => {
@@ -804,12 +902,10 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     switch (update.type) {
       case 'mark_as_read':
         console.log(`[MiniChat] Menandai percakapan ${update.conversation_id} sebagai dibaca`);
-        if (update.conversation_id) {
-          dispatch({ 
-            type: 'UPDATE_CONVERSATION', 
-            payload: { type: 'mark_as_read', data: update.conversation_id } 
-          });
-        }
+        dispatch({ 
+          type: 'UPDATE_CONVERSATION', 
+          payload: { type: 'mark_as_read', data: update.conversation_id } 
+        });
         break;
         
       case 'refresh':
