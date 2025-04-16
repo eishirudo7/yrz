@@ -1,5 +1,5 @@
 'use client'
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useSSE } from '@/app/services/SSEService';
 import { useUserData } from '@/contexts/UserDataContext';
 
@@ -634,6 +634,17 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }) => {
     console.log(`[MiniChat] Menerima pesan baru untuk conversation_id: ${data.conversation_id}`);
     
+    // Tambahkan debouce dengan menggunakan message_id sebagai identifier
+    // untuk mencegah pemrosesan pesan yang sama berulang kali
+    const messageKey = `processed_${data.conversation_id}_${data.message_id}`;
+    if (sessionStorage.getItem(messageKey)) {
+      console.log(`[MiniChat] Pesan dengan ID ${data.message_id} sudah diproses sebelumnya, mengabaikan`);
+      return;
+    }
+    
+    // Tandai pesan ini sudah diproses
+    sessionStorage.setItem(messageKey, Date.now().toString());
+    
     // Buat format pesan sesuai dengan struktur conversation
     const messageContent = data.content.text 
       ? { text: data.content.text } 
@@ -743,18 +754,34 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [state.conversations, dispatch, recalculateTotalUnread, fetchConversations, shops]);
   
-  // Mendengarkan event SSE untuk pesan baru
+  // Deklarasikan variabel untuk menyimpan ID pesan terakhir yang diproses
+  const lastProcessedMessageRef = useRef<string | null>(null);
+  
+  // Mendengarkan event SSE untuk pesan baru dengan throttling
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'new_message' && lastMessage.for_chat_context) {
+      const messageData = lastMessage.for_chat_context;
+      const messageId = messageData.message_id;
+      
+      // Periksa apakah ini adalah pesan yang sama dengan yang terakhir diproses
+      if (lastProcessedMessageRef.current === messageId) {
+        console.log('[MiniChat] Mengabaikan pesan duplikat:', messageId);
+        return;
+      }
+      
+      // Simpan ID pesan yang sedang diproses
+      lastProcessedMessageRef.current = messageId;
+      
       console.log('[MiniChat] Menerima event SSE baru:', {
         type: lastMessage.type,
-        conversationId: lastMessage.for_chat_context.conversation_id,
-        senderId: lastMessage.for_chat_context.from_id,
-        content: lastMessage.for_chat_context.content.text || '[non-text content]'
+        conversationId: messageData.conversation_id,
+        senderId: messageData.from_id,
+        content: messageData.content.text || '[non-text content]',
+        messageId: messageId
       });
       
       // Update conversation dengan pesan baru (sekarang async)
-      updateConversationWithMessage(lastMessage.for_chat_context)
+      updateConversationWithMessage(messageData)
         .catch(error => console.error('[MiniChat] Error saat menangani pesan baru:', error));
     }
   }, [lastMessage, updateConversationWithMessage]);
@@ -777,10 +804,12 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     switch (update.type) {
       case 'mark_as_read':
         console.log(`[MiniChat] Menandai percakapan ${update.conversation_id} sebagai dibaca`);
-        dispatch({ 
-          type: 'UPDATE_CONVERSATION', 
-          payload: { type: 'mark_as_read', data: update.conversation_id } 
-        });
+        if (update.conversation_id) {
+          dispatch({ 
+            type: 'UPDATE_CONVERSATION', 
+            payload: { type: 'mark_as_read', data: update.conversation_id } 
+          });
+        }
         break;
         
       case 'refresh':
