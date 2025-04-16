@@ -1017,42 +1017,6 @@ const WebChatPage: React.FC = () => {
     };
   }, [selectedShop]);
 
-  useEffect(() => {
-    if (!selectedConversation) return;
-
-    const handleSSEMessage = (event: CustomEvent) => {
-      const data = event.detail;
-      
-      // Tangani pesan baru untuk percakapan yang sedang aktif
-      if (data.type === 'new_message' && data.conversation_id === selectedConversation) {
-        const newMessage = createMessageFromSSE(data);
-        setMessages(prevMessages => [...prevMessages, newMessage]);
-        
-        // Jika pesan dari pembeli, otomatis tandai sebagai dibaca setelah jeda
-        if (data.sender !== selectedShop) {
-          setTimeout(() => {
-            handleMarkAsRead(selectedConversation);
-          }, 1500);
-        }
-      } 
-      // Jika ada pesan baru untuk percakapan lain, dan tidak sedang melihat percakapan
-      else if (data.type === 'new_message' && !selectedConversation && conversations.length > 0) {
-        // Cek apakah percakapan baru sudah muncul di daftar
-        const relatedConversation = conversations.find(
-          conv => conv.conversation_id === data.conversation_id
-        );
-        
-        if (relatedConversation) {
-          // Buka percakapan dengan pesan baru jika belum ada percakapan yang dipilih
-          handleConversationSelect(relatedConversation);
-        }
-      }
-    };
-
-    window.addEventListener('sse-message', handleSSEMessage as EventListener);
-    return () => window.removeEventListener('sse-message', handleSSEMessage as EventListener);
-  }, [selectedConversation, selectedShop, conversations, handleMarkAsRead, setMessages, handleConversationSelect, createMessageFromSSE]);
-
   // Tambahkan scroll saat pesan baru masuk
   useEffect(() => {
     // Scroll ke pesan terbaru dengan delay kecil agar konten dapat dirender dulu

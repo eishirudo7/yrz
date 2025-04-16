@@ -2,6 +2,7 @@
 // Definisi tipe untuk semua possible actions
 
 import { Conversation } from './MiniChatContext';
+import { SSEMessage } from './chatState';
 
 export const chatActions = {
   // Pesan baru diterima melalui SSE
@@ -88,6 +89,12 @@ export const chatActions = {
   minimizeChat: (minimize: boolean) => ({
     type: 'MINIMIZE_CHAT', 
     payload: { minimize }
+  }),
+  
+  // Update lastMessage di state
+  updateLastMessage: (message: SSEMessage) => ({
+    type: 'UPDATE_LAST_MESSAGE',
+    payload: message
   })
 };
 
@@ -107,6 +114,7 @@ export type SetStatusFilterAction = ReturnType<typeof chatActions.setStatusFilte
 export type OpenChatAction = ReturnType<typeof chatActions.openChat>;
 export type CloseChatAction = ReturnType<typeof chatActions.closeChat>;
 export type MinimizeChatAction = ReturnType<typeof chatActions.minimizeChat>;
+export type UpdateLastMessageAction = ReturnType<typeof chatActions.updateLastMessage>;
 
 // Union semua tipe action
 export type ChatAction = 
@@ -124,4 +132,5 @@ export type ChatAction =
   | SetStatusFilterAction
   | OpenChatAction
   | CloseChatAction
-  | MinimizeChatAction; 
+  | MinimizeChatAction
+  | UpdateLastMessageAction; 

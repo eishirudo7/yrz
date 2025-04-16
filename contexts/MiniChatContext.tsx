@@ -284,6 +284,23 @@ export const MiniChatProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         content: messageData.content.text || '[non-text content]'
       });
       
+      // Perbarui lastMessage di state dengan data dari SSE
+      const sseMessage = {
+        type: lastMessage.type,
+        message_id: messageData.message_id,
+        conversation_id: messageData.conversation_id,
+        from_id: messageData.from_id,
+        to_id: messageData.to_id,
+        shop_id: messageData.shop_id,
+        message_type: messageData.message_type,
+        content: messageData.content,
+        timestamp: messageData.created_timestamp || Date.now() / 1000,
+        source_content: messageData.source_content
+      };
+      
+      // Update lastMessage untuk hooks lain yang bergantung padanya
+      dispatch(chatActions.updateLastMessage(sseMessage));
+      
       // Dispatch the message received action
       dispatch(chatActions.messageReceived(messageData));
       

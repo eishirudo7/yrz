@@ -3,6 +3,20 @@
 
 import { Conversation } from './MiniChatContext';
 
+// Definisikan tipe untuk pesan SSE yang akan disimpan
+export interface SSEMessage {
+  type: string;
+  message_id: string;
+  conversation_id: string;
+  from_id: number;
+  to_id: number;
+  shop_id: number;
+  message_type: string;
+  content: any;
+  timestamp: number;
+  source_content?: any;
+}
+
 export interface ChatState {
   isOpen: boolean;
   isMinimized: boolean;
@@ -28,6 +42,8 @@ export interface ChatState {
   processedMessageIds: Set<string>;
   // Timestamp terakhir kali pesan diterima, berguna untuk debouncing
   lastMessageTimestamp: number;
+  // Pesan SSE terakhir yang diterima
+  lastMessage: SSEMessage | null;
 }
 
 export const initialChatState: ChatState = {
@@ -44,5 +60,6 @@ export const initialChatState: ChatState = {
   isConnected: false,
   totalUnread: 0,
   processedMessageIds: new Set<string>(),
-  lastMessageTimestamp: 0
+  lastMessageTimestamp: 0,
+  lastMessage: null
 }; 

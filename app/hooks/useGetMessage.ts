@@ -1,12 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { UIMessage, ShopeeMessage, convertToUIMessage } from '@/types/shopeeMessage';
+import { useMiniChat } from '@/contexts/MiniChatContext';
 
 export function useConversationMessages(conversationId: string | null, shopId: number) {
   const [messages, setMessagesState] = useState<UIMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextOffset, setNextOffset] = useState<string | null>(null);
+  
+  // Ambil state dari MiniChatContext
+  const { state } = useMiniChat();
+  
+  // Gunakan ref untuk menyimpan ID pesan yang sudah diproses
+  const processedMessagesRef = useRef(new Set<string>());
 
   const setMessages = useCallback((updater: (prevMessages: UIMessage[]) => UIMessage[]) => {
     setMessagesState(updater);
@@ -77,50 +84,54 @@ export function useConversationMessages(conversationId: string | null, shopId: n
     fetchMessages();
   }, [fetchMessages]);
 
+  // Pantau perubahan lastMessage dari SSEService melalui MiniChatContext
   useEffect(() => {
     if (!conversationId) return;
-
-    const handleSSEMessage = (event: CustomEvent) => {
-      const data = event.detail;
-      console.log('SSE Message received:', data);
+    
+    // Ambil lastMessage dari state MiniChatContext
+    const lastMessage = state.lastMessage;
+    
+    if (lastMessage && 
+        lastMessage.type === 'new_message' && 
+        lastMessage.conversation_id === conversationId) {
       
-      if (data.type === 'new_message' && data.conversation_id === conversationId) {
-        console.log('New message for current conversation:', data);
-        
-        const newMessage: UIMessage = {
-          id: data.message_id,
-          sender: 'buyer',
-          type: data.message_type,
-          content: ['text', 'image_with_text'].includes(data.message_type) ? data.content.text || '' : '',
-          imageUrl: ['image', 'image_with_text'].includes(data.message_type) ? data.content.image_url : undefined,
-          imageThumb: ['image', 'image_with_text'].includes(data.message_type) ? {
-            url: data.content.thumb_url || data.content.image_url || '',
-            height: data.content.thumb_height || 0,
-            width: data.content.thumb_width || 0
-          } : undefined,
-          orderData: data.message_type === 'order' ? {
-            shopId: data.content.shop_id || 0,
-            orderSn: data.content.order_sn || ''
-          } : undefined,
-          sourceContent: data.source_content || {},
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-
-        setMessagesState(prevMessages => {
-          console.log('Updating messages with new message:', newMessage);
-          return [...prevMessages, newMessage];
-        });
+      const messageId = lastMessage.message_id;
+      
+      // Periksa apakah pesan sudah diproses sebelumnya
+      if (processedMessagesRef.current.has(messageId)) {
+        console.log('Pesan sudah diproses dalam useGetMessage, diabaikan:', messageId);
+        return;
       }
-    };
+      
+      console.log('Menambahkan pesan baru dari MiniChatContext:', lastMessage);
+      
+      // Tambahkan ke daftar pesan yang sudah diproses
+      processedMessagesRef.current.add(messageId);
+      
+      const newMessage: UIMessage = {
+        id: messageId,
+        sender: lastMessage.from_id === shopId ? 'seller' : 'buyer',
+        type: lastMessage.message_type as 'text' | 'image' | 'image_with_text' | 'order' | 'sticker',
+        content: ['text', 'image_with_text'].includes(lastMessage.message_type) ? lastMessage.content.text || '' : '',
+        imageUrl: ['image', 'image_with_text'].includes(lastMessage.message_type) ? lastMessage.content.image_url : undefined,
+        imageThumb: ['image', 'image_with_text'].includes(lastMessage.message_type) ? {
+          url: lastMessage.content.thumb_url || lastMessage.content.image_url || '',
+          height: lastMessage.content.thumb_height || 0,
+          width: lastMessage.content.thumb_width || 0
+        } : undefined,
+        orderData: lastMessage.message_type === 'order' ? {
+          shopId: lastMessage.content.shop_id || 0,
+          orderSn: lastMessage.content.order_sn || ''
+        } : undefined,
+        sourceContent: lastMessage.source_content || {},
+        time: new Date(lastMessage.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
 
-    console.log('Setting up SSE listener for conversation:', conversationId);
-    window.addEventListener('sse-message', handleSSEMessage as EventListener);
-
-    return () => {
-      console.log('Cleaning up SSE listener for conversation:', conversationId);
-      window.removeEventListener('sse-message', handleSSEMessage as EventListener);
-    };
-  }, [conversationId, shopId]);
+      setMessagesState(prevMessages => {
+        return [...prevMessages, newMessage];
+      });
+    }
+  }, [conversationId, shopId, state.lastMessage]);
 
   const loadMoreMessages = useCallback(() => {
     if (nextOffset) {

@@ -17,7 +17,8 @@ import {
   SetStatusFilterAction,
   OpenChatAction,
   CloseChatAction,
-  MinimizeChatAction
+  MinimizeChatAction,
+  UpdateLastMessageAction
 } from './chatActions';
 import { Conversation } from './MiniChatContext';
 
@@ -447,6 +448,14 @@ export const chatReducer = (state: ChatState = initialChatState, action: ChatAct
       return {
         ...state,
         isMinimized: payload.minimize
+      };
+    }
+    
+    case 'UPDATE_LAST_MESSAGE': {
+      const { payload } = action as UpdateLastMessageAction;
+      return {
+        ...state,
+        lastMessage: payload
       };
     }
     
