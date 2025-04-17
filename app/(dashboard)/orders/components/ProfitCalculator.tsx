@@ -153,29 +153,6 @@ export default function ProfitCalculator({
     return typeof adsSpend === 'number' && !isNaN(adsSpend) ? adsSpend : 0;
   };
   
-  // Ekstrak SKU dan kuantitas dari sku_qty string
-  const extractSkusWithQuantity = (skuQty: string): { sku: string, quantity: number }[] => {
-    if (!skuQty) return [];
-    
-    const result: { sku: string, quantity: number }[] = [];
-    const entries = skuQty.split(',').map(entry => entry.trim());
-    
-    for (const entry of entries) {
-      const match = entry.match(/(.*?)\s*\((\d+)\)/);
-      if (match) {
-        const [, skuName, quantityStr] = match;
-        const quantity = parseInt(quantityStr);
-        // Simpan SKU dengan nama asli (dengan case yang sama) dan versi normalized
-        result.push({ 
-          sku: skuName,
-          quantity 
-        });
-      }
-    }
-    
-    return result;
-  };
-  
   // Fungsi untuk mengambil semua data SKU sekaligus
   const fetchAllSkuData = async (orders: Order[]) => {
     try {
@@ -186,30 +163,6 @@ export default function ProfitCalculator({
         toast.error('Anda harus login untuk mengakses fitur ini')
         return
       }
-      
-      // Ekstrak semua SKU unik dari orders
-      const allSkus = new Set<string>();
-      const skuVariants: {[key: string]: string[]} = {};
-      
-      orders.forEach(order => {
-        if (order.sku_qty) {
-          const skuItems = extractSkusWithQuantity(order.sku_qty);
-          skuItems.forEach(item => {
-            const normalizedSku = item.sku.toUpperCase();
-            allSkus.add(normalizedSku);
-            
-            // Simpan varian nama SKU untuk referensi nanti
-            if (!skuVariants[normalizedSku]) {
-              skuVariants[normalizedSku] = [];
-            }
-            if (!skuVariants[normalizedSku].includes(item.sku)) {
-              skuVariants[normalizedSku].push(item.sku);
-            }
-          });
-        }
-      });
-      
-      if (allSkus.size === 0) return;
       
       // Query database dengan filter user_id
       const { data, error } = await createClient()
@@ -233,46 +186,31 @@ export default function ProfitCalculator({
       });
       
       // Petakan data ke setiap varian SKU
-      allSkus.forEach(normalizedSku => {
-        // Cari data dari database berdasarkan normalized SKU
-        const dataItem = dataIndex[normalizedSku] || data?.find(
-          item => item.item_sku.toUpperCase() === normalizedSku
-        );
-        
-        if (dataItem) {
-          // Gunakan data yang ditemukan di database
-          skuMap[normalizedSku] = {
-            cost_price: dataItem.cost_price,
-            margin_percentage: dataItem.margin_percentage,
-            is_using_cost: dataItem.is_using_cost
-          };
-          
-          // Terapkan juga ke varian SKU
-          if (skuVariants[normalizedSku]) {
-            skuVariants[normalizedSku].forEach(variant => {
-              skuMap[variant] = {
-                cost_price: dataItem.cost_price,
-                margin_percentage: dataItem.margin_percentage || (dataItem.cost_price ? null : defaultMargin),
-                is_using_cost: dataItem.is_using_cost
+      orders.forEach(order => {
+        if (order.items && order.items.length > 0) {
+          order.items.forEach(item => {
+            const normalizedSku = item.sku.toUpperCase();
+            if (!skuMap[normalizedSku]) {
+              skuMap[normalizedSku] = {
+                cost_price: null,
+                margin_percentage: defaultMargin,
+                is_using_cost: false
               };
-            });
-          }
-        } else {
-          // Gunakan nilai default jika tidak ada data
-          const defaultData = {
-            cost_price: null,
-            margin_percentage: defaultMargin,
-            is_using_cost: false
-          };
-          
-          skuMap[normalizedSku] = defaultData;
-          
-          // Terapkan juga ke varian SKU
-          if (skuVariants[normalizedSku]) {
-            skuVariants[normalizedSku].forEach(variant => {
-              skuMap[variant] = defaultData;
-            });
-          }
+            }
+            if (!dataIndex[normalizedSku]) {
+              dataIndex[normalizedSku] = {
+                cost_price: null,
+                margin_percentage: defaultMargin,
+                is_using_cost: false
+              };
+            }
+            skuMap[normalizedSku] = {
+              ...dataIndex[normalizedSku],
+              cost_price: dataIndex[normalizedSku].cost_price,
+              margin_percentage: dataIndex[normalizedSku].margin_percentage,
+              is_using_cost: dataIndex[normalizedSku].is_using_cost
+            };
+          });
         }
       });
       
@@ -312,25 +250,25 @@ export default function ProfitCalculator({
     };
   };
   
-  // Hitung profit untuk satu pesanan
+  // Fungsi calculateOrderProfit yang dioptimasi
   const calculateOrderProfit = (order: Order): { profit: number, details: ProfitDetailItem[] } => {
+    // Validasi escrow amount
     if (!order.escrow_amount_after_adjustment || 
-        order.escrow_amount_after_adjustment === null || 
         order.escrow_amount_after_adjustment <= 0) {
       return { profit: 0, details: [] };
     }
-    
-    const escrowAmount = parseFloat(order.escrow_amount_after_adjustment.toString());
-    
-    // Jika tidak ada sku_qty, gunakan default margin
-    if (!order.sku_qty) {
+
+    const escrowAmount = order.escrow_amount_after_adjustment;
+
+    // Jika tidak ada items atau sku_qty, gunakan default margin
+    if (!order.items || order.items.length === 0) {
       return { 
         profit: escrowAmount * defaultMargin, 
         details: [{
           sku: 'Unknown',
           quantity: 1,
           pricePerItem: escrowAmount,
-          method: 'margin',
+          method: 'margin' as const,
           value: defaultMargin,
           profitPerItem: escrowAmount * defaultMargin,
           totalProfit: escrowAmount * defaultMargin,
@@ -339,93 +277,61 @@ export default function ProfitCalculator({
         }]
       };
     }
-    
-    // Ekstrak SKU dan jumlah
-    const skuQuantities = extractSkusWithQuantity(order.sku_qty);
-    
-    if (skuQuantities.length === 0) {
-      return { 
-        profit: escrowAmount * defaultMargin, 
-        details: [{
-          sku: 'Unknown',
-          quantity: 1,
-          pricePerItem: escrowAmount,
-          method: 'margin',
-          value: defaultMargin,
-          profitPerItem: escrowAmount * defaultMargin,
-          totalProfit: escrowAmount * defaultMargin,
-          shopName: order.shop_name,
-          orderSn: order.order_sn
-        }]
-      };
-    }
-    
-    // Hitung total jumlah item
-    const totalQuantity = skuQuantities.reduce((sum, item) => sum + item.quantity, 0);
-    
-    // Hitung profit berdasarkan metode yang dipilih
+
+    // Hitung total harga dari items untuk proporsi escrow
+    const totalOrderPrice = order.items.reduce((sum, item) => sum + item.total_price, 0);
     let totalProfit = 0;
-    let usedDefaultForAll = true;
     const details: ProfitDetailItem[] = [];
-    
-    for (const { sku, quantity } of skuQuantities) {
-      const { cost_price, margin_percentage, is_using_cost } = getSkuProfitData(sku);
+
+    // Proses setiap item
+    for (const item of order.items) {
+      // Hitung proporsi escrow untuk item ini
+      const itemEscrowProportion = item.total_price / totalOrderPrice;
+      const itemEscrow = escrowAmount * itemEscrowProportion;
       
-      // Estimasi harga per item
-      const estimatedPricePerItem = escrowAmount / totalQuantity;
+      // Ambil data profit untuk SKU ini
+      const { cost_price, margin_percentage, is_using_cost } = getSkuProfitData(item.sku);
+      
       let profitPerItem = 0;
-      let method: 'modal' | 'margin' = 'margin';
+      let method: 'modal' | 'margin';
       let value = defaultMargin;
-      
-      // Hitung profit berdasarkan metode yang dipilih
+
+      // Hitung profit berdasarkan metode
       if (cost_price !== null && cost_price > 0) {
-        // Prioritas 1: Gunakan harga modal jika tersedia
+        // Metode Modal
         method = 'modal';
         value = cost_price;
-        profitPerItem = Math.max(0, estimatedPricePerItem - cost_price); // Tidak bisa rugi
-        totalProfit += profitPerItem * quantity;
-        usedDefaultForAll = false;
-      } else if (margin_percentage !== null && margin_percentage > 0) {
-        // Prioritas 2: Gunakan margin dari database jika modal tidak tersedia
-        method = 'margin';
-        value = margin_percentage;
-        profitPerItem = estimatedPricePerItem * margin_percentage;
-        totalProfit += profitPerItem * quantity;
-        usedDefaultForAll = false;
+        profitPerItem = Math.max(0, (itemEscrow / item.quantity) - cost_price);
       } else {
-        // Prioritas 3: Fallback ke default margin jika keduanya tidak tersedia
+        // Metode Margin (termasuk fallback)
         method = 'margin';
-        value = defaultMargin;
-        profitPerItem = estimatedPricePerItem * defaultMargin;
-        totalProfit += profitPerItem * quantity;
+        value = margin_percentage !== null && margin_percentage > 0 
+          ? margin_percentage 
+          : defaultMargin;
+        profitPerItem = (itemEscrow / item.quantity) * value;
       }
-      
-      // Tambahkan detail untuk SKU ini
+
+      const itemTotalProfit = profitPerItem * item.quantity;
+      totalProfit += itemTotalProfit;
+
+      // Tambahkan detail item
       details.push({
-        sku,
-        quantity,
-        pricePerItem: estimatedPricePerItem,
+        sku: item.sku,
+        quantity: item.quantity,
+        pricePerItem: itemEscrow / item.quantity,
         method,
         value,
         profitPerItem,
-        totalProfit: profitPerItem * quantity,
+        totalProfit: itemTotalProfit,
         shopName: order.shop_name,
         orderSn: order.order_sn
       });
     }
-    
-    // Jika semua menggunakan default, gunakan perhitungan sederhana
-    if (usedDefaultForAll) {
-      return { 
-        profit: escrowAmount * defaultMargin, 
-        details 
-      };
-    }
-    
+
     return { profit: totalProfit, details };
   };
   
-  // Menghitung profit untuk semua pesanan
+  // Fungsi calculateTotalProfit tetap sama, tapi sekarang menggunakan calculateOrderProfit yang dioptimasi
   const calculateTotalProfit = async () => {
     if (orders.length === 0) return;
     
@@ -433,41 +339,33 @@ export default function ProfitCalculator({
     setProfitDetails([]);
     
     try {
-      // Cek autentikasi pengguna
-      const { data: { user } } = await createClient().auth.getUser()
+      const { data: { user } } = await createClient().auth.getUser();
       
       if (!user) {
-        toast.error('Anda harus login untuk menghitung profit')
+        toast.error('Anda harus login untuk menghitung profit');
         setIsCalculating(false);
         return;
       }
       
-      // Gunakan orders langsung karena sudah difilter dari page.tsx
       await fetchAllSkuData(orders);
-      
       setDataLoaded(true);
       
-      // Hitung profit
       let profit = 0;
       let allDetails: ProfitDetailItem[] = [];
       
-      // Proses perhitungan pesanan
+      // Proses setiap order
       for (const order of orders) {
         const result = calculateOrderProfit(order);
         profit += result.profit;
         allDetails = [...allDetails, ...result.details];
       }
       
-      // Dapatkan nilai adsSpend yang benar
+      // Dapatkan nilai adsSpend yang valid
       const validAdsSpend = getValidAdsSpend();
-      
-      // Kurangi dengan biaya iklan
       const profitAfterAds = profit - validAdsSpend;
       
       setTotalProfit(profitAfterAds);
       setLastCalcTime(new Date());
-      
-      // Siapkan data detail untuk ditampilkan di dialog
       setProfitDetails(allDetails);
       
       // Buat data yang dikelompokkan berdasarkan SKU

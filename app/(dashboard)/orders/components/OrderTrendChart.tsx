@@ -36,123 +36,159 @@ const formatRupiah = (amount: number) => {
 
 // Fungsi untuk mengolah data orders menjadi format chart
 const processOrdersData = (orders: Order[], timeframe: TimeFrame): ChartData[] => {
-  const groupedData = orders.reduce((acc: { [key: string]: ChartData }, order) => {
-    const orderDate = new Date(order.create_time * 1000)
-    let key: string
-    let displayDate: string
-    let time: string | undefined
+  if (!orders || orders.length === 0) {
+    return [];
+  }
+
+  const getOrderTimestamp = (order: Order): number => {
+    // Untuk pesanan COD, selalu gunakan create_time
+    if (order.cod) {
+      return order.create_time;
+    }
+    // Untuk non-COD, gunakan pay_time jika ada, jika tidak ada gunakan create_time
+    return order.pay_time || order.create_time;
+  };
+
+  if (timeframe === 'hour') {
+    // Inisialisasi array untuk 24 jam
+    const hourlyTotals: ChartData[] = Array.from({ length: 24 }, (_, hour) => ({
+      date: '',
+      time: `${hour.toString().padStart(2, '0')}:00`,
+      datetime: new Date().setHours(hour, 0, 0, 0).toString(),
+      orders: 0,
+      amount: 0
+    }));
+
+    // Kelompokkan orders berdasarkan jam
+    orders.forEach(order => {
+      const orderDate = new Date(getOrderTimestamp(order) * 1000);
+      const hour = orderDate.getHours();
+      hourlyTotals[hour].orders += 1;
+      hourlyTotals[hour].amount += parseFloat(order.total_amount);
+    });
+
+    return hourlyTotals;
+  } else if (timeframe === 'day') {
+    // Urutkan orders berdasarkan timestamp
+    const sortedOrders = [...orders].sort((a, b) => getOrderTimestamp(a) - getOrderTimestamp(b));
     
-    if (timeframe === 'hour') {
-      // Tambah 1 jam untuk display (menunjukkan akhir periode)
-      const displayHour = new Date(orderDate)
-      displayHour.setHours(orderDate.getHours() + 1, 0, 0, 0)
-      
-      // Skip jika hasil penambahan jam menyebabkan pindah hari
-      if (displayHour.getDate() !== orderDate.getDate()) {
-        return acc // Skip data ini
-      }
-      
-      displayDate = displayHour.toLocaleDateString('id-ID', {
+    // Tentukan rentang tanggal
+    const firstOrder = new Date(getOrderTimestamp(sortedOrders[0]) * 1000);
+    const lastOrder = new Date(getOrderTimestamp(sortedOrders[sortedOrders.length - 1]) * 1000);
+    
+    // Set ke awal dan akhir hari
+    const startDate = new Date(firstOrder);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(lastOrder);
+    endDate.setHours(23, 59, 59, 999);
+
+    // Buat array untuk menyimpan data
+    const dailyData: ChartData[] = [];
+    const currentDate = new Date(startDate);
+
+    // Generate data untuk setiap hari dalam rentang waktu
+    while (currentDate <= endDate) {
+      const displayDate = currentDate.toLocaleDateString('id-ID', {
         day: '2-digit',
         month: 'short',
-      })
-      time = displayHour.toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        hour12: false
-      }) + ':00'
-      
-      key = `${displayDate} ${time}`
-    } else {
-      // Reset waktu ke 00:00:00 untuk pengelompokan per hari
-      orderDate.setHours(0, 0, 0, 0)
-      
-      displayDate = orderDate.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'short'
-      })
-      key = displayDate
-    }
-    
-    if (!acc[key]) {
-      acc[key] = {
+      });
+
+      dailyData.push({
         date: displayDate,
-        time,
-        datetime: orderDate.toISOString(),
+        datetime: currentDate.toISOString(),
         orders: 0,
         amount: 0
-      }
+      });
+
+      // Tambah 1 hari
+      currentDate.setDate(currentDate.getDate() + 1);
     }
-    
-    acc[key].orders += 1
-    acc[key].amount += parseFloat(order.total_amount)
-    
-    return acc
-  }, {})
-  
-  // Jika timeframe adalah per jam, isi jam-jam yang kosong
-  if (timeframe === 'hour') {
-    const sortedData = Object.values(groupedData).sort((a, b) => 
-      new Date(a.datetime).getTime() - new Date(b.datetime).getTime()
-    )
-    
-    if (sortedData.length > 0) {
-      const firstDate = new Date(sortedData[0].datetime)
-      const lastDate = new Date(sortedData[sortedData.length - 1].datetime)
+
+    // Kelompokkan orders ke dalam hari yang sesuai
+    sortedOrders.forEach(order => {
+      const orderDate = new Date(getOrderTimestamp(order) * 1000);
+      const orderDateStr = orderDate.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+      });
       
-      // Set jam awal ke 1 (01:00)
-      firstDate.setHours(1, 0, 0, 0)
-      
-      // Tambahkan jam saat ini juga untuk menampilkan data terbaru
-      const now = new Date()
-      const currentHour = now.getHours()
-      const nextHour = new Date(now)
-      nextHour.setHours(currentHour + 1, 0, 0, 0)
-      
-      // Gunakan jam berikutnya sebagai batas akhir jika hari sama dengan hari terakhir
-      if (now.toDateString() === lastDate.toDateString() && nextHour > lastDate) {
-        lastDate.setTime(nextHour.getTime())
+      const dayData = dailyData.find(d => d.date === orderDateStr);
+      if (dayData) {
+        dayData.orders += 1;
+        dayData.amount += parseFloat(order.total_amount);
       }
+    });
+
+    return dailyData;
+  } else {
+    // Logika untuk tampilan mingguan
+    const sortedOrders = [...orders].sort((a, b) => getOrderTimestamp(a) - getOrderTimestamp(b));
+    if (sortedOrders.length === 0) return [];
+
+    // Tentukan rentang minggu
+    const firstOrder = new Date(getOrderTimestamp(sortedOrders[0]) * 1000);
+    const lastOrder = new Date(getOrderTimestamp(sortedOrders[sortedOrders.length - 1]) * 1000);
+
+    // Set ke awal minggu (Senin) dan akhir minggu (Minggu)
+    const startDate = new Date(firstOrder);
+    startDate.setDate(startDate.getDate() - startDate.getDay() + (startDate.getDay() === 0 ? -6 : 1)); // Mulai dari Senin
+    startDate.setHours(0, 0, 0, 0);
+
+    const endDate = new Date(lastOrder);
+    endDate.setDate(endDate.getDate() + (7 - endDate.getDay())); // Sampai Minggu
+    endDate.setHours(23, 59, 59, 999);
+
+    // Buat array untuk menyimpan data mingguan
+    const weeklyData: ChartData[] = [];
+    const currentDate = new Date(startDate);
+
+    // Generate data untuk setiap minggu dalam rentang waktu
+    while (currentDate <= endDate) {
+      const weekStart = new Date(currentDate);
+      const weekEnd = new Date(currentDate);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      const weekLabel = `${weekStart.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short'
+      })} - ${weekEnd.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'short'
+      })}`;
+
+      weeklyData.push({
+        date: weekLabel,
+        datetime: currentDate.toISOString(),
+        orders: 0,
+        amount: 0
+      });
+
+      // Pindah ke minggu berikutnya
+      currentDate.setDate(currentDate.getDate() + 7);
+    }
+
+    // Kelompokkan orders ke dalam minggu yang sesuai
+    sortedOrders.forEach(order => {
+      const orderDate = new Date(getOrderTimestamp(order) * 1000);
       
-      // Isi data untuk setiap jam
-      const filledData: { [key: string]: ChartData } = {}
-      const currentDate = new Date(firstDate)
-      
-      while (currentDate <= lastDate) {
-        // Skip jika jam 00:00
-        if (currentDate.getHours() !== 0) {
-          const displayDate = currentDate.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: 'short',
-          })
-          const time = currentDate.toLocaleTimeString('id-ID', {
-            hour: '2-digit',
-            hour12: false
-          }) + ':00'
-          const key = `${displayDate} ${time}`
-          
-          if (!groupedData[key]) {
-            filledData[key] = {
-              date: displayDate,
-              time,
-              datetime: currentDate.toISOString(),
-              orders: 0,
-              amount: 0
-            }
-          } else {
-            filledData[key] = groupedData[key]
-          }
-        }
+      // Cari minggu yang sesuai
+      const weekData = weeklyData.find(week => {
+        const weekStart = new Date(week.datetime);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
         
-        // Tambah 1 jam
-        currentDate.setHours(currentDate.getHours() + 1)
+        return orderDate >= weekStart && orderDate <= weekEnd;
+      });
+
+      if (weekData) {
+        weekData.orders += 1;
+        weekData.amount += parseFloat(order.total_amount);
       }
-      
-      return Object.values(filledData)
-    }
+    });
+
+    return weeklyData;
   }
-  
-  return Object.values(groupedData)
-    .sort((a, b) => new Date(a.datetime).getTime() - new Date(b.datetime).getTime())
 }
 
 // Custom Tooltip Component
@@ -230,7 +266,7 @@ const calculateHourInterval = (dataLength: number) => {
 
 // Tambah konstanta untuk batasan
 const MAX_DAILY_RANGE = 31 // maksimal 31 hari
-const MAX_HOURLY_RANGE = 2 // maksimal 2 hari untuk view per jam
+const MAX_HOURLY_RANGE = 7 // maksimal 2 hari untuk view per jam
 
 // Modifikasi fungsi shouldUseHourlyView
 const getViewRecommendation = (orders: Order[]): {
@@ -435,7 +471,7 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart 
               data={data}
-              margin={{ top: 25 , right: 10, left: 10, bottom: 0 }}
+              margin={{ top: 25, right: 10, left: 10, bottom: 10 }}
             >
               <CartesianGrid 
                 strokeDasharray="3 3" 
@@ -449,14 +485,11 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
                 axisLine={false}
                 fontSize={12}
                 tickMargin={8}
-                interval={timeframe === 'hour' ? calculateHourInterval(data.length) : (data.length > 15 ? Math.ceil(data.length / 10) : 0)}
-                minTickGap={20}
+                interval={timeframe === 'hour' ? 2 : 'preserveStartEnd'}
                 padding={{ left: 10, right: 10 }}
                 tick={{ fill: chartColors.label }}
               />
-              <YAxis
-                hide={true}
-              />
+              <YAxis hide={true} />
               <Tooltip 
                 content={(props) => <CustomTooltip {...props} timeframe={timeframe} />} 
                 cursor={{ stroke: isDarkMode ? '#666' : '#999', strokeWidth: 1, strokeDasharray: '5 5' }}
@@ -477,14 +510,15 @@ export const OrderTrendChart = ({ orders }: { orders: Order[] }) => {
                 activeDot={{ r: 6, strokeWidth: 2, stroke: isDarkMode ? "white" : "#3b82f6" }}
                 dot={{ r: 4, strokeWidth: 2, stroke: isDarkMode ? "white" : "#3b82f6" }}
               >
-                <LabelList 
-                  dataKey={showAmount ? "amount" : "orders"} 
-                  position="top" 
-                  offset={12}
-                  formatter={(value: number) => showAmount ? formatAmountLabel(value) : value}
-                  fontSize={10}
-                  fill={chartColors.label}
-                  angle={showAmount && data.length > 10 ? -45 : 0}
+                <LabelList
+                  dataKey={showAmount ? "amount" : "orders"}
+                  position="top"
+                  offset={10}
+                  formatter={showAmount ? formatAmountLabel : (value: any) => value}
+                  style={{
+                    fontSize: '10px',
+                    fill: chartColors.label
+                  }}
                 />
               </Area>
             </AreaChart>

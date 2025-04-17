@@ -11,20 +11,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { 
   Calendar as CalendarIcon, 
-  CheckCircle, 
   RefreshCw, 
   AlertCircle, 
   RotateCcw, 
-  TrendingUp,
   MegaphoneIcon,
-  CreditCard, 
   Wallet, 
   AlertTriangle,
-  Package, 
   Clock, 
   Truck, 
-  XCircle, 
-  ShoppingCart, 
   ShoppingBag,
   Search, 
   X, 
@@ -73,7 +67,8 @@ import { useTheme } from "next-themes"
 import ChatButton from '@/components/ChatButton'
 import ProfitCalculator from './components/ProfitCalculator'
 
-function formatDate(timestamp: number): string {
+function formatDate(order: Order): string {
+  const timestamp = order.cod ? order.create_time : (order.pay_time || order.create_time);
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
     day: 'numeric',
     month: 'short',
@@ -262,8 +257,7 @@ export default function OrdersPage() {
   const ITEMS_PER_PAGE = 20
   const { searchOrders, searchResults, loading: searchLoading } = useOrderSearch()
   
-  // Tambahkan state untuk modal ringkasan
-  const [showSummary, setShowSummary] = useState(false)
+
 
   // Tambahkan state untuk tracking toko yang sedang dibuka
   const [expandedShop, setExpandedShop] = useState<string | null>(null);
@@ -429,6 +423,10 @@ export default function OrdersPage() {
         case 'UNPAID':
           acc.pending++;
           break;
+        case 'READY_TO_SHIP':  // Tambahkan case untuk READY_TO_SHIP
+          acc.process++;
+          acc.total++;
+          break;
         case 'PROCESSED':
           acc.process++;
           acc.total++;
@@ -501,6 +499,10 @@ export default function OrdersPage() {
       switch (order.order_status) {
         case 'UNPAID':
           acc.pending++;
+          break;
+        case 'READY_TO_SHIP':  // Tambahkan case untuk READY_TO_SHIP
+          acc.process++;
+          acc.total++;
           break;
         case 'PROCESSED':
           acc.process++;
@@ -1669,7 +1671,7 @@ export default function OrdersPage() {
                   >
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center">{index + 1}</TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap max-w-[80px] sm:max-w-none overflow-hidden text-ellipsis">{order.shop_name}</TableCell>
-                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.create_time)}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order)}</TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <Popover>

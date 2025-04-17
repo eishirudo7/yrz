@@ -20,6 +20,7 @@ interface MessageContent {
   thumb_width?: number;      // Dimensi thumbnail
   order_sn?: string;         // Tambahkan untuk tipe pesan 'order'
   shop_id?: number;          // Tambahkan untuk tipe pesan 'order'
+  item_id?: number;          // Tambahkan untuk tipe pesan 'item'
 }
 
 interface Message {
@@ -298,6 +299,22 @@ const ChatMessage = React.memo(({
                 <span className="text-[10px] text-blue-600 dark:text-gray-400 font-medium">ORDER SN:</span>
                 <span className="text-[10px] font-mono font-medium text-blue-700 dark:text-gray-200">{message.content.order_sn}</span>
               </div>
+            )}
+          </div>
+        );
+      case 'item':
+        return (
+          <div className="text-xs">
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className="w-3 h-3 rounded-full bg-green-500/20 flex items-center justify-center">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 4L3 6L7 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className="font-medium">Detail Produk</span>
+            </div>
+            {message.content.item_id && (
+              <ItemPreview itemId={message.content.item_id} />
             )}
           </div>
         );

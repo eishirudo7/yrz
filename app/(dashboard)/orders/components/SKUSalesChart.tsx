@@ -318,7 +318,7 @@ export const SKUSalesChart = ({ orders }: { orders: Order[] }) => {
               <ResponsiveContainer width="100%" height={limit <= 5 ? 200 : 240}>
                 <BarChart 
                   data={chartData}
-                  margin={{ top: 5, right: 0, left: 0, bottom: limit === 20 ? 30 : 15 }}
+                  margin={{ top: 15, right: 0, left: 0, bottom: limit === 20 ? 30 : 15 }}
                   barGap={2}
                   maxBarSize={40}
                 >

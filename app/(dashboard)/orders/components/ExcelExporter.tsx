@@ -5,9 +5,17 @@ import { RefreshCw, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { type Order } from '@/app/hooks/useOrders'
+import { Order } from '@/app/hooks/useOrders'
 
-
+interface OrderItem {
+  sku: string;
+  quantity: number;
+  price: number;
+  total_price: number;
+  is_using_cost?: boolean;
+  cost_price?: number;
+  margin_percentage?: number;
+}
 
 // Interface untuk item rincian profit
 interface ProfitDetailItem {
@@ -97,119 +105,140 @@ export default function ExcelExporter({
       setIsExporting(true);
       toast.info('Mempersiapkan data laporan...');
       
-      // Jika tidak ada detail profit dan ada fungsi kalkulasi, panggil fungsi tersebut
-      if (profitDetails.length === 0 && calculateTotalProfit) {
-        await calculateTotalProfit();
-      }
+      // Buat workbook dan worksheet di awal
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Profit Calculator';
+      workbook.created = new Date();
       
+      const worksheet = workbook.addWorksheet('Laporan Profit', {
+        views: [{ state: 'frozen', ySplit: 1 }]
+      });
+
+      // Definisikan kolom-kolom
+      worksheet.columns = [
+        { header: 'Nomor Pesanan', key: 'order_sn', width: 20 },
+        { header: 'Tanggal', key: 'date', width: 12 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Toko', key: 'shop', width: 25 },
+        { header: 'SKU', key: 'sku', width: 30 },
+        { header: 'Quantity', key: 'quantity', width: 10 },
+        { header: 'Harga Asli', key: 'original_price', width: 15 },
+        { header: 'Total Harga', key: 'total_price', width: 15 },
+        { header: 'Proporsi', key: 'proportion', width: 12, hidden: true },
+        { header: 'Dana Diterima', key: 'escrow', width: 15 },
+        { header: 'Metode', key: 'method', width: 10 },
+        { header: 'Nilai', key: 'value', width: 15 },
+        { header: 'Laba Kotor', key: 'profit', width: 15 }
+      ];
+
+      // Style header
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE6F0F5' }
+      };
+
       // Bagi data menjadi chunks untuk mencegah browser freeze
       const chunks = [];
       for (let i = 0; i < orders.length; i += 1000) {
         chunks.push(orders.slice(i, i + 1000));
       }
       
-      // Siapkan data untuk export
-      interface ExportDataItem {
-        'Nomor Pesanan': string;
-        'Tanggal': string;
-        'Status': string;
-        'Toko': string;
-        'Produk': string;
-        'Harga': number | string;
-        'Dana Diterima': number;
-        'Margin/Modal': number;
-        'Laba Kotor': number;
-        '_shop_id': number;
-        '_margin_value': number;
-        '_metode': 'modal' | 'margin' | string;
-      }
-      
-      const exportData: ExportDataItem[] = [];
-      
       // Proses per batch untuk data besar
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         
-        // Update progress
         toast.info(`Memproses batch ${i+1} dari ${chunks.length}...`);
-        
-        // Berikan kesempatan UI untuk update
         await new Promise(resolve => setTimeout(resolve, 0));
         
         // Proses setiap order dalam chunk
         for (const order of chunk) {
-          // Cari detail profit untuk order ini
-          const orderDetails = profitDetails.filter(d => d.orderSn === order.order_sn);
-          
-          // Hitung total profit untuk order ini
-          const profit = orderDetails.reduce((sum, detail) => sum + detail.totalProfit, 0);
-          
-          // Ekstrak semua informasi penting
+          if (!order.items || order.items.length === 0) continue;
+
+          // Hitung total harga order untuk proporsi
+          const totalOrderPrice = order.items.reduce((sum, item) => sum + item.total_price, 0);
           const escrowAmount = order.escrow_amount_after_adjustment || 0;
-          
-          // Ambil nilai metode perhitungan (nilai modal atau margin)
-          let nilaiMetode = '';
-          let marginValue = 0;
-          if (orderDetails.length > 0) {
-            const firstDetail = orderDetails[0];
-            if (firstDetail.method === 'modal') {
-              nilaiMetode = `Rp ${Math.round(firstDetail.value).toLocaleString('id-ID')}`;
-              marginValue = firstDetail.value;
-            } else {
-              // Untuk margin, cek apakah perlu desimal
-              marginValue = firstDetail.value * 100;
-              nilaiMetode = marginValue % 1 === 0 ? `${Math.round(marginValue)}%` : `${marginValue.toFixed(1)}%`;
-            }
-          }
-          
-          // Perkiraan harga total produk
-          const hargaProduk = order.total_amount || escrowAmount;
-          
-          // Format tanggal - perbaiki konversi Unix timestamp
-          let tanggal = '';
-          if (order.create_time) {
-            // Jika timestamp dalam format Unix (detik), kalikan dengan 1000 untuk milidetik
-            const timestamp = typeof order.create_time === 'number' && order.create_time < 10000000000
-              ? order.create_time * 1000  // Unix timestamp dalam detik
-              : order.create_time;        // Sudah dalam milidetik atau format lain
+
+          // Proses setiap item dalam order
+          for (const item of order.items) {
+            // Cari data profit untuk SKU ini dari profitDetails
+            const profitDetail = profitDetails.find(detail => 
+              detail.sku === item.sku && 
+              detail.orderSn === order.order_sn
+            );
+
+            // Gunakan data dari profitDetail jika ada
+            const method = profitDetail ? profitDetail.method === 'modal' ? 'Modal' : 'Margin' : 'Margin';
+            // Untuk margin, simpan dalam format desimal (misal 0.137 untuk 13.7%)
+            const value = profitDetail ? profitDetail.value : 0.15;
             
-            tanggal = new Date(timestamp).toLocaleDateString('id-ID');
+            // Hitung proporsi escrow
+            const itemEscrowProportion = item.total_price / totalOrderPrice;
+            const itemEscrow = escrowAmount * itemEscrowProportion;
+
+            // Tambah baris dengan rumus Excel
+            const rowNumber = worksheet.rowCount + 1;
+            worksheet.addRow({
+              order_sn: order.order_sn,
+              date: new Date(order.create_time * 1000).toLocaleDateString('id-ID'),
+              status: order.order_status,
+              shop: order.shop_name,
+              sku: item.sku,
+              quantity: item.quantity,
+              original_price: item.price,
+              total_price: item.total_price,
+              proportion: Number(itemEscrowProportion.toFixed(1)),
+              escrow: itemEscrow,
+              method: method,
+              value: method === 'Modal' ? value : value * 100
+            });
+
+            // Set format untuk kolom proporsi (kolom I)
+            worksheet.getCell(`I${rowNumber}`).numFmt = '0.0';
+
+            // Tambahkan rumus Excel untuk Laba Kotor
+            const escrowCell = `J${rowNumber}`; // Kolom Dana Diterima
+            const methodCell = `K${rowNumber}`; // Kolom Metode
+            const valueCell = `L${rowNumber}`; // Kolom Nilai
+            const qtyCell = `F${rowNumber}`; // Kolom Quantity
+
+            // Formula yang lebih sederhana karena menggunakan nilai numerik
+            worksheet.getCell(`M${rowNumber}`).value = {
+              formula: `=IF(${methodCell}="Modal",${escrowCell}-${valueCell}*${qtyCell},${escrowCell}*${valueCell}/100)`
+            };
+
+            // Format kolom nilai sesuai dengan metode
+            worksheet.getCell(`L${rowNumber}`).numFmt = method === 'Modal' ? '#,##0' : '0.0"%"';
+            // Format kolom laba kotor
+            worksheet.getCell(`M${rowNumber}`).numFmt = '#,##0';
+
+            // Tambahkan validasi untuk memastikan nilai yang benar
+            console.log('Debug profit calculation:', {
+              orderSn: order.order_sn,
+              sku: item.sku,
+              escrow: itemEscrow,
+              method: method,
+              value: value,
+              expectedProfit: method === 'Modal' ? 
+                itemEscrow - (value * item.quantity) : 
+                itemEscrow * value
+            });
           }
-          
-          exportData.push({
-            'Nomor Pesanan': order.order_sn,
-            'Tanggal': tanggal,
-            'Status': order.order_status || 'Tidak diketahui',
-            'Toko': order.shop_name || 'Tidak diketahui',
-            'Produk': order.sku_qty || '-',
-            'Harga': hargaProduk,
-            'Dana Diterima': escrowAmount,
-            'Margin/Modal': marginValue,
-            'Laba Kotor': profit,
-            '_shop_id': order.shop_id || 0,
-            '_margin_value': marginValue,
-            '_metode': orderDetails.length > 0 ? orderDetails[0].method : 'margin'
-          });
         }
       }
       
       toast.info('Membuat file Excel...');
       
-      // Kelompokkan pesanan berdasarkan toko dan urutkan berdasarkan nama toko
-      exportData.sort((a, b) => {
-        if (a['Toko'] < b['Toko']) return -1;
-        if (a['Toko'] > b['Toko']) return 1;
-        return 0;
-      });
-      
-      // Buat workbook dan worksheet dengan ExcelJS
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'Profit Calculator';
-      workbook.created = new Date();
-      
-      const worksheet = workbook.addWorksheet('Laporan Profit', {
-        views: [{ state: 'frozen', ySplit: 1 }] // Freeze header row
-      });
+      // Ganti worksheet.sort dengan:
+      const dataRows = worksheet.getRows(2, worksheet.rowCount - 1);
+      if (dataRows) {
+        dataRows.sort((a, b) => {
+          const shopA = a.getCell('shop').value as string;
+          const shopB = b.getCell('shop').value as string;
+          return shopA.localeCompare(shopB);
+        });
+      }
       
       // Tambahkan penjelasan di bagian atas worksheet
       const infoSheet = workbook.addWorksheet('Info Perhitungan', {
@@ -269,174 +298,8 @@ export default function ExcelExporter({
       infoSheet.getColumn('D').width = 25;
       infoSheet.getColumn('E').width = 15;
       
-      // Kembali ke worksheet utama (tidak menggunakan activate yang tidak didukung)
-      
-      // Definisikan kolom-kolom dengan alignment
-      const columns = [
-        { header: 'Nomor Pesanan', key: 'Nomor Pesanan', width: 20 },
-        { header: 'Tanggal', key: 'Tanggal', width: 12 },
-        { header: 'Status', key: 'Status', width: 15 },
-        { header: 'Toko', key: 'Toko', width: 25 },
-        { header: 'Produk', key: 'Produk', width: 30 },
-        { header: 'Harga', key: 'Harga', width: 15 },
-        { header: 'Dana Diterima', key: 'Dana Diterima', width: 15 },
-        { header: 'Margin/Modal', key: 'Margin/Modal', width: 15 },
-        { header: 'Laba Kotor', key: 'Laba Kotor', width: 15 },
-      ];
-      
-      worksheet.columns = columns;
-      
-      // Style header row
-      const headerRow = worksheet.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE6F0F5' } // Light blue background
-      };
-      headerRow.border = {
-        bottom: { style: 'thin' }
-      };
-      
-      // Set alignment untuk seluruh header
-      headerRow.eachCell((cell) => {
-        cell.alignment = { 
-          horizontal: 'center', 
-          vertical: 'middle' 
-        };
-      });
-      
-      // Tambahkan catatan pada header kolom Laba Kotor
-      const labaKotorHeader = worksheet.getCell(1, 9); // Kolom I baris 1
-      labaKotorHeader.note = {
-        texts: [
-          { text: 'Informasi Perhitungan Laba Kotor:\n', font: { bold: true } },
-          { text: '• Jika Margin/Modal berformat mata uang (Rp): Laba Kotor = Dana Diterima - Harga Modal\n' },
-          { text: '• Jika Margin/Modal berformat persentase (%): Laba Kotor = Dana Diterima × Persentase Margin\n\n' },
-          { text: 'Rumus yang digunakan otomatis menyesuaikan dengan format nilai di kolom Margin/Modal.' }
-        ],
-        margins: { insetmode: 'auto' }
-      };
-      
-      // Add data rows
-      const visibleData = exportData.map(item => {
-        // Ubah isi exportData untuk kolom Margin/Modal - simpan nilai numerik asli
-        const { _shop_id, _margin_value, _metode, ...rest } = item;
-        return {
-          ...rest,
-          'Margin/Modal': _margin_value // Simpan nilai numerik saja
-        };
-      });
-      
-      visibleData.forEach((data, index) => {
-        worksheet.addRow(data);
-      });
-      
-      // Optimalkan tinggi baris berdasarkan konten
-      worksheet.properties.defaultRowHeight = 20; // Tinggi default yang lebih optimal
-      
-      // Auto-fit baris untuk konten yang panjang pada kolom produk
-      for (let rowNumber = 2; rowNumber <= visibleData.length + 1; rowNumber++) {
-        const row = worksheet.getRow(rowNumber);
-        const produktText = row.getCell(5).text || ''; // Kolom produk (E)
-        
-        // Jika teks produk panjang, sesuaikan tinggi baris
-        if (produktText.length > 50) {
-          row.height = Math.min(50, 20 + Math.floor(produktText.length / 30) * 5);
-        }
-        
-        // Aktifkan text wrapping untuk kolom produk
-        row.getCell(5).alignment = { 
-          wrapText: true, 
-          vertical: 'middle' 
-        };
-      }
-      
-      // Format cells berdasarkan tipe data
-      for (let rowNumber = 2; rowNumber <= visibleData.length + 1; rowNumber++) {
-        const originalData = exportData[rowNumber - 2];
-        const row = worksheet.getRow(rowNumber);
-        
-        // Atur vertical alignment untuk semua sel
-        row.eachCell((cell) => {
-          const existingAlignment = cell.alignment || {};
-          cell.alignment = { 
-            ...existingAlignment,
-            vertical: 'middle' 
-          };
-        });
-        
-        // Format untuk kolom Harga dan Dana Diterima
-        worksheet.getCell(rowNumber, 6).numFmt = '"Rp "#,##0'; // Harga
-        worksheet.getCell(rowNumber, 6).alignment = { 
-          horizontal: 'right',
-          vertical: 'middle'
-        };
-        
-        worksheet.getCell(rowNumber, 7).numFmt = '"Rp "#,##0'; // Dana Diterima
-        worksheet.getCell(rowNumber, 7).alignment = { 
-          horizontal: 'right',
-          vertical: 'middle'
-        };
-        
-        // Format untuk kolom nomor pesanan dan tanggal
-        worksheet.getCell(rowNumber, 1).alignment = { // Nomor Pesanan
-          horizontal: 'left',
-          vertical: 'middle'
-        };
-        
-        worksheet.getCell(rowNumber, 2).alignment = { // Tanggal
-          horizontal: 'center',
-          vertical: 'middle'
-        };
-        
-        worksheet.getCell(rowNumber, 3).alignment = { // Status
-          horizontal: 'center',
-          vertical: 'middle'
-        };
-        
-        worksheet.getCell(rowNumber, 4).alignment = { // Toko
-          horizontal: 'left',
-          vertical: 'middle'
-        };
-        
-        // Format untuk kolom Margin/Modal berdasarkan metode
-        const marginModalCell = worksheet.getCell(rowNumber, 8);
-        if (originalData._metode === 'modal') {
-          marginModalCell.numFmt = '"Rp "#,##0'; // Format currency untuk modal
-        } else {
-          marginModalCell.numFmt = '0.0"%"'; // Format persentase untuk margin
-        }
-        marginModalCell.alignment = { 
-          horizontal: 'center',
-          vertical: 'middle'
-        };
-        
-        // Ganti nilai Laba Kotor dengan rumus Excel yang lebih cerdas
-        const labaKotorCell = worksheet.getCell(rowNumber, 9); // Kolom Laba Kotor (I)
-        
-        // Buat kolom tersembunyi untuk jenis perhitungan (AA)
-        const metodeCol = 27; // Kolom AA (27)
-        const metodeCell = worksheet.getCell(rowNumber, metodeCol);
-        metodeCell.value = originalData._metode; // Simpan string "modal" atau "margin"
-        
-        // Gunakan pendekatan dengan fungsi FIND untuk mendeteksi metode berdasarkan format
-        // FIND mencari pola format dan mengembalikan posisi jika ditemukan atau #VALUE! jika tidak
-        // Kita gunakan ini untuk mendeteksi apakah sel menggunakan format Rupiah atau Persentase
-        labaKotorCell.value = { 
-          formula: `IF(${metodeCell.address}="modal", G${rowNumber}-H${rowNumber}, G${rowNumber}*(H${rowNumber}/100))` 
-        };
-        
-        // Format untuk kolom Laba Kotor
-        labaKotorCell.numFmt = '"Rp "#,##0';
-        labaKotorCell.alignment = { 
-          horizontal: 'right',
-          vertical: 'middle'
-        };
-      }
-      
       // Tambahkan kolom untuk ringkasan per toko
-      const shopSummaryCol = 11; // Kolom K
+      const shopSummaryCol = 15; // Kolom O (setelah kolom data utama dengan jarak 1 kolom)
       
       // Tambahkan header untuk ringkasan per toko
       const shopSummaryHeader = worksheet.getCell(1, shopSummaryCol);
@@ -475,13 +338,18 @@ export default function ExcelExporter({
       });
       
       // Hitung jumlah pesanan per toko
-      const orderCountByShop: {[key: number]: number} = {};
-      exportData.forEach(item => {
-        const shopId = item._shop_id;
-        if (!orderCountByShop[shopId]) {
-          orderCountByShop[shopId] = 0;
+      const orderCountByShop: Record<string, Set<string>> = {};
+      worksheet.eachRow((row: ExcelJS.Row, rowNumber: number) => {
+        if (rowNumber === 1) return; // Skip header
+        
+        const shop = row.getCell('shop').value as string;
+        const orderSn = row.getCell('order_sn').value as string;
+        if (shop) {
+          if (!orderCountByShop[shop]) {
+            orderCountByShop[shop] = new Set();
+          }
+          orderCountByShop[shop].add(orderSn);
         }
-        orderCountByShop[shopId]++;
       });
       
       // Kumpulkan data per toko dari shopProfitData
@@ -498,37 +366,24 @@ export default function ExcelExporter({
         const shopNameCell = worksheet.getCell(row, shopSummaryCol);
         shopNameCell.value = shop.shopName;
         
-        // Jumlah Pesanan
+        // Jumlah Pesanan (hitung dari order_sn yang unik)
         const orderCountCell = worksheet.getCell(row, shopSummaryCol + 1);
-        orderCountCell.value = orderCountByShop[shop.shopId] || 0;
+        orderCountCell.value = orderCountByShop[shop.shopName]?.size || 0;
         orderCountCell.alignment = { horizontal: 'center' };
         
         // Dana Diterima - Gunakan rumus SUMIF untuk menghitung escrow per toko
         const escrowCell = worksheet.getCell(row, shopSummaryCol + 2);
-        const shopRows = exportData.filter(item => item._shop_id === shop.shopId)
-          .map(item => {
-            const foundItem = visibleData.find(v => v['Nomor Pesanan'] === item['Nomor Pesanan']);
-            return foundItem ? visibleData.indexOf(foundItem) + 2 : -1;
-          })
-          .filter(index => index !== -1); // Hapus indeks yang tidak valid
-        
-        if (shopRows.length > 0) {
-          // Jika ada baris untuk toko ini, buat rumus SUMIF yang menghitung dari data asli
-          escrowCell.value = { formula: 'SUMIF(D2:D' + (visibleData.length + 1) + ',"' + shop.shopName + '",G2:G' + (visibleData.length + 1) + ')' };
-        } else {
-          // Fallback jika tidak ada data untuk toko ini
-          escrowCell.value = 0;
-        }
+        escrowCell.value = { 
+          formula: `=SUMIF(D:D,"${shop.shopName}",J:J)` // D kolom Toko, J kolom Dana Diterima
+        };
         escrowCell.numFmt = '"Rp "#,##0';
         escrowCell.alignment = { horizontal: 'right' };
         
         // Laba Kotor - Gunakan rumus SUMIF untuk menghitung Laba Kotor per toko
         const profitCell = worksheet.getCell(row, shopSummaryCol + 3);
-        if (shopRows.length > 0) {
-          profitCell.value = { formula: 'SUMIF(D2:D' + (visibleData.length + 1) + ',"' + shop.shopName + '",I2:I' + (visibleData.length + 1) + ')' };
-        } else {
-          profitCell.value = 0;
-        }
+        profitCell.value = { 
+          formula: `=SUMIF(D:D,"${shop.shopName}",M:M)` // M kolom Laba Kotor
+        };
         profitCell.numFmt = '"Rp "#,##0';
         profitCell.alignment = { horizontal: 'right' };
         
@@ -670,11 +525,11 @@ export default function ExcelExporter({
         // Gunakan rumus Excel untuk semua perhitungan
         if (item.label === 'Total Dana Diterima') {
           // Gunakan SUM untuk total dana diterima (kolom Dana Diterima)
-          valueCell.value = { formula: 'SUM(G2:G' + (visibleData.length + 1) + ')' };
+          valueCell.value = { formula: 'SUM(J2:J' + (worksheet.rowCount + 1) + ')' };
         } 
         else if (item.label === 'Total Laba Kotor') {
           // Gunakan SUM untuk total laba kotor (kolom Laba Kotor)
-          valueCell.value = { formula: 'SUM(I2:I' + (visibleData.length + 1) + ')' };
+          valueCell.value = { formula: 'SUM(M2:M' + (worksheet.rowCount + 1) + ')' };
         }
         else if (item.label === 'Biaya Iklan') {
           // Tetap menggunakan nilai biaya iklan, tapi bisa dimodifikasi nanti oleh pengguna
@@ -759,9 +614,9 @@ export default function ExcelExporter({
       }
       
       // Buat alternating row colors untuk data
-      for (let rowNumber = 2; rowNumber <= visibleData.length + 1; rowNumber++) {
+      for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
         if (rowNumber % 2 === 0) { // even rows
-          for (let colNumber = 1; colNumber <= 9; colNumber++) {
+          for (let colNumber = 1; colNumber <= worksheet.columnCount; colNumber++) {
             const cell = worksheet.getCell(rowNumber, colNumber);
             cell.fill = {
               type: 'pattern',

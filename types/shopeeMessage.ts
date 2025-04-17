@@ -10,6 +10,7 @@ export interface MessageContent {
   thumb_width?: number;
   order_sn?: string;
   shop_id?: number;
+  item_id?: number;
 }
 
 // Tipe untuk source content
@@ -25,7 +26,7 @@ export interface ShopeeMessage {
   to_id: number;
   from_shop_id: number;
   to_shop_id: number;
-  message_type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker';
+  message_type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
   content: MessageContent;
   conversation_id: string;
   created_timestamp: number;
@@ -43,7 +44,7 @@ export interface UIMessage {
   sender: 'buyer' | 'seller';
   content: string;
   time: string;
-  type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker';
+  type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
   imageUrl?: string;
   imageThumb?: {
     url: string;
@@ -57,6 +58,10 @@ export interface UIMessage {
   stickerData?: {
     stickerId: string;
     packageId: string;
+  };
+  itemData?: {
+    shopId: number;
+    itemId: number;
   };
   sourceContent?: SourceContent;
 }
@@ -76,7 +81,9 @@ export function convertToUIMessage(
         ? 'Menampilkan detail pesanan'
         : message.message_type === 'sticker'
           ? 'Stiker'
-          : '',
+          : message.message_type === 'item'
+            ? 'Menampilkan detail produk'
+            : '',
     imageUrl: message.message_type === 'image'
       ? message.content.url
       : message.message_type === 'image_with_text'
@@ -101,6 +108,12 @@ export function convertToUIMessage(
       ? {
           stickerId: message.content.sticker_id || '',
           packageId: message.content.sticker_package_id || ''
+        }
+      : undefined,
+    itemData: message.message_type === 'item'
+      ? {
+          shopId: message.content.shop_id || 0,
+          itemId: message.content.item_id || 0
         }
       : undefined,
     sourceContent: message.source_content,

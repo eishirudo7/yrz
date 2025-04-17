@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, User, CheckCircle2, ChevronLeft, Filter, ShoppingBag, MessageSquare, ArrowRight } from "lucide-react"
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMiniChat } from '@/contexts/MiniChatContext';
@@ -415,6 +414,14 @@ const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: Messa
                 </div>
               </div>
             )}
+          </div>
+        ) : message.type === 'item' && message.itemData ? (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 mb-2">
+              <ShoppingBag className="h-4 w-4 flex-shrink-0" />
+              <span className="text-xs font-medium">Detail Produk</span>
+            </div>
+            <ItemPreview itemId={message.itemData.itemId} />
           </div>
         ) : null}
         <p className="text-xs mt-1 opacity-70 dark:opacity-50">{message.time}</p>

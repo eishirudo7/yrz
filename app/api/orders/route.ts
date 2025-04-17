@@ -23,6 +23,12 @@ interface Order {
   document_status?: string;
   is_printed?: boolean;
   escrow_amount_after_adjustment?: number;
+  items: {
+    sku: string;
+    quantity: number;
+    price: number;
+    total_price: number;
+  }[];
 }
 
 export async function GET(req: NextRequest) {
@@ -105,7 +111,7 @@ export async function GET(req: NextRequest) {
           buyer_username, shipping_carrier, escrow_amount_after_adjustment,
           cancel_reason, tracking_number, document_status, is_printed
         `)
-        .or(`and(create_time.gte.${startTimestamp},create_time.lte.${endTimestamp}),and(pay_time.gte.${startTimestamp},pay_time.lte.${endTimestamp},cod.eq.false)`)
+        .or(`and(cod.eq.true,create_time.gte.${startTimestampValue},create_time.lte.${endTimestamp}),and(cod.eq.false,pay_time.gte.${startTimestampValue},pay_time.lte.${endTimestamp})`)
         .in('shop_id', userShopIds)
         .order('create_time', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -196,7 +202,7 @@ export async function GET(req: NextRequest) {
         cod: order.cod,
         buyer_user_id: order.buyer_user_id,
         total_amount: order.total_amount,
-        recalculated_total_amount: recalculated_total_amount || order.total_amount, // Tambahkan total yang dihitung ulang
+        recalculated_total_amount: recalculated_total_amount || order.total_amount,
         create_time: order.create_time,
         update_time: order.update_time,
         pay_time: order.pay_time,
@@ -207,7 +213,13 @@ export async function GET(req: NextRequest) {
         is_printed: order.is_printed,
         sku_qty: skuQty,
         cancel_reason: order.cancel_reason,
-        escrow_amount_after_adjustment: order.escrow_amount_after_adjustment
+        escrow_amount_after_adjustment: order.escrow_amount_after_adjustment,
+        items: items.map(item => ({
+          sku: item.item_sku,
+          quantity: parseInt(item.model_quantity_purchased || '0'),
+          price: parseFloat(item.model_discounted_price || '0'),
+          total_price: parseFloat(item.model_discounted_price || '0') * parseInt(item.model_quantity_purchased || '0')
+        }))
       } as Order;
     });
     

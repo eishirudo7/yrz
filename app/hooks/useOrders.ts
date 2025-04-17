@@ -20,6 +20,12 @@ export interface Order {
   buyer_user_id?: number
   shop_id?: number
   escrow_amount_after_adjustment?: number
+  items?: {
+    sku: string
+    quantity: number
+    price: number
+    total_price: number
+  }[]
 }
 
 export interface AdsData {
