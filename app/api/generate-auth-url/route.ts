@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { generateAuthUrl } from '@/app/services/shopeeService';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const authUrl = generateAuthUrl(request);
+    const authUrl = generateAuthUrl();
     return NextResponse.json({ authUrl });
   } catch (error) {
     console.error('Gagal menghasilkan URL otentikasi:', error);
