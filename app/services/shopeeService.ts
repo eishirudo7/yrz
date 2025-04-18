@@ -221,17 +221,9 @@ export async function getOrderDetail(shopId: number, orderSn: string): Promise<a
   }
 }
 
-export function generateAuthUrl(request?: Request): string {
+export function generateAuthUrl(): string {
   try {
-    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-    
-    // Jika ada request, gunakan URL dari request
-    if (request) {
-      const url = new URL(request.url);
-      baseUrl = `${url.protocol}//${url.host}`;
-    }
-    
-    const redirectUrl = `${baseUrl}/api/callback`;
+    const redirectUrl = `https://yorozuya.me/api/callback`;
     const authUrl = shopeeApi.generateAuthUrl(redirectUrl);
     console.info(`URL otentikasi berhasil dibuat: ${authUrl}`);
     return authUrl;
