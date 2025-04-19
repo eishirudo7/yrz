@@ -1,5 +1,6 @@
-import { getOrderList, getOrderDetail } from '@/app/services/shopeeService';
-import { upsertOrderData, upsertOrderItems, upsertLogisticData } from '@/app/services/databaseOperations';
+import { getOrderList, getOrderDetail, getEscrowDetail } from '@/app/services/shopeeService';
+import { upsertOrderData, upsertOrderItems, upsertLogisticData, saveEscrowDetail } from '@/app/services/databaseOperations';
+import { NextRequest, NextResponse } from 'next/server';
 
 interface OrderSyncOptions {
   timeRangeField?: 'create_time' | 'update_time';
@@ -13,6 +14,7 @@ interface OrderSyncOptions {
 
 interface ShopeeOrder {
   order_sn: string;
+  [key: string]: any;
 }
 
 interface OrderListResponse {
@@ -34,17 +36,35 @@ async function processOrderDetails(shopId: number, orderSns: string[]) {
       throw new Error(`Data pesanan kosong untuk orders: ${orderSns.join(',')}`);
     }
 
-    const results = await Promise.all(orders.map(async (orderData: { order_sn: any; }) => {
+    const results = await Promise.all(orders.map(async (orderData: ShopeeOrder) => {
       try {
         if (!orderData.order_sn) {
           throw new Error(`Data pesanan tidak memiliki order_sn yang valid`);
         }
 
+        // Simpan data order
         await upsertOrderData(orderData, shopId);
+        
+        // Simpan data items dan logistic
         await Promise.all([
           upsertOrderItems(orderData),
           upsertLogisticData(orderData, shopId)
         ]);
+
+        // Ambil dan simpan data escrow
+        try {
+          // Langsung gunakan getEscrowDetail dan saveEscrowDetail
+          const escrowResponse = await getEscrowDetail(shopId, orderData.order_sn);
+          
+          if (!escrowResponse.success || !escrowResponse.data) {
+            throw new Error(escrowResponse.message || 'Gagal mengambil data escrow');
+          }
+
+          // Simpan data escrow
+          await saveEscrowDetail(shopId, escrowResponse.data);
+        } catch (escrowError) {
+          console.error(`Gagal mengambil data escrow untuk order ${orderData.order_sn}:`, escrowError);
+        }
         
         return { orderSn: orderData.order_sn, success: true };
       } catch (error) {

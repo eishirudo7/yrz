@@ -164,12 +164,13 @@ export async function GET(req: NextRequest) {
       
       const { data: itemsBatchData, error: itemsBatchError } = await supabase
         .from('order_items')
-        .select('order_sn, item_sku, model_quantity_purchased, model_discounted_price')
+        .select('order_sn, item_sku, model_sku, model_quantity_purchased, model_discounted_price')
         .in('order_sn', batchOrderSns);
       
       if (itemsBatchError) {
         console.error(`Error fetching order items batch ${i}:`, itemsBatchError);
       } else if (itemsBatchData) {
+        console.log('Sample order items data:', itemsBatchData.slice(0, 2)); // Log sample data untuk debugging
         allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
       }
     }
@@ -190,7 +191,7 @@ export async function GET(req: NextRequest) {
       }, 0);
       
       const skuQty = items.length > 0
-        ? items.map(item => `${item.item_sku} (${item.model_quantity_purchased})`).join(', ')
+        ? items.map(item => `${(item.item_sku && item.item_sku !== 'EMPTY' && item.item_sku.trim() !== '') ? item.item_sku : item.model_sku} (${item.model_quantity_purchased})`).join(', ')
         : '';
       
       // Gabungkan semua data
@@ -215,7 +216,7 @@ export async function GET(req: NextRequest) {
         cancel_reason: order.cancel_reason,
         escrow_amount_after_adjustment: order.escrow_amount_after_adjustment,
         items: items.map(item => ({
-          sku: item.item_sku,
+          sku: (item.item_sku && item.item_sku !== 'EMPTY' && item.item_sku.trim() !== '') ? item.item_sku : item.model_sku,
           quantity: parseInt(item.model_quantity_purchased || '0'),
           price: parseFloat(item.model_discounted_price || '0'),
           total_price: parseFloat(item.model_discounted_price || '0') * parseInt(item.model_quantity_purchased || '0')
@@ -236,7 +237,8 @@ export async function GET(req: NextRequest) {
     
     // Hitung jumlah pesanan tanpa escrow
     const ordersWithNullEscrow = allOrders.filter(
-      order => order.escrow_amount_after_adjustment === null
+      order => order.escrow_amount_after_adjustment === null || 
+               order.escrow_amount_after_adjustment === 0
     );
     
     return NextResponse.json({
