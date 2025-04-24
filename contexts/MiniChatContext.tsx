@@ -32,8 +32,19 @@ export interface Conversation {
   opposite_last_read_msg_id?: string;
 }
 
+// Definisikan tipe untuk chat
+export interface ChatInfo {
+  toId: number;
+  toName: string;
+  toAvatar: string;
+  shopId: number;
+  shopName: string;
+  conversationId?: string; // Opsional, akan dicari dari daftar percakapan jika tidak ada
+  metadata?: ChatMetadata;
+}
+
 // Definisikan tipe metadata
-interface ChatMetadata {
+export interface ChatMetadata {
   orderId?: string;
   productId?: string;
   source?: string;
@@ -42,7 +53,7 @@ interface ChatMetadata {
 }
 
 // Definisikan tipe untuk pesan SSE
-interface SSEMessageData {
+export interface SSEMessageData {
   shop_name: string;
   type: string;
   message_type: string;
@@ -63,17 +74,6 @@ interface SSEMessageData {
     image_url?: string;
     order_sn?: string;
   };
-}
-
-// Definisikan tipe untuk chat
-interface ChatInfo {
-  toId: number;
-  toName: string;
-  toAvatar: string;
-  shopId: number;
-  shopName: string;
-  conversationId?: string; // Opsional, akan dicari dari daftar percakapan jika tidak ada
-  metadata?: ChatMetadata;
 }
 
 // Tipe untuk update conversation

@@ -170,7 +170,6 @@ export async function GET(req: NextRequest) {
       if (itemsBatchError) {
         console.error(`Error fetching order items batch ${i}:`, itemsBatchError);
       } else if (itemsBatchData) {
-        console.log('Sample order items data:', itemsBatchData.slice(0, 2)); // Log sample data untuk debugging
         allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
       }
     }
@@ -237,8 +236,10 @@ export async function GET(req: NextRequest) {
     
     // Hitung jumlah pesanan tanpa escrow
     const ordersWithNullEscrow = allOrders.filter(
-      order => order.escrow_amount_after_adjustment === null || 
-               order.escrow_amount_after_adjustment === 0
+      order => (order.escrow_amount_after_adjustment === null || 
+               order.escrow_amount_after_adjustment === 0) &&
+               order.order_status !== 'CANCELLED' &&
+               order.order_status !== 'UNPAID'
     );
     
     return NextResponse.json({

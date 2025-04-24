@@ -246,46 +246,52 @@ export const useDashboard = () => {
           }
         } else {
           setDashboardData(prevData => {
-            const existingOrderIndex = prevData.orders.findIndex(order => order.order_sn === newOrder.order_sn);
+            const existingOrderIndex = prevData.orders.findIndex(order => 
+              order.order_sn === newOrder.order_sn
+            );
             
             if (existingOrderIndex !== -1) {
               const updatedOrders = [...prevData.orders];
+              const oldOrder = updatedOrders[existingOrderIndex];
+              
+              // Update order dengan data baru
               updatedOrders[existingOrderIndex] = {
-                ...updatedOrders[existingOrderIndex],
+                ...oldOrder,
                 order_status: newOrder.order_status,
                 shipping_carrier: newOrder.shipping_carrier,
                 escrow_amount_after_adjustment: newOrder.escrow_amount_after_adjustment,
                 tracking_number: newOrder.tracking_number,
                 document_status: newOrder.document_status,
-             
               };
-              
-              const newSummary = {
-                pesananPerToko: {},
-                omsetPerToko: {},
-                totalOrders: 0,
-                totalOmset: 0,
-                totalIklan: prevData.summary.totalIklan,
-                iklanPerToko: prevData.summary.iklanPerToko
-              };
-              updatedOrders.forEach(order => processOrder(order, newSummary));
 
-              if (newSummary.totalOrders !== prevData.summary.totalOrders ||
-                  newSummary.totalOmset !== prevData.summary.totalOmset) {
+              // Hanya hitung ulang summary jika status berubah menjadi CANCELLED
+              if (newOrder.order_status === 'CANCELLED') {
+                const newSummary = {
+                  pesananPerToko: {},
+                  omsetPerToko: {},
+                  totalOrders: 0,
+                  totalOmset: 0,
+                  totalIklan: prevData.summary.totalIklan,
+                  iklanPerToko: prevData.summary.iklanPerToko
+                };
+                
+                // Hitung ulang summary untuk semua order
+                updatedOrders.forEach(order => processOrder(order, newSummary));
+
                 return {
                   ...prevData,
                   summary: newSummary,
                   orders: updatedOrders
                 };
-              } else {
-                return {
-                  ...prevData,
-                  orders: updatedOrders
-                };
               }
-            } else {
-              return prevData;
+
+              // Jika bukan CANCELLED, hanya update orders tanpa hitung ulang summary
+              return {
+                ...prevData,
+                orders: updatedOrders
+              };
             }
+            return prevData;
           });
         }
       });

@@ -29,11 +29,16 @@ export function useOrderSearch() {
         return
       }
 
-      let query = createClient()
-        .from('orders_view')
+      // Supabase client
+      const supabase = createClient()
+      
+      // 1. Query data pesanan
+      let query = supabase
+        .from('orders')
         .select('*')
         .in('shop_id', userShopIds) // Batasi hanya untuk toko yang dimiliki user
       
+      // Tambahkan filter pencarian
       if (params.order_sn) {
         query = query.ilike('order_sn', `%${params.order_sn}%`)
       }
@@ -44,12 +49,72 @@ export function useOrderSearch() {
         query = query.ilike('tracking_number', `%${params.tracking_number}%`)
       }
 
-      const { data, error } = await query.order('create_time', { ascending: false })
+      const { data: ordersData, error: ordersError } = await query.order('create_time', { ascending: false })
 
-      if (error) throw error
+      if (ordersError) throw ordersError
       
-      const results = data || []
-      setSearchResults(results)
+      if (!ordersData || ordersData.length === 0) {
+        setSearchResults([])
+        return
+      }
+      
+      // 2. Ambil semua order_sn untuk query items
+      const orderSns = ordersData.map(order => order.order_sn)
+      
+      // 3. Query data items untuk semua pesanan yang ditemukan
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select('order_sn, item_sku, model_sku, model_quantity_purchased, model_discounted_price')
+        .in('order_sn', orderSns)
+        
+      if (itemsError) throw itemsError
+      
+      // 4. Format data hasil sesuai dengan format yang diharapkan oleh aplikasi
+      const formattedResults = ordersData.map(order => {
+        // Data toko
+        const shop = shops.find(s => s.shop_id === order.shop_id) || { shop_name: 'Tidak diketahui' }
+        
+        // Filter items untuk pesanan ini
+        const orderItems = itemsData?.filter(item => item.order_sn === order.order_sn) || []
+        
+        // Hitung total dari items (seperti recalculated_total_amount di API)
+        const recalculated_total_amount = orderItems.reduce((total, item) => {
+          const price = parseFloat(item.model_discounted_price || 0)
+          const quantity = parseInt(item.model_quantity_purchased || 0)
+          return total + (price * quantity)
+        }, 0)
+        
+        // Format sku_qty string
+        const skuQty = orderItems.length > 0
+          ? orderItems.map(item => `${(item.item_sku && item.item_sku !== 'EMPTY' && item.item_sku.trim() !== '') ? item.item_sku : item.model_sku} (${item.model_quantity_purchased})`).join(', ')
+          : ''
+        
+        // Format items array
+        const formattedItems = orderItems.map(item => ({
+          sku: (item.item_sku && item.item_sku !== 'EMPTY' && item.item_sku.trim() !== '') ? item.item_sku : item.model_sku,
+          quantity: parseInt(item.model_quantity_purchased || '0'),
+          price: parseFloat(item.model_discounted_price || '0'),
+          total_price: parseFloat(item.model_discounted_price || '0') * parseInt(item.model_quantity_purchased || '0')
+        }))
+        
+        // Format hasil akhir
+        return {
+          ...order,
+          shop_name: shop.shop_name,
+          recalculated_total_amount: recalculated_total_amount || order.total_amount,
+          sku_qty: skuQty,
+          items: formattedItems
+        } as Order
+      })
+      
+      // 5. Urutkan hasil sesuai dengan logika di API
+      formattedResults.sort((a, b) => {
+        const aTime = a.cod ? a.create_time : (a.pay_time || a.create_time)
+        const bTime = b.cod ? b.create_time : (b.pay_time || b.create_time)
+        return bTime - aTime
+      })
+      
+      setSearchResults(formattedResults)
       
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Terjadi kesalahan saat mencari pesanan')

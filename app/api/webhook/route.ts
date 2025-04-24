@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertOrderData, upsertOrderItems, upsertLogisticData, trackingUpdate, updateDocumentStatus, withRetry, updateOrderStatusOnly, saveEscrowDetail } from '@/app/services/databaseOperations';
-import { prosesOrder } from '@/app/services/prosesOrder';
 import { getOrderDetail } from '@/app/services/shopeeService';
 import { getEscrowDetail } from '@/app/services/shopeeService';
 import { redis } from '@/app/services/redis';

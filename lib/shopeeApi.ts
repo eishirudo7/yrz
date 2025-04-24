@@ -335,6 +335,37 @@ export class ShopeeAPI {
     }
   }
 
+  async getEscrowDetailBatch(shopId: number, orderSnList: string[], accessToken: string): Promise<any> {
+    const url = 'https://partner.shopeemobile.com/api/v2/payment/get_escrow_detail_batch';
+    const path = '/api/v2/payment/get_escrow_detail_batch';
+    const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+    const params = new URLSearchParams({
+      partner_id: this.partnerId.toString(),
+      timestamp: timest.toString(),
+      sign,
+      shop_id: shopId.toString(),
+      access_token: accessToken
+    });
+
+    const fullUrl = `${url}?${params.toString()}`;
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    const body = {
+      order_sn_list: orderSnList
+    };
+
+    try {
+      const response = await axios.post(fullUrl, body, { headers });
+      return response.data;
+    } catch (error) {
+      console.error('Error getting escrow detail batch:', error);
+      throw error;
+    }
+  }
+
   async getAdsDailyPerformance(shopId: number, accessToken: string, startDate: string, endDate: string): Promise<any> {
     const url = 'https://partner.shopeemobile.com/api/v2/ads/get_all_cpc_ads_daily_performance';
     const path = '/api/v2/ads/get_all_cpc_ads_daily_performance';

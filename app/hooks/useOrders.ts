@@ -252,8 +252,10 @@ export function useOrders(dateRange?: DateRange | undefined) {
       
       // Filter kembali pesanan yang masih belum memiliki data escrow
       const stillWithoutEscrow = updatedOrders.filter(
-        order => order.escrow_amount_after_adjustment === null || 
-                 order.escrow_amount_after_adjustment === 0
+        order => (order.escrow_amount_after_adjustment === null || 
+                 order.escrow_amount_after_adjustment === 0) &&
+                 order.order_status !== 'CANCELLED' &&
+                 order.order_status !== 'UNPAID'
       );
       setOrdersWithoutEscrow(stillWithoutEscrow);
       

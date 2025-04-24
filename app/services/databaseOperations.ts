@@ -284,6 +284,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
         seller_transaction_fee: orderIncome.seller_transaction_fee || null,
         actual_shipping_fee: orderIncome.actual_shipping_fee || null,
         buyer_payment_method: orderIncome.buyer_payment_method || null,
+        ams_commission_fee: orderIncome.ams_commission_fee || null,
         updated_at: new Date().toISOString(),
         escrow_amount_after_adjustment: orderIncome.escrow_amount_after_adjustment || 0
       };
@@ -304,4 +305,38 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
       console.error('Gagal menyimpan detail escrow:', error);
       throw error;
     }
+  }
+
+  export async function saveBatchEscrowDetail(shopId: number, orderList: any[]): Promise<{ success: number, failed: number, errors: any[] }> {
+    if (!orderList || !Array.isArray(orderList) || orderList.length === 0) {
+      return { success: 0, failed: 0, errors: [{ message: 'Daftar pesanan kosong atau tidak valid' }] };
+    }
+    
+    let successCount = 0;
+    let failedCount = 0;
+    const errors: any[] = [];
+    
+    // Proses setiap pesanan dalam array
+    await Promise.all(orderList.map(async (orderData) => {
+      try {
+        // Pastikan data valid
+        if (!orderData || !orderData.order_sn) {
+          throw new Error(`Data escrow tidak valid untuk salah satu pesanan`);
+        }
+        
+        await saveEscrowDetail(shopId, orderData);
+        successCount++;
+      } catch (error) {
+        failedCount++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push({ 
+          order_sn: orderData?.order_sn || 'unknown', 
+          message: errorMessage 
+        });
+        console.error(`Gagal menyimpan escrow untuk ${orderData?.order_sn || 'unknown'}: ${errorMessage}`);
+      }
+    }));
+    
+    console.log(`Batch escrow save completed. Success: ${successCount}, Failed: ${failedCount}`);
+    return { success: successCount, failed: failedCount, errors };
   }

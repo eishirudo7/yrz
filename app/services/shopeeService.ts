@@ -1549,6 +1549,60 @@ export async function getEscrowDetail(shopId: number, orderSn: string): Promise<
   }
 }
 
+export async function getEscrowDetailBatch(shopId: number, orderSnList: string[]): Promise<any> {
+  try {
+    if (!orderSnList || orderSnList.length === 0) {
+      return {
+        success: false,
+        error: "invalid_input",
+        message: 'Daftar nomor pesanan tidak boleh kosong',
+        request_id: ''
+      };
+    }
+
+    if (orderSnList.length > 50) {
+      return {
+        success: false,
+        error: "invalid_input",
+        message: 'Jumlah pesanan tidak boleh lebih dari 50',
+        request_id: ''
+      };
+    }
+
+    const accessToken = await getValidAccessToken(shopId);
+    
+    console.info(`Mengambil detail escrow batch untuk ${orderSnList.length} pesanan`);
+    
+    const result = await shopeeApi.getEscrowDetailBatch(shopId, orderSnList, accessToken);
+    
+    if (result.error) {
+      console.error(`Error saat mengambil detail escrow batch: ${JSON.stringify(result)}`);
+      return {
+        success: false,
+        error: result.error,
+        message: result.message || 'Gagal mengambil detail escrow batch',
+        request_id: result.request_id || ''
+      };
+    }
+    
+    console.info(`Berhasil mengambil detail escrow batch untuk ${orderSnList.length} pesanan`);
+    return {
+      success: true,
+      data: result.response,
+      request_id: result.request_id
+    };
+    
+  } catch (error) {
+    console.error(`Terjadi kesalahan saat mengambil detail escrow batch: ${error}`);
+    return {
+      success: false,
+      error: "internal_server_error",
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
+      request_id: ''
+    };
+  }
+}
+
 export async function getConversationList(
   shopId: number,
   options: {

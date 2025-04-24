@@ -1,6 +1,6 @@
 import { getOrderList, getOrderDetail, getEscrowDetail } from '@/app/services/shopeeService';
 import { upsertOrderData, upsertOrderItems, upsertLogisticData, saveEscrowDetail } from '@/app/services/databaseOperations';
-import { NextRequest, NextResponse } from 'next/server';
+
 
 interface OrderSyncOptions {
   timeRangeField?: 'create_time' | 'update_time';

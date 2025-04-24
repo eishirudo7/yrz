@@ -507,7 +507,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       result = result.filter(order => tableState.selectedShops.includes(order.shop_name));
       if (result.length === 0) return result;
     }
-    
+
     // 3. Filter berdasarkan status print
     if (tableState.printStatus !== 'all') {
       result = result.filter(order => 
@@ -516,7 +516,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       );
       if (result.length === 0) return result;
     }
-    
+
     // 4. Filter berdasarkan kurir
     if (tableState.selectedCouriers.length > 0) {
       result = result.filter(order => 
@@ -524,7 +524,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       );
       if (result.length === 0) return result;
     }
-    
+
     // 5. Filter berdasarkan jenis pembayaran
     if (tableState.paymentType !== 'all') {
       result = result.filter(order => 
@@ -533,7 +533,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       );
       if (result.length === 0) return result;
     }
-    
+
     // 6. Filter berdasarkan pencarian (biasanya paling mahal)
     if (tableState.searchTerm) {
       const searchLower = tableState.searchTerm.toLowerCase();
@@ -543,7 +543,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         order.order_sn.toLowerCase().includes(searchLower)
       );
     }
-    
+
     return result;
   }, [orders, tableState]);
 
@@ -568,7 +568,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   const handleToggleCheckbox = useCallback(() => {
     setTableState(prev => {
       const newShowCheckbox = !prev.showCheckbox;
-      return {
+  return {
         ...prev,
         showCheckbox: newShowCheckbox,
         selectedOrders: newShowCheckbox ? prev.selectedOrders : []
@@ -597,7 +597,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   }, [filteredOrders, derivedData.isOrderCheckable]);
 
   // Tambahkan hook useShippingDocument
-  const { 
+  const {
     downloadDocument, 
     isLoadingForOrder, 
     bulkProgress: documentBulkProgress,
@@ -904,7 +904,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                      style="background:#2563eb;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-family:system-ui;">
                     Download PDF
                   </a>
-                </div>
+  </div>
               </body>
             </html>
           `);
@@ -949,609 +949,609 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     }
   }, [tableState.selectedOrders, filteredOrders, derivedData.isOrderCheckable]);
 
-  // Tambahkan state untuk OrderHistory
-  const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false)
-  const [selectedUserId, setSelectedUserId] = useState<string>('')
+// Tambahkan state untuk OrderHistory
+const [isOrderHistoryOpen, setIsOrderHistoryOpen] = useState(false)
+const [selectedUserId, setSelectedUserId] = useState<string>('')
 
-  // Tambahkan fungsi handler yang diperbarui
-  const handleUsernameClick = (userId: number) => {
-    console.log('Clicked userId:', userId);
-    if (!userId) {
-      console.warn('User ID tidak valid');
-      return;
-    }
-    setSelectedUserId(userId.toString());
-    setIsOrderHistoryOpen(true);
+// Tambahkan fungsi handler yang diperbarui
+const handleUsernameClick = (userId: number) => {
+  console.log('Clicked userId:', userId);
+  if (!userId) {
+    console.warn('User ID tidak valid');
+    return;
+  }
+  setSelectedUserId(userId.toString());
+  setIsOrderHistoryOpen(true);
+}
+
+// Tambahkan useEffect untuk mengupdate title
+useEffect(() => {
+  const readyToShipCount = orders.filter(order => order.order_status === 'READY_TO_SHIP').length;
+  if (readyToShipCount > 0) {
+    document.title = `(${readyToShipCount}) New Orders`;
+  } else {
+    document.title = 'Dashboard Pesanan';
   }
 
-  // Tambahkan useEffect untuk mengupdate title
-  useEffect(() => {
-    const readyToShipCount = orders.filter(order => order.order_status === 'READY_TO_SHIP').length;
-    if (readyToShipCount > 0) {
-      document.title = `(${readyToShipCount}) New Orders`;
-    } else {
-      document.title = 'Dashboard Pesanan';
-    }
-
-    // Cleanup function
-    return () => {
-      document.title = 'Dashboard Pesanan';
-    };
-  }, [orders]);
-
-  // Tambahkan state untuk dialog konfirmasi print semua
-  const [isPrintAllConfirmOpen, setIsPrintAllConfirmOpen] = useState(false);
-
-  // Update fungsi handleBulkPrint untuk menampilkan konfirmasi terlebih dahulu
-  const handleBulkPrintClick = useCallback(() => {
-    // Jika ada order yang dipilih, gunakan itu
-    // Jika tidak, gunakan semua order yang bisa dicetak
-    const hasPrintableOrders = tableState.selectedOrders.length > 0 
-      ? tableState.selectedOrders.length 
-      : derivedData.printableOrders.length;
-
-    if (hasPrintableOrders === 0) {
-      toast.info('Tidak ada dokumen yang bisa dicetak');
-      return;
-    }
-
-    setIsPrintAllConfirmOpen(true);
-  }, [tableState.selectedOrders, derivedData.printableOrders]);
-
-  // Fungsi untuk konfirmasi print semua
-  const handleConfirmPrintAll = useCallback(async () => {
-    setIsPrintAllConfirmOpen(false);
-    
-    // Jika ada order yang dipilih, gunakan itu
-    // Jika tidak, gunakan semua order yang bisa dicetak
-    const ordersToPrint = tableState.selectedOrders.length > 0 
-      ? orders.filter(order => tableState.selectedOrders.includes(order.order_sn))
-      : derivedData.printableOrders;
-
-    if (ordersToPrint.length === 0) {
-      toast.info('Tidak ada dokumen yang bisa dicetak');
-      return;
-    }
-
-    await processPrintingAndReport(ordersToPrint);
-  }, [tableState.selectedOrders, orders, derivedData.printableOrders, processPrintingAndReport]);
-
-  // Update URL endpoint untuk memproses pesanan
-  const handleProcessOrder = async (order: Order) => {
-    try {
-      toast.promise(
-        async () => {
-          const response = await fetch('/api/process-order', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              shopId: order.shop_id,
-              orderSn: order.order_sn
-            })
-          });
-
-          const data = await response.json();
-          
-          if (!data.success) {
-            throw new Error(data.message || 'Gagal memproses pesanan');
-          }
-
-          // Update local state jika berhasil
-          if (onOrderUpdate) {
-            onOrderUpdate(order.order_sn, {
-              order_status: 'PROCESSED'
-            });
-          }
-
-          return data;
-        },
-        {
-          loading: 'Memproses pesanan...',
-          success: 'Pesanan berhasil diproses',
-          error: (err) => `${err.message}`
-        }
-      );
-    } catch (error) {
-      console.error('Gagal memproses pesanan:', error);
-    }
+  // Cleanup function
+  return () => {
+    document.title = 'Dashboard Pesanan';
   };
+}, [orders]);
 
-  // Tambahkan state untuk tracking progress bulk process
-  const [bulkProcessProgress, setBulkProcessProgress] = useState<{
-    processed: number;
-    total: number;
-    currentOrder: string;
-  }>({
-    processed: 0,
-    total: 0,
-    currentOrder: ''
-  });
+// Tambahkan state untuk dialog konfirmasi print semua
+const [isPrintAllConfirmOpen, setIsPrintAllConfirmOpen] = useState(false);
 
-  // Tambahkan state untuk dialog konfirmasi
-  const [isProcessAllConfirmOpen, setIsProcessAllConfirmOpen] = useState(false);
+// Update fungsi handleBulkPrint untuk menampilkan konfirmasi terlebih dahulu
+const handleBulkPrintClick = useCallback(() => {
+  // Jika ada order yang dipilih, gunakan itu
+  // Jika tidak, gunakan semua order yang bisa dicetak
+  const hasPrintableOrders = tableState.selectedOrders.length > 0 
+    ? tableState.selectedOrders.length 
+    : derivedData.printableOrders.length;
 
+  if (hasPrintableOrders === 0) {
+    toast.info('Tidak ada dokumen yang bisa dicetak');
+    return;
+  }
+
+  setIsPrintAllConfirmOpen(true);
+}, [tableState.selectedOrders, derivedData.printableOrders]);
+
+// Fungsi untuk konfirmasi print semua
+const handleConfirmPrintAll = useCallback(async () => {
+  setIsPrintAllConfirmOpen(false);
   
+  // Jika ada order yang dipilih, gunakan itu
+  // Jika tidak, gunakan semua order yang bisa dicetak
+  const ordersToPrint = tableState.selectedOrders.length > 0 
+    ? orders.filter(order => tableState.selectedOrders.includes(order.order_sn))
+    : derivedData.printableOrders;
 
-  // Fungsi untuk memproses semua pesanan
-  const handleProcessAllOrders = useCallback(async () => {
-    setIsProcessAllConfirmOpen(false);
-    
-    // Gunakan data dari derivedData untuk pesanan yang siap kirim
-    const readyToShipOrders = orders.filter(order => order.order_status === 'READY_TO_SHIP');
-    
-    if (readyToShipOrders.length === 0) {
-      toast.info('Tidak ada pesanan yang siap diproses');
-      return;
-    }
+  if (ordersToPrint.length === 0) {
+    toast.info('Tidak ada dokumen yang bisa dicetak');
+    return;
+  }
 
-    try {
-      // Set progress awal
-      setBulkProcessProgress({
-        processed: 0,
-        total: readyToShipOrders.length,
-        currentOrder: ''
-      });
+  await processPrintingAndReport(ordersToPrint);
+}, [tableState.selectedOrders, orders, derivedData.printableOrders, processPrintingAndReport]);
 
-      // Proses satu per satu
-      for (const order of readyToShipOrders) {
+// Update URL endpoint untuk memproses pesanan
+const handleProcessOrder = async (order: Order) => {
+  try {
+    toast.promise(
+      async () => {
+        const response = await fetch('/api/process-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: order.shop_id,
+            orderSn: order.order_sn
+          })
+        });
+
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.message || 'Gagal memproses pesanan');
+        }
+
+        // Update local state jika berhasil
+        if (onOrderUpdate) {
+          onOrderUpdate(order.order_sn, {
+            order_status: 'PROCESSED'
+          });
+        }
+
+        return data;
+      },
+      {
+        loading: 'Memproses pesanan...',
+        success: 'Pesanan berhasil diproses',
+        error: (err) => `${err.message}`
+      }
+    );
+  } catch (error) {
+    console.error('Gagal memproses pesanan:', error);
+  }
+};
+
+// Tambahkan state untuk tracking progress bulk process
+const [bulkProcessProgress, setBulkProcessProgress] = useState<{
+  processed: number;
+  total: number;
+  currentOrder: string;
+}>({
+  processed: 0,
+  total: 0,
+  currentOrder: ''
+});
+
+// Tambahkan state untuk dialog konfirmasi
+const [isProcessAllConfirmOpen, setIsProcessAllConfirmOpen] = useState(false);
+
+
+
+// Fungsi untuk memproses semua pesanan
+const handleProcessAllOrders = useCallback(async () => {
+  setIsProcessAllConfirmOpen(false);
+  
+  // Gunakan data dari derivedData untuk pesanan yang siap kirim
+  const readyToShipOrders = orders.filter(order => order.order_status === 'READY_TO_SHIP');
+  
+  if (readyToShipOrders.length === 0) {
+    toast.info('Tidak ada pesanan yang siap diproses');
+    return;
+  }
+
+  try {
+    // Set progress awal
+    setBulkProcessProgress({
+      processed: 0,
+      total: readyToShipOrders.length,
+      currentOrder: ''
+    });
+
+    // Proses satu per satu
+    for (const order of readyToShipOrders) {
+      setBulkProcessProgress(prev => ({
+        ...prev,
+        currentOrder: order.order_sn
+      }));
+
+      try {
+        const response = await fetch('/api/process-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: order.shop_id,
+            orderSn: order.order_sn
+          })
+        });
+
+        const data = await response.json();
+        
+        if (!data.success) {
+          console.error(`Gagal memproses pesanan ${order.order_sn}:`, data.message);
+          toast.error(`Gagal memproses pesanan ${order.order_sn}`);
+          continue;
+        }
+
+        // Update local state
+        if (onOrderUpdate) {
+          onOrderUpdate(order.order_sn, {
+            order_status: 'PROCESSED'
+          });
+        }
+
         setBulkProcessProgress(prev => ({
           ...prev,
-          currentOrder: order.order_sn
+          processed: prev.processed + 1
         }));
 
-        try {
-          const response = await fetch('/api/process-order', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              shopId: order.shop_id,
-              orderSn: order.order_sn
-            })
-          });
+        // Delay kecil antara setiap request
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-          const data = await response.json();
-          
-          if (!data.success) {
-            console.error(`Gagal memproses pesanan ${order.order_sn}:`, data.message);
-            toast.error(`Gagal memproses pesanan ${order.order_sn}`);
-            continue;
-          }
-
-          // Update local state
-          if (onOrderUpdate) {
-            onOrderUpdate(order.order_sn, {
-              order_status: 'PROCESSED'
-            });
-          }
-
-          setBulkProcessProgress(prev => ({
-            ...prev,
-            processed: prev.processed + 1
-          }));
-
-          // Delay kecil antara setiap request
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-        } catch (error) {
-          console.error(`Gagal memproses pesanan ${order.order_sn}:`, error);
-          toast.error(`Gagal memproses pesanan ${order.order_sn}`);
-        }
+      } catch (error) {
+        console.error(`Gagal memproses pesanan ${order.order_sn}:`, error);
+        toast.error(`Gagal memproses pesanan ${order.order_sn}`);
       }
-
-      toast.success('Proses selesai');
-
-    } catch (error) {
-      console.error('Gagal memproses pesanan:', error);
-      toast.error('Terjadi kesalahan saat memproses pesanan');
-    } finally {
-      // Reset progress setelah selesai
-      setTimeout(() => {
-        setBulkProcessProgress({
-          processed: 0,
-          total: 0,
-          currentOrder: ''
-        });
-      }, 2000);
-    }
-  }, [orders]);
-
-  // Tambahkan state untuk dialog konfirmasi reject all
-  const [isRejectAllConfirmOpen, setIsRejectAllConfirmOpen] = useState(false);
-
-  // Tambahkan state untuk tracking progress bulk reject
-  const [bulkRejectProgress, setBulkRejectProgress] = useState<{
-    processed: number;
-    total: number;
-    currentOrder: string;
-  }>({
-    processed: 0,
-    total: 0,
-    currentOrder: ''
-  });
-
-  // Tambahkan fungsi untuk menolak semua pembatalan
-  const handleRejectAllCancellations = useCallback(async () => {
-    setIsRejectAllConfirmOpen(false);
-    
-    // Gunakan data dari derivedData untuk pesanan dengan status IN_CANCEL
-    const cancelOrders = orders.filter(order => order.order_status === 'IN_CANCEL');
-    
-    if (cancelOrders.length === 0) {
-      toast.info('Tidak ada permintaan pembatalan');
-      return;
     }
 
-    try {
-      // Set progress awal
-      setBulkRejectProgress({
+    toast.success('Proses selesai');
+
+  } catch (error) {
+    console.error('Gagal memproses pesanan:', error);
+    toast.error('Terjadi kesalahan saat memproses pesanan');
+  } finally {
+    // Reset progress setelah selesai
+    setTimeout(() => {
+      setBulkProcessProgress({
         processed: 0,
-        total: cancelOrders.length,
+        total: 0,
         currentOrder: ''
       });
+    }, 2000);
+  }
+}, [orders]);
 
-      // Proses satu per satu
-      for (const order of cancelOrders) {
-        setBulkRejectProgress(prev => ({
-          ...prev,
-          currentOrder: order.order_sn
-        }));
+// Tambahkan state untuk dialog konfirmasi reject all
+const [isRejectAllConfirmOpen, setIsRejectAllConfirmOpen] = useState(false);
 
-        try {
-          const response = await fetch('/api/handle-cancellation', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              shopId: order.shop_id,
-              orderSn: order.order_sn,
-              operation: 'REJECT'
-            })
-          });
+// Tambahkan state untuk tracking progress bulk reject
+const [bulkRejectProgress, setBulkRejectProgress] = useState<{
+  processed: number;
+  total: number;
+  currentOrder: string;
+}>({
+  processed: 0,
+  total: 0,
+  currentOrder: ''
+});
 
-          const result = await response.json();
-          
-          if (result.success) {
-            if (onOrderUpdate) {
-              onOrderUpdate(order.order_sn, {
-                order_status: 'READY_TO_SHIP'
-              });
-            }
-          } else {
-            console.error(`Gagal menolak pembatalan ${order.order_sn}:`, result.message);
-            toast.error(`Gagal menolak pembatalan ${order.order_sn}`);
-          }
-
-          setBulkRejectProgress(prev => ({
-            ...prev,
-            processed: prev.processed + 1
-          }));
-
-          // Delay kecil antara setiap request
-          await new Promise(resolve => setTimeout(resolve, 500));
-
-        } catch (error) {
-          console.error(`Gagal menolak pembatalan ${order.order_sn}:`, error);
-          toast.error(`Gagal menolak pembatalan ${order.order_sn}`);
-        }
-      }
-
-      toast.success('Proses penolakan pembatalan selesai');
-
-    } catch (error) {
-      console.error('Gagal menolak pembatalan:', error);
-      toast.error('Terjadi kesalahan saat menolak pembatalan');
-    } finally {
-      // Reset progress setelah selesai
-      setTimeout(() => {
-        setBulkRejectProgress({
-          processed: 0,
-          total: 0,
-          currentOrder: ''
-        });
-      }, 2000);
-    }
-  }, [orders]);
-
-  // Tambahkan state yang diperlukan
-  const [selectedOrderSn, setSelectedOrderSn] = useState<string>('');
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [isUnprintedConfirmOpen, setIsUnprintedConfirmOpen] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<{
-    orderSn: string;
-    action: 'ACCEPT' | 'REJECT';
-  }>({ orderSn: '', action: 'ACCEPT' });
-
+// Tambahkan fungsi untuk menolak semua pembatalan
+const handleRejectAllCancellations = useCallback(async () => {
+  setIsRejectAllConfirmOpen(false);
   
-  // Update fungsi handleMobileCategoryChange
-  const handleMobileCategoryChange = useCallback((value: string) => {
-    handleCategoryChange(value);
-  }, [handleCategoryChange]);
+  // Gunakan data dari derivedData untuk pesanan dengan status IN_CANCEL
+  const cancelOrders = orders.filter(order => order.order_status === 'IN_CANCEL');
+  
+  if (cancelOrders.length === 0) {
+    toast.info('Tidak ada permintaan pembatalan');
+    return;
+  }
 
-  // Fungsi untuk menangani print dokumen yang belum dicetak
-  const handlePrintUnprinted = useCallback(async () => {
-    if (derivedData.unprintedOrders.length === 0) {
-      toast.info('Tidak ada dokumen yang belum dicetak');
-      return;
-    }
+  try {
+    // Set progress awal
+    setBulkRejectProgress({
+      processed: 0,
+      total: cancelOrders.length,
+      currentOrder: ''
+    });
 
-    setIsUnprintedConfirmOpen(true);
-  }, [derivedData.unprintedOrders]);
+    // Proses satu per satu
+    for (const order of cancelOrders) {
+      setBulkRejectProgress(prev => ({
+        ...prev,
+        currentOrder: order.order_sn
+      }));
 
-  // Fungsi untuk konfirmasi print dokumen yang belum dicetak
-  const handleConfirmUnprinted = useCallback(async () => {
-    setIsUnprintedConfirmOpen(false);
-    
-    if (derivedData.unprintedOrders.length === 0) {
-      toast.info('Tidak ada dokumen yang belum dicetak');
-      return;
-    }
+      try {
+        const response = await fetch('/api/handle-cancellation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: order.shop_id,
+            orderSn: order.order_sn,
+            operation: 'REJECT'
+          })
+        });
 
-    await processPrintingAndReport(derivedData.unprintedOrders);
-  }, [derivedData.unprintedOrders, processPrintingAndReport]);
-
-  // Fungsi untuk menangani aksi pembatalan
-  const handleCancellationAction = useCallback(async (orderSn: string, action: 'ACCEPT' | 'REJECT') => {
-    setSelectedAction({ orderSn, action });
-    setIsConfirmOpen(true);
-  }, []);
-
-  // Update fungsi handleConfirmAction
-  const handleConfirmAction = useCallback(async () => {
-    setIsConfirmOpen(false);
-    
-    try {
-      toast.promise(
-        async () => {
-          const response = await fetch('/api/handle-cancellation', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              shopId: orders.find(o => o.order_sn === selectedAction.orderSn)?.shop_id,
-              orderSn: selectedAction.orderSn,
-              operation: selectedAction.action
-            })
-          });
-
-          const result = await response.json();
-          
-          if (!result.success) {
-            throw new Error(result.message || 'Gagal memproses pembatalan');
-          }
-
-          // Update local state jika berhasil
+        const result = await response.json();
+        
+        if (result.success) {
           if (onOrderUpdate) {
-            onOrderUpdate(selectedAction.orderSn, {
-              order_status: selectedAction.action === 'ACCEPT' ? 'CANCELLED' : 'READY_TO_SHIP'
+            onOrderUpdate(order.order_sn, {
+              order_status: 'READY_TO_SHIP'
             });
           }
-
-          return result;
-        },
-        {
-          loading: 'Memproses pembatalan...',
-          success: `Berhasil ${selectedAction.action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`,
-          error: (err) => `${err.message}`
+        } else {
+          console.error(`Gagal menolak pembatalan ${order.order_sn}:`, result.message);
+          toast.error(`Gagal menolak pembatalan ${order.order_sn}`);
         }
-      );
-    } catch (error) {
-      console.error('Gagal memproses pembatalan:', error);
-    }
-  }, [selectedAction, orders, onOrderUpdate]);
 
-  // Tambahkan state untuk daftar toko
-  const shops = useMemo(() => {
-    return Array.from(new Set(orders.map(order => order.shop_name))).sort();
-  }, [orders]);
-
-  
-  
-  // Tambahkan state untuk dialog laporan
-  const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
-  const [printReport, setPrintReport] = useState<{
-    totalSuccess: number;
-    totalFailed: number;
-    shopReports: {
-      shopName: string;
-      success: number;
-      failed: number;
-    }[];
-  }>({
-    totalSuccess: 0,
-    totalFailed: 0,
-    shopReports: []
-  });
-
-  // Tambahkan state untuk tracking proses sync
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{
-    total: number;
-    processed: number;
-    currentShop: string;
-  }>({
-    total: 0,
-    processed: 0,
-    currentShop: ''
-  });
-
-  // Tambahkan state untuk dialog ringkasan
-  const [isSyncSummaryOpen, setIsSyncSummaryOpen] = useState(false);
-  const [syncSummary, setSyncSummary] = useState<{
-    totalOrders: number;
-    processedOrders: number;
-    shopReports: {
-      shopName: string;
-      total: number;
-      processed: number;
-      failed: number;
-    }[];
-  }>({
-    totalOrders: 0,
-    processedOrders: 0,
-    shopReports: []
-  });
-
-  // Update fungsi handleSyncOrders
-  const handleSyncOrders = async () => {
-    try {
-      setIsSyncing(true);
-      
-      const ordersByShop = orders.reduce((acc, order) => {
-        if (!acc[order.shop_id]) {
-          acc[order.shop_id] = [];
-        }
-        acc[order.shop_id].push(order.order_sn);
-        return acc;
-      }, {} as { [key: number]: string[] });
-
-      const totalOrders = orders.length;
-      const shopReports: typeof syncSummary.shopReports = [];
-
-      for (const [shopId, orderSns] of Object.entries(ordersByShop)) {
-        const shopName = orders.find(o => o.shop_id === Number(shopId))?.shop_name || 'Unknown Shop';
-        
-        setSyncProgress(prev => ({
+        setBulkRejectProgress(prev => ({
           ...prev,
-          total: totalOrders,
-          currentShop: shopName
+          processed: prev.processed + 1
         }));
 
-        try {
-          const response = await fetch('/api/sync', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              shopId: Number(shopId),
-              orderSns: orderSns
-            })
-          });
+        // Delay kecil antara setiap request
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-          const result = await response.json();
+      } catch (error) {
+        console.error(`Gagal menolak pembatalan ${order.order_sn}:`, error);
+        toast.error(`Gagal menolak pembatalan ${order.order_sn}`);
+      }
+    }
 
-          if (!result.success) {
-            throw new Error(result.error || 'Gagal sinkronisasi');
-          }
+    toast.success('Proses penolakan pembatalan selesai');
 
-          shopReports.push({
-            shopName,
-            total: result.data.total,
-            processed: result.data.success,
-            failed: result.data.failed
-          });
+  } catch (error) {
+    console.error('Gagal menolak pembatalan:', error);
+    toast.error('Terjadi kesalahan saat menolak pembatalan');
+  } finally {
+    // Reset progress setelah selesai
+    setTimeout(() => {
+      setBulkRejectProgress({
+        processed: 0,
+        total: 0,
+        currentOrder: ''
+      });
+    }, 2000);
+  }
+}, [orders]);
 
-          setSyncProgress(prev => ({
-            ...prev,
-            processed: prev.processed + result.data.success
-          }));
+// Tambahkan state yang diperlukan
+const [selectedOrderSn, setSelectedOrderSn] = useState<string>('');
+const [isDetailOpen, setIsDetailOpen] = useState(false);
+const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+const [isUnprintedConfirmOpen, setIsUnprintedConfirmOpen] = useState(false);
+const [selectedAction, setSelectedAction] = useState<{
+  orderSn: string;
+  action: 'ACCEPT' | 'REJECT';
+}>({ orderSn: '', action: 'ACCEPT' });
 
-        } catch (error) {
-          console.error(`Error syncing ${shopName}:`, error);
-          shopReports.push({
-            shopName,
-            total: orderSns.length,
-            processed: 0,
-            failed: orderSns.length
+
+// Update fungsi handleMobileCategoryChange
+const handleMobileCategoryChange = useCallback((value: string) => {
+  handleCategoryChange(value);
+}, [handleCategoryChange]);
+
+// Fungsi untuk menangani print dokumen yang belum dicetak
+const handlePrintUnprinted = useCallback(async () => {
+  if (derivedData.unprintedOrders.length === 0) {
+    toast.info('Tidak ada dokumen yang belum dicetak');
+    return;
+  }
+
+  setIsUnprintedConfirmOpen(true);
+}, [derivedData.unprintedOrders]);
+
+// Fungsi untuk konfirmasi print dokumen yang belum dicetak
+const handleConfirmUnprinted = useCallback(async () => {
+  setIsUnprintedConfirmOpen(false);
+  
+  if (derivedData.unprintedOrders.length === 0) {
+    toast.info('Tidak ada dokumen yang belum dicetak');
+    return;
+  }
+
+  await processPrintingAndReport(derivedData.unprintedOrders);
+}, [derivedData.unprintedOrders, processPrintingAndReport]);
+
+// Fungsi untuk menangani aksi pembatalan
+const handleCancellationAction = useCallback(async (orderSn: string, action: 'ACCEPT' | 'REJECT') => {
+  setSelectedAction({ orderSn, action });
+  setIsConfirmOpen(true);
+}, []);
+
+// Update fungsi handleConfirmAction
+const handleConfirmAction = useCallback(async () => {
+  setIsConfirmOpen(false);
+  
+  try {
+    toast.promise(
+      async () => {
+        const response = await fetch('/api/handle-cancellation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: orders.find(o => o.order_sn === selectedAction.orderSn)?.shop_id,
+            orderSn: selectedAction.orderSn,
+            operation: selectedAction.action
+          })
+        });
+
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Gagal memproses pembatalan');
+        }
+
+        // Update local state jika berhasil
+        if (onOrderUpdate) {
+          onOrderUpdate(selectedAction.orderSn, {
+            order_status: selectedAction.action === 'ACCEPT' ? 'CANCELLED' : 'READY_TO_SHIP'
           });
         }
+
+        return result;
+      },
+      {
+        loading: 'Memproses pembatalan...',
+        success: `Berhasil ${selectedAction.action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`,
+        error: (err) => `${err.message}`
       }
-
-      // Set ringkasan sinkronisasi
-      const totalProcessed = shopReports.reduce((sum, report) => sum + report.processed, 0);
-      const totalFailed = shopReports.reduce((sum, report) => sum + report.failed, 0);
-
-      setSyncSummary({
-        totalOrders,
-        processedOrders: totalProcessed,
-        shopReports
-      });
-
-      // Tampilkan dialog ringkasan
-      setIsSyncSummaryOpen(true);
-
-      if (totalProcessed > 0) {
-        toast.success(`Berhasil mensinkronkan ${totalProcessed} pesanan`);
-      }
-      if (totalFailed > 0) {
-        toast.error(`Gagal mensinkronkan ${totalFailed} pesanan`);
-      }
-
-    } catch (error) {
-      console.error('Error syncing orders:', error);
-      toast.error('Gagal melakukan sinkronisasi');
-    } finally {
-      setIsSyncing(false);
-      setSyncProgress({
-        total: 0,
-        processed: 0,
-        currentShop: ''
-      });
-    }
-  };
-
-  const handleCourierFilter = useCallback((courier: string) => {
-    setTableState(prev => ({
-      ...prev,
-      selectedCouriers: prev.selectedCouriers.includes(courier)
-        ? prev.selectedCouriers.filter(c => c !== courier)
-        : [...prev.selectedCouriers, courier]
-    }));
-  }, []);
-
-  const handlePrintStatusFilter = useCallback((status: 'all' | 'printed' | 'unprinted') => {
-    setTableState(prev => ({
-      ...prev,
-      printStatus: status
-    }));
-  }, []);
-
-  const handlePaymentTypeFilter = useCallback((type: 'all' | 'cod' | 'non_cod') => {
-    setTableState(prev => ({
-      ...prev,
-      paymentType: type
-    }));
-  }, []);
-
-  const handleResetFilter = useCallback(() => {
-    setTableState(prev => ({
-      ...prev,
-      selectedShops: [],
-      printStatus: 'all',
-      selectedCouriers: [],
-      paymentType: 'all'
-    }));
-  }, []);
-
-  // Tambahkan state untuk dialog konfirmasi terima semua
-  const [isAcceptAllConfirmOpen, setIsAcceptAllConfirmOpen] = useState(false);
-
-  // Tambahkan state untuk tracking progress bulk accept
-  const [bulkAcceptProgress, setBulkAcceptProgress] = useState<{
-    processed: number;
-    total: number;
-    currentOrder: string;
-  }>({
-    processed: 0,
-    total: 0,
-    currentOrder: ''
-  });
-
-  // Tambahkan fungsi untuk menerima semua pembatalan
-  const handleAcceptAllCancellations = useCallback(async () => {
-    setIsAcceptAllConfirmOpen(false);
-    
-    // Filter pesanan dengan status IN_CANCEL dan belum dicetak
-    const cancelOrders = orders.filter(order => 
-      order.order_status === 'IN_CANCEL' && !order.is_printed
     );
+  } catch (error) {
+    console.error('Gagal memproses pembatalan:', error);
+  }
+}, [selectedAction, orders, onOrderUpdate]);
+
+// Tambahkan state untuk daftar toko
+const shops = useMemo(() => {
+  return Array.from(new Set(orders.map(order => order.shop_name))).sort();
+}, [orders]);
+
+
+
+// Tambahkan state untuk dialog laporan
+const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
+const [printReport, setPrintReport] = useState<{
+  totalSuccess: number;
+  totalFailed: number;
+  shopReports: {
+    shopName: string;
+    success: number;
+    failed: number;
+  }[];
+}>({
+  totalSuccess: 0,
+  totalFailed: 0,
+  shopReports: []
+});
+
+// Tambahkan state untuk tracking proses sync
+const [isSyncing, setIsSyncing] = useState(false);
+const [syncProgress, setSyncProgress] = useState<{
+  total: number;
+  processed: number;
+  currentShop: string;
+}>({
+  total: 0,
+  processed: 0,
+  currentShop: ''
+});
+
+// Tambahkan state untuk dialog ringkasan
+const [isSyncSummaryOpen, setIsSyncSummaryOpen] = useState(false);
+const [syncSummary, setSyncSummary] = useState<{
+  totalOrders: number;
+  processedOrders: number;
+  shopReports: {
+    shopName: string;
+    total: number;
+    processed: number;
+    failed: number;
+  }[];
+}>({
+  totalOrders: 0,
+  processedOrders: 0,
+  shopReports: []
+});
+
+// Update fungsi handleSyncOrders
+const handleSyncOrders = async () => {
+  try {
+    setIsSyncing(true);
+    
+    const ordersByShop = orders.reduce((acc, order) => {
+      if (!acc[order.shop_id]) {
+        acc[order.shop_id] = [];
+      }
+      acc[order.shop_id].push(order.order_sn);
+      return acc;
+    }, {} as { [key: number]: string[] });
+
+    const totalOrders = orders.length;
+    const shopReports: typeof syncSummary.shopReports = [];
+
+    for (const [shopId, orderSns] of Object.entries(ordersByShop)) {
+      const shopName = orders.find(o => o.shop_id === Number(shopId))?.shop_name || 'Unknown Shop';
+      
+      setSyncProgress(prev => ({
+        ...prev,
+        total: totalOrders,
+        currentShop: shopName
+      }));
+
+      try {
+        const response = await fetch('/api/sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: Number(shopId),
+            orderSns: orderSns
+          })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Gagal sinkronisasi');
+        }
+
+        shopReports.push({
+          shopName,
+          total: result.data.total,
+          processed: result.data.success,
+          failed: result.data.failed
+        });
+
+        setSyncProgress(prev => ({
+          ...prev,
+          processed: prev.processed + result.data.success
+        }));
+
+      } catch (error) {
+        console.error(`Error syncing ${shopName}:`, error);
+        shopReports.push({
+          shopName,
+          total: orderSns.length,
+          processed: 0,
+          failed: orderSns.length
+        });
+      }
+    }
+
+    // Set ringkasan sinkronisasi
+    const totalProcessed = shopReports.reduce((sum, report) => sum + report.processed, 0);
+    const totalFailed = shopReports.reduce((sum, report) => sum + report.failed, 0);
+
+    setSyncSummary({
+      totalOrders,
+      processedOrders: totalProcessed,
+      shopReports
+    });
+
+    // Tampilkan dialog ringkasan
+    setIsSyncSummaryOpen(true);
+
+    if (totalProcessed > 0) {
+      toast.success(`Berhasil mensinkronkan ${totalProcessed} pesanan`);
+    }
+    if (totalFailed > 0) {
+      toast.error(`Gagal mensinkronkan ${totalFailed} pesanan`);
+    }
+
+  } catch (error) {
+    console.error('Error syncing orders:', error);
+    toast.error('Gagal melakukan sinkronisasi');
+  } finally {
+    setIsSyncing(false);
+    setSyncProgress({
+      total: 0,
+      processed: 0,
+      currentShop: ''
+    });
+  }
+};
+
+const handleCourierFilter = useCallback((courier: string) => {
+  setTableState(prev => ({
+    ...prev,
+    selectedCouriers: prev.selectedCouriers.includes(courier)
+      ? prev.selectedCouriers.filter(c => c !== courier)
+      : [...prev.selectedCouriers, courier]
+  }));
+}, []);
+
+const handlePrintStatusFilter = useCallback((status: 'all' | 'printed' | 'unprinted') => {
+  setTableState(prev => ({
+    ...prev,
+    printStatus: status
+  }));
+}, []);
+
+const handlePaymentTypeFilter = useCallback((type: 'all' | 'cod' | 'non_cod') => {
+  setTableState(prev => ({
+    ...prev,
+    paymentType: type
+  }));
+}, []);
+
+const handleResetFilter = useCallback(() => {
+  setTableState(prev => ({
+    ...prev,
+    selectedShops: [],
+    printStatus: 'all',
+    selectedCouriers: [],
+    paymentType: 'all'
+  }));
+}, []);
+
+// Tambahkan state untuk dialog konfirmasi terima semua
+const [isAcceptAllConfirmOpen, setIsAcceptAllConfirmOpen] = useState(false);
+
+// Tambahkan state untuk tracking progress bulk accept
+const [bulkAcceptProgress, setBulkAcceptProgress] = useState<{
+  processed: number;
+  total: number;
+  currentOrder: string;
+}>({
+  processed: 0,
+  total: 0,
+  currentOrder: ''
+});
+
+// Tambahkan fungsi untuk menerima semua pembatalan
+const handleAcceptAllCancellations = useCallback(async () => {
+  setIsAcceptAllConfirmOpen(false);
+  
+  // Filter pesanan dengan status IN_CANCEL dan belum dicetak
+  const cancelOrders = orders.filter(order => 
+    order.order_status === 'IN_CANCEL' && !order.is_printed
+  );
     
     if (cancelOrders.length === 0) {
       toast.info('Tidak ada permintaan pembatalan yang memenuhi syarat');
