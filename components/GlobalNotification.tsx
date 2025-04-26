@@ -17,7 +17,7 @@ export function GlobalNotification() {
 
     switch (lastMessage.type) {
       case 'new_message':
-        if (lastMessage.for_chat_context) {
+        if (lastMessage) {
           handleSSEMessage(lastMessage);
           handleChatNotification(lastMessage);
         }
