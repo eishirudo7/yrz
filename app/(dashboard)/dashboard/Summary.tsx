@@ -74,6 +74,7 @@ export const SummaryHeader = memo(({
     </Card>
   );
 });
+SummaryHeader.displayName = 'SummaryHeader';
 
 export const SummaryTable = memo(({ summary }: { summary: DashboardSummary }) => {
   const sortedStores = Array.from(new Set([
@@ -124,6 +125,7 @@ export const SummaryTable = memo(({ summary }: { summary: DashboardSummary }) =>
     </Card>
   );
 });
+SummaryTable.displayName = 'SummaryTable';
 
 export function OrdersSummary({ summary }: OrdersSummaryProps) {
   const [isRingkasanVisible, setIsRingkasanVisible] = useState(false);

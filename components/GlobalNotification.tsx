@@ -5,19 +5,22 @@ import { useSSE } from '@/app/services/SSEService'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { ShoppingBag, MessageSquare, AlertTriangle, Bell } from 'lucide-react'
-import { useMiniChat } from '@/contexts/MiniChatContext'
+import useStoreChat from '@/stores/useStoreChat'
 
 export function GlobalNotification() {
   const { lastMessage, isConnected } = useSSE();
   const router = useRouter();
-  const { openChat } = useMiniChat();
+  const { conversations, handleSSEMessage } = useStoreChat();
 
   useEffect(() => {
     if (!lastMessage) return;
 
     switch (lastMessage.type) {
       case 'new_message':
-        handleChatNotification(lastMessage);
+        if (lastMessage.for_chat_context) {
+          handleSSEMessage(lastMessage.for_chat_context);
+          handleChatNotification(lastMessage.for_chat_context);
+        }
         break;
       case 'new_order':
         handleOrderNotification(lastMessage);
@@ -29,7 +32,7 @@ export function GlobalNotification() {
         handleUpdateNotification(lastMessage);
         break;
     }
-  }, [lastMessage]);
+  }, [lastMessage, handleSSEMessage]);
 
   const handleChatNotification = (message: any) => {
     console.log("Pesan baru dari", message.shop_name)
@@ -44,23 +47,41 @@ export function GlobalNotification() {
       action: {
         label: "Balas",
         onClick: () => {
-          openChat({
-            toId: message.sender,
-            toName: message.sender_name,
-            toAvatar: '',
-            shopId: message.shop_id,
-            shopName: message.shop_name,
+          // Opsi untuk membuka MiniChat atau halaman webchat
+          const chatData = {
             conversationId: message.conversation_id,
-            metadata: {
-              source: 'notification',
-              timestamp: new Date(message.timestamp * 1000).toISOString()
-            }
-          });
+            shopId: message.shop_id || message.to_shop_id,
+            toId: message.from_id || message.to_id,
+            toName: message.sender_name,
+            toAvatar: message.sender_avatar || '',
+            shopName: message.shop_name,
+            metadata: {}
+          };
           
+          // Emit event untuk membuka MiniChat
+          console.log('[GlobalNotification] Mengirim event openChat dengan data:', chatData);
+          const event = new CustomEvent('openChat', { 
+            detail: chatData 
+          });
+          window.dispatchEvent(event);
           toast.dismiss();
         }
       }
     });
+
+    // Tambahkan toast terpisah yang berfungsi sebagai aksi kedua
+    toast.message(
+      <div className="flex items-center cursor-pointer w-full"
+           onClick={() => {
+             router.push(`/webchat?conversation_id=${message.conversation_id}&shop_id=${message.shop_id}`);
+             toast.dismiss();
+           }}>
+        <span className="text-xs">atau buka di Webchat</span>
+      </div>,
+      {
+        duration: 5000,
+      }
+    );
   };
 
   const handleOrderNotification = (message: any) => {

@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/tooltip"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useMiniChat } from "@/contexts/MiniChatContext"
+import useStoreChat from "@/stores/useStoreChat"
 import { useUserData } from "@/contexts/UserDataContext"
 import { Badge } from "@/components/ui/badge"
 
@@ -53,14 +53,11 @@ export const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { state } = useMiniChat()
+  const { totalUnread } = useStoreChat()
   const { subscription, isLoading } = useUserData()
 
   const isActive = (path: string) => pathname === path
   const isProUser = !isLoading && subscription?.plan_name === 'Admin'
-
-  // Hitung jumlah akun yang memiliki pesan belum dibaca
-  const totalUnread = state.conversations.filter(conv => conv.unread_count > 0).length
 
   // Filter menu items berdasarkan level langganan
   const filteredNavItems = navItems.filter(item => {

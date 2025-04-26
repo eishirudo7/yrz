@@ -1,14 +1,15 @@
 'use client'
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { MessageSquare } from 'lucide-react';
-import { useMiniChat } from '@/contexts/MiniChatContext';
+import useStoreChat from '@/stores/useStoreChat';
+import { toast } from 'sonner';
 
 interface ChatButtonProps {
   shopId: number;
   toId: number;
   toName: string;
-  toAvatar?: string; // Opsional, akan diambil dari daftar percakapan jika tersedia
+  toAvatar?: string;
   shopName: string;
   conversationId?: string;
   buttonClassName?: string;
@@ -16,10 +17,19 @@ interface ChatButtonProps {
   iconOnly?: boolean;
   orderId?: string;
   productId?: string;
-  orderStatus?: string; // Tambahkan orderStatus
+  orderStatus?: string;
 }
 
-// Gunakan React.memo untuk mencegah re-render yang tidak perlu
+interface ChatState {
+  conversations: Array<{
+    conversation_id: string;
+    to_id: number;
+    shop_id: number;
+  }>;
+  isInitialized: boolean;
+  isLoading: boolean;
+}
+
 const ChatButton = React.memo(({
   shopId,
   toId,
@@ -34,8 +44,19 @@ const ChatButton = React.memo(({
   productId,
   orderStatus
 }: ChatButtonProps) => {
-  const { openChat, state } = useMiniChat();
   const [localLoading, setLocalLoading] = useState(false);
+  
+  // Gunakan store chat dengan tipe yang benar
+  const storeChat = useStoreChat() as unknown as ChatState & {
+    refreshConversations: () => Promise<void>;
+    fetchMessages: (conversationId: string) => Promise<void>;
+    openChat: (chatData: any) => void;
+  };
+  
+  const { conversations, isLoading: storeLoading } = storeChat;
+  
+  // Gabungkan loading state
+  const isLoading = localLoading || storeLoading;
   
   // Cari conversation ID dari state terlebih dahulu
   const findExistingConversationId = useCallback(() => {
@@ -46,7 +67,7 @@ const ChatButton = React.memo(({
     }
     
     // Cek di daftar percakapan yang sudah ada
-    const existingConversation = state.conversations.find(
+    const existingConversation = conversations?.find(
       conv => conv.to_id === toId && conv.shop_id === shopId
     );
     
@@ -57,7 +78,7 @@ const ChatButton = React.memo(({
     
     console.log('[ChatButton] Tidak menemukan conversationId untuk:', { toId, shopId });
     return undefined;
-  }, [initialConversationId, state.conversations, toId, shopId]);
+  }, [initialConversationId, conversations, toId, shopId]);
   
   // Gunakan useCallback untuk event handler
   const handleClick = useCallback(async (e: React.MouseEvent) => {
@@ -65,31 +86,48 @@ const ChatButton = React.memo(({
     setLocalLoading(true);
     
     try {
+      console.log('[ChatButton] Mulai proses membuka chat:', { toId, shopId });
+      
       // Cari conversation ID
       const foundConversationId = findExistingConversationId();
       
-      // Pastikan semua data yang diperlukan dikirim ke openChat
-      openChat({
+      // Data chat yang akan dibuka
+      const chatData = {
+        conversationId: foundConversationId,
+        shopId,
         toId,
         toName,
-        toAvatar, // Akan diganti dalam context jika ditemukan dari percakapan
-        shopId,
+        toAvatar,
         shopName,
-        conversationId: foundConversationId,
         metadata: {
           orderId,
           productId,
-          orderStatus, // Tambahkan orderStatus
-          source: 'chat_button',
-          timestamp: new Date().toISOString()
+          orderStatus
         }
+      };
+
+      console.log('[ChatButton] Data chat yang akan dibuka:', chatData);
+
+      // Emit event untuk membuka chat
+      console.log('[ChatButton] Mengirim event openChat dengan data:', chatData);
+      const event = new CustomEvent('openChat', { 
+        detail: chatData 
       });
+      window.dispatchEvent(event);
+
     } catch (error) {
       console.error('[ChatButton] Error saat membuka chat:', error);
+      toast.error('Gagal membuka chat');
     } finally {
       setLocalLoading(false);
     }
-  }, [toId, toName, toAvatar, shopId, shopName, orderId, productId, orderStatus, openChat, findExistingConversationId]);
+  }, [toId, shopId, orderId, findExistingConversationId, toName, toAvatar, shopName, productId, orderStatus]);
+
+  // Validasi props yang required
+  if (!shopId || !toId || !toName || !shopName) {
+    console.error('[ChatButton] Missing required props:', { shopId, toId, toName, shopName });
+    return null;
+  }
 
   // Gunakan style bawaan yang lebih baik
   const defaultButtonClass = "inline-flex items-center justify-center text-gray-600 hover:text-primary transition-colors focus:outline-none";
@@ -103,15 +141,15 @@ const ChatButton = React.memo(({
       title={`Chat dengan ${toName}`}
       aria-label={`Chat dengan ${toName}`}
       type="button"
-      disabled={state.isLoading || localLoading} // Nonaktifkan tombol saat loading
+      disabled={isLoading}
     >
-      {(state.isLoading || localLoading) ? (
+      {isLoading ? (
         <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
       ) : (
         <MessageSquare 
           size={iconSize} 
-          className="flex-shrink-0" // Mencegah ikon dari mengubah ukuran
-          strokeWidth={1.5} // Garis ikon yang lebih tipis
+          className="flex-shrink-0"
+          strokeWidth={1.5}
         />
       )}
       {!iconOnly && <span className={`text-sm ${iconSize <= 14 ? 'text-xs' : ''}`}>Chat</span>}
@@ -119,7 +157,6 @@ const ChatButton = React.memo(({
   );
 });
 
-// Tambahkan displayName untuk debugging
 ChatButton.displayName = 'ChatButton';
 
 export default ChatButton; 

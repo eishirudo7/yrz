@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useConversationMessages } from '@/app/hooks/useGetMessage';
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,12 +8,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Send, User, CheckCircle2, ChevronLeft, Filter, ShoppingBag, MessageSquare, ArrowRight } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useMiniChat } from '@/contexts/MiniChatContext';
+import useStoreChat, { convertToUIMessage, SendMessageParams, ShopeeMessage, SSEMessageData } from '@/stores/useStoreChat';
 import { toast } from 'sonner';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
 import CustomImageLightbox from '@/components/CustomImageLightbox';
 import { UIMessage } from '@/types/shopeeMessage';
+import { Virtuoso } from 'react-virtuoso';
 
 interface Conversation {
   conversation_id: string;
@@ -28,6 +29,31 @@ interface Conversation {
   latest_message_from_id: number;
   last_message_timestamp: number;
   unread_count: number;
+}
+
+// Interface untuk Message dari API
+interface Message {
+  message_id: string;
+  conversation_id: string;
+  from_id: number;
+  to_id: number;
+  from_shop_id: number;
+  to_shop_id: number;
+  content: {
+    text?: string;
+    image_url?: string;
+    thumb_url?: string;
+    thumb_height?: number;
+    thumb_width?: number;
+    order_sn?: string;
+    shop_id?: number;
+    [key: string]: any;
+  };
+  message_type: string;
+  created_timestamp: number;
+  status: string;
+  sender_name?: string;
+  receiver_name?: string;
 }
 
 // Tambahkan interface untuk props MessageInput
@@ -174,7 +200,7 @@ interface Order {
 interface MessageBubbleProps {
   message: UIMessage;
   orders: Order[];
-  onShowOrderDetails?: (orderSn: string) => void;
+  isMobileView: boolean;
 }
 
 // Update interface ItemDetail
@@ -246,7 +272,7 @@ const ItemPreview = React.memo(({ itemId }: { itemId: number }) => {
 ItemPreview.displayName = 'ItemPreview';
 
 // Komponen MessageBubble yang dimemoize
-const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: MessageBubbleProps) => {
+const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubbleProps) => {
   // Tambahkan state untuk lightbox
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   // Tambahkan state untuk expand/collapse order detail
@@ -281,8 +307,116 @@ const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: Messa
         {message.type === 'text' ? (
           <div>
             <p className="break-words whitespace-pre-wrap">{message.content}</p>
+            
+            {/* Cek jika ada item_id di sourceContent */}
             {message.sourceContent?.item_id && (
               <ItemPreview itemId={message.sourceContent.item_id} />
+            )}
+            
+            {/* Tambahkan penanganan untuk source_content.order_sn */}
+            {message.sourceContent?.order_sn && (
+              <div className="flex flex-col mt-2 bg-muted/30 rounded p-2">
+                {/* Header order yang selalu ditampilkan */}
+                <div 
+                  className="flex items-center justify-between w-full cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => setIsOrderExpanded(!isOrderExpanded)}
+                >
+                  <div className="flex items-center gap-2 mr-3 flex-1 min-w-0">
+                    <ShoppingBag className="h-4 w-4 flex-shrink-0" />
+                    <span className="break-words text-xs font-medium truncate">
+                      Pesanan #{message.sourceContent.order_sn}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {orderInfo && orderInfo.order_status && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${
+                        orderInfo.order_status === 'PAID'
+                          ? 'bg-green-500 text-white dark:bg-green-600'
+                          : orderInfo.order_status === 'UNPAID'
+                          ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                          : orderInfo.order_status === 'CANCELLED'
+                          ? 'bg-red-500 text-white dark:bg-red-600'
+                          : orderInfo.order_status === 'COMPLETED'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : orderInfo.order_status === 'PROCESSED'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : orderInfo.order_status === 'SHIPPED'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : orderInfo.order_status === 'DELIVERED'
+                          ? 'bg-green-500 text-white dark:bg-green-600'
+                          : orderInfo.order_status === 'IN_CANCEL'
+                          ? 'bg-red-500 text-white dark:bg-red-600'
+                          : 'bg-muted text-white dark:bg-muted/80'
+                      }`}>
+                        {orderInfo.order_status}
+                      </span>
+                    )}
+                    {/* Tambahkan indikator expand/collapse */}
+                    <div className="flex-shrink-0 text-current opacity-70">
+                      {isOrderExpanded ? (
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      ) : (
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Detail order yang hanya ditampilkan jika di-expand */}
+                {isOrderExpanded && orderInfo && (
+                  <div className={`ml-5 text-xs text-muted-foreground space-y-1 mt-1 ${message.sender === 'seller' ? 'dark:text-primary-foreground/90' : 'dark:text-muted-foreground'}`}>
+                    <div className="flex justify-between items-center">
+                      <span>Pembayaran:</span>
+                      <span className="text-[11px]">{orderInfo.payment_method}</span>
+                    </div>
+                    
+                    {/* Items in order */}
+                    {orderInfo.order_items && orderInfo.order_items.length > 0 && (
+                      <div>
+                        {orderInfo.order_items.map((item, index) => (
+                          <div key={`${item.item_id}-${index}`} className="text-xs mt-1">
+                            <div className="flex items-start gap-1.5">
+                              {item.image_url && (
+                                <img 
+                                  src={item.image_url} 
+                                  alt={item.item_name}
+                                  className="w-7 h-7 object-cover rounded-sm flex-shrink-0"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <p className="line-clamp-1 font-medium text-[11px] flex-1">{item.item_name}</p>
+                                  <span className="text-[10px] opacity-90 ml-1 flex-shrink-0">x{item.model_quantity_purchased}</span>
+                                </div>
+                                <div className="flex justify-between items-center mt-0.5">
+                                  <span className="text-[10px] opacity-90 line-clamp-1 flex-1">
+                                    {item.item_sku ? `SKU: ${item.item_sku} - ${item.model_name}` : item.model_name}
+                                  </span>
+                                  <div className="flex flex-col items-end ml-1 flex-shrink-0">
+                                    <span className="text-[9px] line-through opacity-70 dark:opacity-50">{formatCurrency(item.model_original_price)}</span>
+                                    <span className="text-[10px] font-medium">{formatCurrency(item.model_discounted_price)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Total di bagian bawah */}
+                    <div className="flex justify-between border-t border-muted-foreground/20 dark:border-muted-foreground/10 pt-1 mt-1">
+                      <span>Total:</span>
+                      <span className="font-medium">{formatCurrency(orderInfo.total_amount)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ) : (message.type === 'image' || message.type === 'image_with_text') && message.imageUrl ? (
@@ -423,6 +557,15 @@ const MessageBubble = React.memo(({ message, orders, onShowOrderDetails }: Messa
             </div>
             <ItemPreview itemId={message.itemData.itemId} />
           </div>
+        ) : message.type === 'sticker' && message.stickerData ? (
+          <div className="flex flex-col items-center justify-center">
+            <img
+              src={`https://deo.shopeemobile.com/shopee/shopee-sticker-live-id/packs/${message.stickerData.packageId}/${message.stickerData.stickerId}@1x.png`}
+              alt="Stiker"
+              className="w-20 h-20 object-contain"
+            />
+            <p className="text-xs mt-1 opacity-70">Stiker</p>
+          </div>
         ) : null}
         <p className="text-xs mt-1 opacity-70 dark:opacity-50">{message.time}</p>
       </div>
@@ -445,8 +588,8 @@ interface ChatContentProps {
   isLoadingConversation: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   setActiveTab: (tab: 'chat' | 'orders') => void;
-  onShowOrderDetails: (orderSn: string) => void;
   selectedConversation: string | null;
+  isMobileView: boolean;
 }
 
 const ChatContent = React.memo(({ 
@@ -457,9 +600,8 @@ const ChatContent = React.memo(({
     hasMoreMessages,
   isLoadingConversation,
   messagesEndRef,
-  setActiveTab,
-  onShowOrderDetails,
-  selectedConversation
+  selectedConversation,
+  isMobileView
 }: ChatContentProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -538,7 +680,7 @@ const ChatContent = React.memo(({
             key={message.id}
             message={message}
             orders={orders}
-            onShowOrderDetails={onShowOrderDetails}
+            isMobileView={isMobileView}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -695,6 +837,23 @@ const OrderList = React.memo(({ orders, isLoading }: OrderListProps) => {
 OrderList.displayName = 'OrderList';
 
 const WebChatPage: React.FC = () => {
+  // State dari useStoreChat
+  const {
+    conversations,
+    isLoading: isStoreLoading,
+    sendMessage: sendMessageStore,
+    markAsRead: markAsReadStore,
+    fetchMessages: fetchMessagesStore,
+    initializeConversation,
+    updateConversation,
+    lastMessage,
+  } = useStoreChat();
+
+  // State lokal untuk filter dan pencarian
+  const [selectedShops, setSelectedShops] = useState<number[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS'>('SEMUA');
+  
+  // State lokal untuk UI
   const [selectedShop, setSelectedShop] = useState<number | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -706,82 +865,34 @@ const WebChatPage: React.FC = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'orders'>('chat');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  // Tambahkan state untuk menandai URL sudah diproses
   const [urlProcessed, setUrlProcessed] = useState(false);
-  // Tambahkan state dan fungsi untuk debounce pencarian
   const [searchInput, setSearchInput] = useState("");
-  // Tambahkan state loading untuk transisi percakapan
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
+  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [shouldFetchOrders, setShouldFetchOrders] = useState(false);
+  // State untuk melacak pesan SSE yang sudah diproses
+  const [processedSSEMessages] = useState<Set<string>>(new Set());
 
-  // Gunakan context yang telah diperbarui
-  const { 
-    filteredConversations: conversations, 
-    uniqueShops,
-    updateConversationList,
-    setSearchQuery,
-    setShopFilter,
-    setStatusFilter,
-    state,
-    sendMessage: sendMessageContext,
-    markMessageAsRead: markMessageAsReadContext
-  } = useMiniChat();
-
-  const { 
-    messages, 
-    setMessages, 
-    isLoading, 
-    error, 
-    loadMoreMessages, 
-    hasMoreMessages
-  } = useConversationMessages(selectedConversation, selectedShop || 0);
-
-  // Tambahkan useEffect untuk monitoring perubahan conversations
-  useEffect(() => {
-    console.log('Conversations updated:', conversations);
-  }, [conversations]);
-
-  // Fungsi untuk memilih percakapan
-  const handleConversationSelect = useCallback((conversation: Conversation) => {
-    console.log("handleConversationSelect called:", {
-      conversationId: conversation.conversation_id,
-      selectedConversation,
-      isSame: conversation.conversation_id === selectedConversation
-    });
-    
-    // Jika percakapan yang dipilih sama dengan yang sebelumnya, hanya ubah tampilan
-    if (conversation.conversation_id === selectedConversation) {
-      console.log("Same conversation selected, just updating mobile view");
-      if (isMobileView) {
-        setShowConversationList(false);
-        setIsFullScreenChat(true);
-      }
-      return;
-    }
-    
-    // Tampilkan loading terlebih dahulu, sebelum manipulasi state lain
-    setIsLoadingConversation(true);
-    
-    // Gunakan setTimeout dengan delay 0 untuk memberikan kesempatan UI loading dirender dahulu
-    setTimeout(() => {
-      // Bersihkan pesan lama
-      setMessages(() => []);
-      
-      setSelectedShop(conversation.shop_id);
-      setSelectedConversation(conversation.conversation_id);
-      setShouldFetchOrders(true); // Set flag untuk fetch orders
-      if (isMobileView) {
-        setShowConversationList(false);
-        setIsFullScreenChat(true);
-      }
-    }, 0);
-  }, [isMobileView, setMessages, selectedConversation]);
-  
   // Gunakan allConversations untuk mendapatkan data percakapan yang dipilih
-  // terlepas dari filter yang aktif
   const selectedConversationData = useMemo(() => 
-    state.conversations.find(conv => conv.conversation_id === selectedConversation),
-    [state.conversations, selectedConversation]
+    conversations.find(conv => conv.conversation_id === selectedConversation),
+    [conversations, selectedConversation]
   );
+
+  // Format uniqueShops untuk UI
+  const formattedUniqueShops = useMemo(() => {
+    const uniqueShopIds = Array.from(new Set(conversations.map(conv => conv.shop_id)));
+    return uniqueShopIds.map(shopId => {
+      const shopData = conversations.find(conv => conv.shop_id === shopId);
+      return {
+        id: shopId,
+        name: shopData?.shop_name || `Toko ${shopId}`
+      };
+    });
+  }, [conversations]);
 
   // Fungsi untuk menandai pesan sebagai dibaca
   const handleMarkAsRead = useCallback(async (conversationId: string) => {
@@ -789,32 +900,16 @@ const WebChatPage: React.FC = () => {
     if (!conversation || conversation.unread_count === 0) return;
 
     try {
-      // Cari ID pesan terakhir dari pengirim
-      const lastBuyerMessage = [...messages].reverse().find(msg => msg.sender === 'buyer');
-      
-      if (lastBuyerMessage) {
-        await markMessageAsReadContext(
-          conversation.conversation_id,
-          lastBuyerMessage.id
-        );
-      } else if (conversation.latest_message_id) {
-        // Fallback menggunakan ID pesan terakhir dari data percakapan
-        await markMessageAsReadContext(
-          conversation.conversation_id,
-          conversation.latest_message_id
-        );
-      }
+      await markAsReadStore(conversationId);
     } catch (error) {
       console.error('Gagal menandai pesan sebagai dibaca:', error);
     }
-  }, [conversations, messages, markMessageAsReadContext]);
+  }, [conversations, markAsReadStore]);
 
-  // Tetap gunakan useEffect ini untuk auto mark as read
+  // Effect untuk auto mark as read
   useEffect(() => {
     if (selectedConversation && selectedConversationData) {
-      // Jika percakapan yang sedang dilihat mendapat pesan yang belum dibaca
       if (selectedConversationData.unread_count > 0 && messages.length > 0 && !isLoading) {
-        // Tandai pesan sebagai dibaca setelah 1.5 detik
         const timeoutId = setTimeout(() => {
           handleMarkAsRead(selectedConversation);
         }, 1500);
@@ -824,40 +919,216 @@ const WebChatPage: React.FC = () => {
     }
   }, [selectedConversationData, selectedConversation, isLoading, messages.length, handleMarkAsRead]);
 
-  // Tambahkan useEffect untuk menangani percakapan otomatis berdasarkan lastMessage
-  useEffect(() => {
-    // Handle auto-open conversation when new message comes in
-    if (!selectedConversation && state.lastMessage && state.lastMessage.type === 'new_message') {
-      const relatedConversation = conversations.find(
-        conv => conv.conversation_id === state.lastMessage?.conversation_id
-      );
+  // Fungsi untuk mengirim pesan
+  const handleSendMessage = async (message: string) => {
+    if (!selectedConversationData || !message.trim() || !selectedConversation || !selectedShop) return;
+
+    try {
+      setIsSendingMessage(true);
       
-      if (relatedConversation) {
-        handleConversationSelect(relatedConversation);
+      const params = {
+        conversationId: selectedConversation,
+        content: message,
+        toId: selectedConversationData.to_id,
+        shopId: selectedShop
+      };
+
+      console.log('[handleSendMessage] Sending with params:', params);
+      const messageId = await sendMessageStore(params);
+
+      console.log('[handleSendMessage] Message sent, updating UI');
+      
+      // Update conversation untuk menandai sudah dibalas
+      updateConversation(selectedConversation, {
+        unread_count: 0,
+        latest_message_content: { text: message },
+        latest_message_from_id: selectedShop,
+        last_message_timestamp: Date.now()
+      });
+
+      // Tambahkan pesan baru ke state lokal
+      const newMessage: UIMessage = {
+        id: messageId || Date.now().toString(), // gunakan messageId dari response jika ada
+        sender: 'seller',
+        content: message,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'text',
+      };
+      
+      setMessages(prev => [...prev, newMessage]);
+      
+      // Scroll ke pesan terbaru
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+      
+    } catch (error) {
+      console.error('[handleSendMessage] Error:', error);
+      toast.error('Gagal mengirim pesan. Silakan coba lagi.');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  // Fungsi untuk memilih percakapan
+  const handleConversationSelect = useCallback(async (conversation: Conversation) => {
+    console.log('[handleConversationSelect] Starting:', {
+      newConversation: conversation,
+      currentSelectedConversation: selectedConversation
+    });
+    
+    // Jika percakapan yang dipilih sama dengan yang sebelumnya, hanya ubah tampilan
+    if (conversation.conversation_id === selectedConversation) {
+      console.log('[handleConversationSelect] Same conversation selected');
+      if (isMobileView) {
+        setShowConversationList(false);
+        setIsFullScreenChat(true);
+      }
+      return;
+    }
+    
+    // Tampilkan loading terlebih dahulu
+    setIsLoadingConversation(true);
+    setError(null);
+    
+    // Reset state dan set new conversation atomically
+    const newConversationId = conversation.conversation_id;
+    const newShopId = conversation.shop_id;
+    
+    console.log('[handleConversationSelect] Setting new conversation:', {
+      newConversationId,
+      newShopId
+    });
+    
+    // Reset state sebelum fetch
+    setMessages([]);
+    setSelectedShop(newShopId);
+    setSelectedConversation(newConversationId);
+    setShouldFetchOrders(true);
+    
+    // Update mobile view
+    if (isMobileView) {
+      setShowConversationList(false);
+      setIsFullScreenChat(true);
+    }
+
+    try {
+      console.log('[handleConversationSelect] Fetching messages directly');
+      
+      // Langsung panggil fetchMessagesStore dan capture hasil
+      const fetchedMessages = await fetchMessagesStore(newConversationId);
+      
+      console.log('[handleConversationSelect] Messages fetched:', {
+        messageCount: fetchedMessages?.length || 0
+      });
+      
+      // Konversi pesan ke format UIMessage menggunakan convertToUIMessage dari store
+      const uiMessages = fetchedMessages?.map(msg => 
+        convertToUIMessage(msg as ShopeeMessage, newShopId)
+      ) || [];
+      
+      setMessages(uiMessages);
+      setHasMoreMessages(fetchedMessages?.length === 25);
+      console.log('[handleConversationSelect] UI updated with messages:', {
+        uiMessagesCount: uiMessages.length
+      });
+    } catch (error) {
+      console.error('[handleConversationSelect] Error:', error);
+      toast.error('Gagal memuat percakapan');
+      
+      setSelectedShop(null);
+      setSelectedConversation(null);
+      setMessages([]);
+      setError('Gagal memuat percakapan');
+    } finally {
+      setIsLoadingConversation(false);
+    }
+  }, [
+    isMobileView, 
+    selectedConversation,
+    fetchMessagesStore,
+    convertToUIMessage
+  ]);
+
+  // Fungsi untuk memuat pesan - gunakan untuk refresh saja, bukan initial load
+  const loadMessages = useCallback(async () => {
+    if (!selectedConversation || !selectedShop) return;
+    
+    const conversationId = selectedConversation;
+    const shopId = selectedShop;
+    
+    console.log('[loadMessages] Starting refresh messages:', {
+      conversationId,
+      shopId
+    });
+    
+    try {
+      setIsLoading(true);
+      const fetchedMessages = await fetchMessagesStore(conversationId);
+      
+      // Pastikan conversation masih sama setelah fetch
+      if (selectedConversation !== conversationId) {
+        console.log('[loadMessages] Conversation changed during fetch, aborting');
+        return;
+      }
+      
+      console.log('[loadMessages] Processing messages:', {
+        messageCount: fetchedMessages?.length || 0
+      });
+      
+      // Konversi pesan ke format UIMessage menggunakan convertToUIMessage dari store
+      const uiMessages = fetchedMessages?.map(msg => 
+        convertToUIMessage(msg as ShopeeMessage, shopId)
+      ) || [];
+      
+      // Pastikan conversation masih sama sebelum update UI
+      if (selectedConversation === conversationId) {
+        setMessages(uiMessages);
+        setHasMoreMessages(fetchedMessages?.length === 25);
+        console.log('[loadMessages] UI refreshed with messages:', {
+          uiMessagesCount: uiMessages.length
+        });
+      }
+    } catch (err) {
+      console.error('[loadMessages] Error:', err);
+      if (selectedConversation === conversationId) {
+        setError(err instanceof Error ? err.message : 'Gagal memuat pesan');
+      }
+    } finally {
+      if (selectedConversation === conversationId) {
+        setIsLoading(false);
       }
     }
-  }, [selectedConversation, conversations, handleConversationSelect, state.lastMessage]);
+  }, [selectedConversation, selectedShop, fetchMessagesStore, convertToUIMessage]);
 
-  // Tambahkan effect untuk mengatasi loading selesai
+  // Effect untuk loading state
   useEffect(() => {
-    // Ketika pesan selesai dimuat atau terjadi error, hentikan loading
     if (selectedConversation && ((messages.length > 0 && !isLoading) || error)) {
       setIsLoadingConversation(false);
-      // Scroll akan ditangani oleh efek scroll utama
     }
   }, [messages.length, isLoading, error, selectedConversation]);
 
-  // Effect untuk memuat pesan awal ketika percakapan dipilih
+  // Effect untuk scroll ke pesan baru
   useEffect(() => {
-    // Jika ini adalah percakapan baru yang belum pernah dibuka sebelumnya
-    if (selectedConversation && messages.length === 0 && !isLoading) {
-      // Muat pesan-pesan dari percakapan tersebut
-      loadMoreMessages();
+    if (messages.length > 0 && !isLoading && messagesEndRef.current) {
+      const timer = setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+      
+      return () => clearTimeout(timer);
     }
-  }, [selectedConversation, messages.length, isLoading, loadMoreMessages]);
+  }, [messages.length, isLoading]);
 
-  // Tambahkan flag untuk mencegah double fetch
-  const [shouldFetchOrders, setShouldFetchOrders] = useState(false);
+  // Effect untuk debounce pencarian
+  useEffect(() => {
+    const timerId = setTimeout(() => {
+      // Implementasi pencarian lokal
+      const searchTerm = searchInput.toLowerCase();
+      // Filter conversations berdasarkan pencarian akan diimplementasikan di UI
+    }, 300);
+    
+    return () => clearTimeout(timerId);
+  }, [searchInput]);
 
   // Tambahkan fungsi untuk mengambil data pesanan
   const fetchOrders = useCallback(async (userId: string) => {
@@ -881,7 +1152,7 @@ const WebChatPage: React.FC = () => {
     }
   }, [selectedConversationData?.to_id, shouldFetchOrders, fetchOrders]);
 
-  // Tampilkan percakapan baru dari URL params
+  // Effect untuk menangani URL params
   useEffect(() => {
     const handleUrlParams = async () => {
       // Jika URL sudah diproses, skip
@@ -903,46 +1174,32 @@ const WebChatPage: React.FC = () => {
       if (targetConversation) {
         handleConversationSelect(targetConversation);
         setUrlProcessed(true); // Tandai URL sudah diproses
-      } else if (orderSn) {
+      } else if (orderSn && shopId) {
         try {
-          const response = await fetch('/api/msg/initialize', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              userId: parseInt(userId),
-              orderSn: orderSn,
-              shopId: shopId ? parseInt(shopId) : null,
-            }),
+          // Inisialisasi percakapan baru
+          await initializeConversation({
+            userId,
+            shopId,
+            orderSn
           });
 
-          if (!response.ok) {
-            throw new Error('Gagal memulai percakapan');
-          }
-
-          const data = await response.json();
-          
-          if (data.success) {
-            updateConversationList({
-              type: 'refresh'
-            });
+          // Tunggu sebentar untuk memastikan data sudah tersedia
+          setTimeout(() => {
+            // Cari conversation yang baru dibuat di state
+            const newConversation = conversations.find(
+              conv => conv.to_id.toString() === userId && 
+              conv.shop_id.toString() === shopId
+            );
             
-            setTimeout(() => {
-              const newTargetConversation = conversations.find(
-                conv => conv.to_id.toString() === userId && 
-                (!shopId || conv.shop_id.toString() === shopId)
-              );
-              
-              if (newTargetConversation) {
-                handleConversationSelect(newTargetConversation);
-                setUrlProcessed(true); // Tandai URL sudah diproses
-              }
-            }, 500);
-          }
+            if (newConversation) {
+              handleConversationSelect(newConversation);
+            }
+            setUrlProcessed(true);
+          }, 500);
         } catch (error) {
           console.error('Error memulai percakapan:', error);
-          setUrlProcessed(true); // Tandai URL sudah diproses meskipun error
+          toast.error('Gagal memulai percakapan');
+          setUrlProcessed(true);
         }
       }
     };
@@ -950,7 +1207,7 @@ const WebChatPage: React.FC = () => {
     if (conversations.length > 0 && !urlProcessed) {
       handleUrlParams();
     }
-  }, [conversations, urlProcessed, handleConversationSelect, updateConversationList]);
+  }, [conversations, urlProcessed, handleConversationSelect, initializeConversation]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -970,132 +1227,124 @@ const WebChatPage: React.FC = () => {
     }
   }, [messages]);
 
-  const handleSendMessage = async (message: string) => {
-    if (!selectedConversationData || !message.trim() || !selectedConversation) return;
+  // Fungsi untuk memfilter percakapan
+  const filteredConversations = useMemo(() => {
+    const filtered = conversations.filter(conv => {
+      // Filter berdasarkan toko yang dipilih
+      if (selectedShops.length > 0 && !selectedShops.includes(conv.shop_id)) {
+        return false;
+      }
 
-    try {
-      setIsSendingMessage(true);
-      
-      await sendMessageContext(
-        selectedConversation, 
-        message,
-        (messageId) => {
-          // Callback untuk sukses
-          console.log('Message sent with ID:', messageId);
-          
-          // Tambahkan pesan ke daftar pesan
-          const newSentMessage: UIMessage = {
-            id: messageId,
-            sender: 'seller',
-            content: message,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: 'text',
-          };
-          
-          setMessages(prevMessages => [...prevMessages, newSentMessage]);
+      // Filter berdasarkan status
+      if (statusFilter === 'BELUM DIBACA' && conv.unread_count === 0) {
+        return false;
+      }
+
+      // Filter Belum Dibalas: pesan terakhir dari pembeli
+      if (statusFilter === 'BELUM DIBALAS') {
+        // Jika pesan terakhir bukan dari pembeli, berarti sudah dibalas
+        if (conv.latest_message_from_id !== conv.to_id) {
+          return false;
         }
-      );
-      
-      // Update conversation list untuk menandai sudah dibalas
-      updateConversationList({
-        type: 'mark_as_read',
-        conversation_id: selectedConversationData.conversation_id,
-      });
-    } catch (error) {
-      console.error('Gagal mengirim pesan:', error);
-      toast.error('Gagal mengirim pesan. Silakan coba lagi.');
-    } finally {
-      setIsSendingMessage(false);
-    }
-  };
+      }
 
-  // Fungsi untuk membuat objek pesan baru dari data SSE
-  const createMessageFromSSE = useCallback((data: any): UIMessage => {
-    return {
-      id: data.message_id,
-      sender: data.sender === selectedShop ? 'seller' : 'buyer',
-      type: data.message_type as any,
-      content: ['text', 'image_with_text'].includes(data.message_type) 
-            ? data.content.text 
-        : data.message_type === 'order' 
-              ? 'Menampilkan detail pesanan'
-              : '',
-      imageUrl: data.message_type === 'image' 
-            ? data.content.url 
-        : data.message_type === 'image_with_text' 
-              ? data.content.image_url 
-              : undefined,
-      imageThumb: ['image', 'image_with_text'].includes(data.message_type) ? {
-        url: data.message_type === 'image' 
-              ? (data.content.thumb_url || data.content.url)
-              : (data.content.thumb_url || data.content.image_url),
-            height: data.content.thumb_height,
-            width: data.content.thumb_width
-          } : undefined,
-      orderData: data.message_type === 'order' ? {
-            shopId: data.content.shop_id,
-            orderSn: data.content.order_sn
-          } : undefined,
-      sourceContent: data.source_content || {},
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-  }, [selectedShop]);
+      // Filter berdasarkan pencarian
+      if (searchInput) {
+        const searchTerm = searchInput.toLowerCase();
+        return (
+          conv.to_name.toLowerCase().includes(searchTerm) ||
+          conv.shop_name.toLowerCase().includes(searchTerm) ||
+          (conv.latest_message_content?.text || '').toLowerCase().includes(searchTerm)
+        );
+      }
 
-  // Tambahkan scroll saat pesan baru masuk
+      return true;
+    });
+
+    // Log ringkas hasil filter
+    console.log('[Filtering]', {
+      total: conversations.length,
+      filtered: filtered.length,
+      filter: statusFilter,
+      shops: selectedShops.length,
+      search: searchInput || 'none'
+    });
+
+    return filtered;
+  }, [conversations, selectedShops, statusFilter, searchInput]);
+
+  // Pantau lastMessage dari SSE untuk update realtime
   useEffect(() => {
-    // Scroll ke pesan terbaru dengan delay kecil agar konten dapat dirender dulu
-    if (messages.length > 0 && !isLoading && messagesEndRef.current) {
-      const timer = setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Jika tidak ada lastMessage atau tidak ada conversationId yang aktif, abaikan
+    if (!lastMessage?.message_id || !selectedConversation) return;
+    
+    // Periksa apakah pesan ini untuk percakapan yang saat ini terbuka
+    if (lastMessage.conversation_id !== selectedConversation) return;
+    
+    // Periksa apakah pesan ini sudah pernah diproses sebelumnya
+    if (processedSSEMessages.has(lastMessage.message_id)) return;
+    
+    console.log('[WebChat] Menerima pesan baru dari SSE:', { 
+      id: lastMessage.message_id,
+      type: lastMessage.message_type,
+      sender: lastMessage.sender,
+      conversation: lastMessage.conversation_id
+    });
+    
+    // Tambahkan pesan ke daftar yang sudah diproses
+    processedSSEMessages.add(lastMessage.message_id);
+    
+    if (!selectedShop) return;
+    
+    // Buat objek ShopeeMessage dari data SSE
+    const newShopeeMessage: ShopeeMessage = {
+      message_id: lastMessage.message_id,
+      conversation_id: lastMessage.conversation_id,
+      from_id: lastMessage.sender,
+      to_id: lastMessage.receiver || (selectedConversationData?.to_id || 0),
+      from_shop_id: lastMessage.sender === selectedShop ? selectedShop : 0,
+      to_shop_id: lastMessage.sender !== selectedShop ? selectedShop : 0,
+      message_type: lastMessage.message_type as any,
+      content: lastMessage.content || {},
+      created_timestamp: lastMessage.timestamp || Math.floor(Date.now() / 1000),
+      region: "",
+      status: "received",
+      message_option: 0,
+      source: "sse",
+      source_content: {},
+      quoted_msg: null
+    };
+    
+    // Konversi ke UIMessage
+    const newUIMessage = convertToUIMessage(newShopeeMessage, selectedShop);
+    
+    // Periksa apakah pesan sudah ada di daftar pesan lokal
+    const messageExists = messages.some(msg => msg.id === lastMessage.message_id);
+    
+    if (!messageExists) {
+      // Tambahkan pesan baru ke daftar pesan lokal
+      setMessages(prev => [...prev, newUIMessage]);
+      
+      // Jika pesan dari pembeli, tambahkan juga ke unread di state conversation
+      if (newShopeeMessage.from_id === selectedConversationData?.to_id) {
+        // Jika pesan baru sudah lama tidak ada respons, tandai notifikasi
+        if (selectedConversationData) {
+          updateConversation(selectedConversation, {
+            unread_count: selectedConversationData.unread_count + 1
+          });
+        }
+      }
+      
+      // Scroll ke pesan terbaru
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
       }, 100);
       
-      return () => clearTimeout(timer);
+      console.log('[WebChat] Pesan baru berhasil ditambahkan ke state lokal');
     }
-  }, [messages.length, isLoading]);
-
-  // Fungsi untuk debounce pencarian
-  useEffect(() => {
-    const timerId = setTimeout(() => {
-      setSearchQuery(searchInput);
-    }, 300); // Delay 300ms untuk input pencarian
-    
-    return () => clearTimeout(timerId);
-  }, [searchInput, setSearchQuery]);
-
-  // Tambahkan useMemo untuk format uniqueShops menjadi array objek
-  const formattedUniqueShops = useMemo(() => {
-    return uniqueShops.map(shopId => {
-      const shopData = conversations.find(conv => conv.shop_id === shopId);
-        return {
-        id: shopId,
-        name: shopData?.shop_name || `Toko ${shopId}`
-      };
-    });
-  }, [uniqueShops, conversations]);
-
-  // Optimasi untuk mencegah render berlebihan saat scroll
-  const handleScroll = useCallback(() => {
-    if (messagesEndRef.current && !isLoading) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [isLoading]);
-
-  // Handler untuk menampilkan detail pesanan
-  const handleShowOrderDetails = useCallback((orderSn: string) => {
-    console.log(`Menampilkan detail pesanan ${orderSn}`);
-    setActiveTab('orders');
-  }, [setActiveTab]);
-
-  // Ganti optimasi effect untuk scroll karena kita sudah menggunakan react-virtual
-  useEffect(() => {
-    // Tidak perlu scroll manual lagi, react-virtual menangani ini
-  }, [messages.length, isLoading]);
-
-  // Ganti useEffect pemilihan percakapan otomatis
-  useEffect(() => {
-    // Kita hilangkan fitur auto select percakapan atas
-    // Hanya proses URL saja yang akan memilih percakapan otomatis
-  }, [conversations.length, selectedConversation, urlProcessed, handleConversationSelect]);
+  }, [lastMessage, selectedConversation, processedSSEMessages, selectedShop, messages, selectedConversationData, updateConversation]);
 
   // Tambahkan pesan instruksi untuk tampilan awal
   if (!selectedConversation) {
@@ -1110,8 +1359,8 @@ const WebChatPage: React.FC = () => {
               <Input
                 type="text"
                 placeholder="Cari percakapan..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="flex-grow"
               />
               <Popover>
@@ -1123,21 +1372,20 @@ const WebChatPage: React.FC = () => {
                 <PopoverContent className="w-80">
                   <div>
                     <h4 className="font-medium mb-2">Filter Toko:</h4>
-                      {formattedUniqueShops.map(shop => (
-                        <label key={shop.id} className="flex items-center mb-1">
+                    {formattedUniqueShops.map(shop => (
+                      <label key={shop.id} className="flex items-center mb-1">
                         <input
                           type="checkbox"
-                            checked={state.selectedShops.includes(shop.id)}
+                          checked={selectedShops.includes(shop.id)}
                           onChange={() => {
-                              // Perbaiki dengan mengirimkan array yang benar
-                              const newSelectedShops = state.selectedShops.includes(shop.id)
-                                ? state.selectedShops.filter(id => id !== shop.id)
-                                : [...state.selectedShops, shop.id];
-                              setShopFilter(newSelectedShops);
+                            const newSelectedShops = selectedShops.includes(shop.id)
+                              ? selectedShops.filter(id => id !== shop.id)
+                              : [...selectedShops, shop.id];
+                            setSelectedShops(newSelectedShops);
                           }}
                           className="mr-2"
                         />
-                          {shop.name}
+                        {shop.name}
                       </label>
                     ))}
                   </div>
@@ -1145,7 +1393,7 @@ const WebChatPage: React.FC = () => {
               </Popover>
             </div>
             
-              <Tabs value={state.statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
+            <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="SEMUA" className="text-xs">Semua</TabsTrigger>
                 <TabsTrigger value="BELUM DIBACA" className="text-xs">Belum Dibaca</TabsTrigger>
@@ -1154,35 +1402,47 @@ const WebChatPage: React.FC = () => {
             </Tabs>
           </div>
 
-          <ScrollArea className="flex-grow overflow-y-auto">
-            <div className="p-3">
-                {conversations.map((conversation, index) => (
-                  <ConversationItem
-                    key={conversation.conversation_id}
-                    conversation={conversation}
-                    isSelected={selectedConversation === conversation.conversation_id}
-                    isMobileView={isMobileView}
-                    onSelect={handleConversationSelect}
-                  />
-                ))}
-                      </div>
-            </ScrollArea>
-          </div>
-        )}
+          <Virtuoso 
+            className="flex-grow"
+            data={filteredConversations}
+            itemContent={(index, conversation) => (
+              <div className="px-3 py-1">
+                <ConversationItem
+                  key={conversation.conversation_id}
+                  conversation={conversation}
+                  isSelected={selectedConversation === conversation.conversation_id}
+                  isMobileView={isMobileView}
+                  onSelect={handleConversationSelect}
+                />
+              </div>
+            )}
+            overscan={200}
+            style={{ height: '100%' }}
+            totalCount={filteredConversations.length}
+            defaultItemHeight={72}
+            initialTopMostItemIndex={filteredConversations.findIndex(
+              conv => conv.conversation_id === selectedConversation
+            ) !== -1 ? filteredConversations.findIndex(
+              conv => conv.conversation_id === selectedConversation
+            ) : 0}
+            followOutput={selectedConversation ? 'smooth' : false}
+          />
+        </div>
+      )}
 
-        {/* Tampilan instruksi saat belum ada chat yang dipilih */}
-        <div className="flex-1 flex flex-col items-center justify-center min-w-0 h-full overflow-hidden">
-          <div className="text-center space-y-4 max-w-md p-4">
-            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
-            <h3 className="text-lg font-medium">Pilih percakapan untuk memulai chat</h3>
-            <p className="text-sm text-muted-foreground">
-              Pilih salah satu percakapan dari daftar di sebelah kiri untuk mulai berkomunikasi dengan pelanggan Anda.
-                      </p>
-                    </div>
+      {/* Tampilan instruksi saat belum ada chat yang dipilih */}
+      <div className="flex-1 flex flex-col items-center justify-center min-w-0 h-full overflow-hidden">
+        <div className="text-center space-y-4 max-w-md p-4">
+          <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
+          <h3 className="text-lg font-medium">Pilih percakapan untuk memulai chat</h3>
+          <p className="text-sm text-muted-foreground">
+            Pilih salah satu percakapan dari daftar di sebelah kiri untuk mulai berkomunikasi dengan pelanggan Anda.
+          </p>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className={`flex h-full w-full overflow-hidden ${isFullScreenChat ? 'fixed inset-0 z-50 bg-background' : ''}`}>
@@ -1212,13 +1472,12 @@ const WebChatPage: React.FC = () => {
                       <label key={shop.id} className="flex items-center mb-1">
                         <input
                           type="checkbox"
-                          checked={state.selectedShops.includes(shop.id)}
+                          checked={selectedShops.includes(shop.id)}
                           onChange={() => {
-                            // Perbaiki dengan mengirimkan array yang benar
-                            const newSelectedShops = state.selectedShops.includes(shop.id)
-                              ? state.selectedShops.filter(id => id !== shop.id)
-                              : [...state.selectedShops, shop.id];
-                            setShopFilter(newSelectedShops);
+                            const newSelectedShops = selectedShops.includes(shop.id)
+                              ? selectedShops.filter(id => id !== shop.id)
+                              : [...selectedShops, shop.id];
+                            setSelectedShops(newSelectedShops);
                           }}
                           className="mr-2"
                         />
@@ -1228,20 +1487,22 @@ const WebChatPage: React.FC = () => {
                   </div>
                 </PopoverContent>
               </Popover>
-                    </div>
-                    
-            <Tabs value={state.statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
+            </div>
+            
+            <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="SEMUA" className="text-xs">Semua</TabsTrigger>
                 <TabsTrigger value="BELUM DIBACA" className="text-xs">Belum Dibaca</TabsTrigger>
                 <TabsTrigger value="BELUM DIBALAS" className="text-xs">Belum Dibalas</TabsTrigger>
               </TabsList>
             </Tabs>
-                  </div>
+          </div>
 
-          <ScrollArea className="flex-grow overflow-y-auto">
-            <div className="p-3">
-              {conversations.map((conversation, index) => (
+          <Virtuoso 
+            className="flex-grow"
+            data={filteredConversations}
+            itemContent={(index, conversation) => (
+              <div className="px-3 py-1">
                 <ConversationItem
                   key={conversation.conversation_id}
                   conversation={conversation}
@@ -1249,9 +1510,19 @@ const WebChatPage: React.FC = () => {
                   isMobileView={isMobileView}
                   onSelect={handleConversationSelect}
                 />
-              ))}
-            </div>
-          </ScrollArea>
+              </div>
+            )}
+            overscan={200}
+            style={{ height: '100%' }}
+            totalCount={filteredConversations.length}
+            defaultItemHeight={72}
+            initialTopMostItemIndex={filteredConversations.findIndex(
+              conv => conv.conversation_id === selectedConversation
+            ) !== -1 ? filteredConversations.findIndex(
+              conv => conv.conversation_id === selectedConversation
+            ) : 0}
+            followOutput={selectedConversation ? 'smooth' : false}
+          />
         </div>
       )}
 
@@ -1308,8 +1579,8 @@ const WebChatPage: React.FC = () => {
                     isLoadingConversation={isLoadingConversation}
                     messagesEndRef={messagesEndRef}
                     setActiveTab={setActiveTab}
-                    onShowOrderDetails={handleShowOrderDetails}
                     selectedConversation={selectedConversation}
+                    isMobileView={isMobileView}
                   />
                 </div>
                 
@@ -1407,8 +1678,8 @@ const WebChatPage: React.FC = () => {
                       isLoadingConversation={isLoadingConversation}
                       messagesEndRef={messagesEndRef}
                       setActiveTab={setActiveTab}
-                      onShowOrderDetails={handleShowOrderDetails}
                       selectedConversation={selectedConversation}
+                      isMobileView={isMobileView}
                     />
                   </div>
                   

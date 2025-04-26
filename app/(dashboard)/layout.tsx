@@ -1,7 +1,5 @@
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
-import { GlobalNotification } from '@/components/GlobalNotification';
-import { SSEProvider } from '../services/SSEService';
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 

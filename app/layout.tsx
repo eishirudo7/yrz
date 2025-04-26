@@ -2,11 +2,12 @@ import '@/app/globals.css'
 import { Inter } from 'next/font/google'
 import dynamic from 'next/dynamic'
 import { Toaster } from 'sonner';
-import { MiniChatProvider } from '@/contexts/MiniChatContext';
+
 import MiniChatContainer from '@/components/MiniChatContainer';
 import { UserDataProvider } from '@/contexts/UserDataContext'
 import { SSEProvider } from '@/app/services/SSEService';
 import { GlobalNotification } from '@/components/GlobalNotification';
+import StoreInitializer from '@/components/StoreInitializer';
 
 import type { Viewport } from 'next'
 
@@ -49,19 +50,17 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <body className={`h-full ${inter.className}`}>
         <UserDataProvider>
           <SSEProvider>
-            
-            <MiniChatProvider>
-              <ThemeProvider
-                attribute="class"
-                defaultTheme="system"
-                enableSystem
-                disableTransitionOnChange
-              >
-                <GlobalNotification />
-                {children}
-              </ThemeProvider>
-              <MiniChatContainer />
-            </MiniChatProvider>
+            <StoreInitializer />
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <GlobalNotification />
+              {children}
+            </ThemeProvider>
+            <MiniChatContainer />
           </SSEProvider>
         </UserDataProvider>
         <Toaster richColors expand={false} />

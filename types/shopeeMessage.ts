@@ -19,6 +19,10 @@ export interface SourceContent {
   [key: string]: any;
 }
 
+// Definisikan message type sebagai type tersendiri
+export type ShopeeMessageType = 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item' | 'new_message';
+export type UIMessageType = 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
+
 // Tipe lengkap yang mewakili respons API Shopee
 export interface ShopeeMessage {
   message_id: string;
@@ -26,7 +30,7 @@ export interface ShopeeMessage {
   to_id: number;
   from_shop_id: number;
   to_shop_id: number;
-  message_type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
+  message_type: ShopeeMessageType;
   content: MessageContent;
   conversation_id: string;
   created_timestamp: number;
@@ -44,7 +48,7 @@ export interface UIMessage {
   sender: 'buyer' | 'seller';
   content: string;
   time: string;
-  type: 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
+  type: UIMessageType;
   imageUrl?: string;
   imageThumb?: {
     url: string;
@@ -71,6 +75,20 @@ export function convertToUIMessage(
   message: ShopeeMessage, 
   shopId: number
 ): UIMessage {
+  // Skip konversi jika tipe pesan adalah new_message
+  if (message.message_type === 'new_message') {
+    return {
+      id: message.message_id,
+      sender: message.from_shop_id === shopId ? 'seller' : 'buyer',
+      type: 'text',
+      content: 'Pesan baru',
+      time: new Date(message.created_timestamp * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    };
+  }
+
   return {
     id: message.message_id,
     sender: message.from_shop_id === shopId ? 'seller' : 'buyer',
