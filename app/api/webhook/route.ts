@@ -74,16 +74,6 @@ async function handleChat(data: any) {
       timestamp: messageContent.created_timestamp,
       shop_id: data.shop_id,
       shop_name: shopName,
-      // Data untuk updateConversationWithMessage di MiniChatContext
-      for_chat_context: {
-        conversation_id: messageContent.conversation_id,
-        message_id: messageContent.message_id,
-        from_id: messageContent.from_id,
-        content: messageContent.content,
-        message_type: messageContent.message_type,
-        created_timestamp: messageContent.created_timestamp,
-        shop_id: data.shop_id
-      }
     };
     
     // Kirim event ke semua klien terkoneksi

@@ -18,8 +18,8 @@ export function GlobalNotification() {
     switch (lastMessage.type) {
       case 'new_message':
         if (lastMessage.for_chat_context) {
-          handleSSEMessage(lastMessage.for_chat_context);
-          handleChatNotification(lastMessage.for_chat_context);
+          handleSSEMessage(lastMessage);
+          handleChatNotification(lastMessage);
         }
         break;
       case 'new_order':
@@ -47,19 +47,18 @@ export function GlobalNotification() {
       action: {
         label: "Balas",
         onClick: () => {
-          // Opsi untuk membuka MiniChat atau halaman webchat
+          // Gunakan custom event openChat seperti di ChatButton
+          console.log('[GlobalNotification] Mengirim event openChat untuk:', message);
           const chatData = {
             conversationId: message.conversation_id,
-            shopId: message.shop_id || message.to_shop_id,
-            toId: message.from_id || message.to_id,
+            shopId: message.shop_id,
+            toId: message.sender_id,
             toName: message.sender_name,
             toAvatar: message.sender_avatar || '',
             shopName: message.shop_name,
             metadata: {}
           };
           
-          // Emit event untuk membuka MiniChat
-          console.log('[GlobalNotification] Mengirim event openChat dengan data:', chatData);
           const event = new CustomEvent('openChat', { 
             detail: chatData 
           });
@@ -68,20 +67,6 @@ export function GlobalNotification() {
         }
       }
     });
-
-    // Tambahkan toast terpisah yang berfungsi sebagai aksi kedua
-    toast.message(
-      <div className="flex items-center cursor-pointer w-full"
-           onClick={() => {
-             router.push(`/webchat?conversation_id=${message.conversation_id}&shop_id=${message.shop_id}`);
-             toast.dismiss();
-           }}>
-        <span className="text-xs">atau buka di Webchat</span>
-      </div>,
-      {
-        duration: 5000,
-      }
-    );
   };
 
   const handleOrderNotification = (message: any) => {
