@@ -295,7 +295,7 @@ export interface ChatActions {
   sendMessage: (params: SendMessageParams) => Promise<string>;
   handleSSEMessage: (data: SSEMessageData) => void;
   initializeConversation: (params: { userId: string; shopId: string; orderSn?: string }) => Promise<string>;
-  fetchOneConversation: (conversationId: string, shopId: number) => Promise<Conversation | null>;
+  fetchOneConversation: (conversationId: string, shopId: number, shopName?: string) => Promise<Conversation | null>;
   
   // Messages Actions
   fetchMessages: (
@@ -585,7 +585,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
     if (!conversation) {
       logger.info(`Conversation ${data.conversation_id} tidak ditemukan, mengambil dari API...`);
       logger.info(`Parameter fetch: shopId=${data.shop_id}, conversationId=${data.conversation_id}`);
-      get().fetchOneConversation(data.conversation_id, data.shop_id)
+      get().fetchOneConversation(data.conversation_id, data.shop_id, data.shop_name)
         .then(result => {
           if (result) {
             logger.info(`Berhasil menambahkan conversation baru: ${result.conversation_id} dengan ${result.to_name}`);
@@ -687,7 +687,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
     }
   },
 
-  fetchOneConversation: async (conversationId: string, shopId: number) => {
+  fetchOneConversation: async (conversationId: string, shopId: number, shopName?: string) => {
     try {
       const response = await fetch(
         `/api/msg/get_one_conversation?conversationId=${conversationId}&shopId=${shopId}`
@@ -703,7 +703,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
             to_name: conv.to_name,
             to_avatar: conv.to_avatar,
             shop_id: shopId,
-            shop_name: conv.shop_name,
+            shop_name: shopName || conv.shop_name || 'Toko',
             latest_message_content: conv.latest_message_content,
             latest_message_from_id: conv.latest_message_from_id,
             latest_message_id: conv.latest_message_id,

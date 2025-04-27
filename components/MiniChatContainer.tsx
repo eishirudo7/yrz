@@ -115,7 +115,7 @@ const MiniChatContainer = React.memo(() => {
         console.log('[MiniChatContainer] Menambahkan chat baru ke daftar');
         // Jika belum ada, tambahkan chat baru
         // Batasi jumlah chat aktif (misal maksimal 3)
-        const maxChats = 3;
+        const maxChats = isMobile ? 1 : 3;
         if (prev.length >= maxChats) {
           console.log('[MiniChatContainer] Mencapai batas maksimal chat, menghapus yang paling lama');
           return [...prev.slice(1), updatedChat];
@@ -132,7 +132,7 @@ const MiniChatContainer = React.memo(() => {
     } finally {
       setIsInitializing(false);
     }
-  }, [initializeConversation]);
+  }, [initializeConversation, isMobile]);
 
   // Listen untuk event openChat
   useEffect(() => {
