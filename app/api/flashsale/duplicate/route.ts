@@ -33,13 +33,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { shop_id, flash_sale_id, timeslot_ids, turnOn = true } = body;
     
-    console.log('Request payload:', {
-      shop_id,
-      flash_sale_id, 
-      timeslot_ids,
-      turnOn,
-      url: request.url
-    });
+   
 
     // Validasi input
     if (!shop_id || !flash_sale_id || !timeslot_ids || !Array.isArray(timeslot_ids)) {
@@ -65,13 +59,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log('Flash sale details retrieved:', {
-      itemCount: detailResponse.data?.items?.length,
-      modelCount: detailResponse.data?.models?.length
-    });
+    
 
-    const duplicatedFlashSales = [];
-    const failedDuplications = [];
 
     // Setup stream
     const stream = new TransformStream();
@@ -212,6 +201,10 @@ export async function POST(request: NextRequest) {
           });
 
           const addData = await addResponse.json();
+
+          if (!addData?.success) {
+            throw new Error('Gagal menambahkan items ke flash sale');
+          }
 
           // 6. Kirim status selesai untuk flash sale ini
           await writer.write(

@@ -158,7 +158,9 @@ const FlashSaleCard = ({
   const router = useRouter();
 
   return (
-    <div className="p-3 border rounded-lg space-y-2.5 dark:border-gray-800">
+    <div className={`p-3 border rounded-lg space-y-2.5 dark:border-gray-800 ${
+      sale.item_count === 0 ? 'border-red-500 dark:border-red-500' : ''
+    }`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -1344,7 +1346,11 @@ export default function FlashSalePage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{getStatusBadge(sale.status, sale.type)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(sale.status, sale.type)}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-2">
                         <div className="text-sm">

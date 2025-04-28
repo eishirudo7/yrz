@@ -1722,11 +1722,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mendapatkan time slot ID flash sale: URL=${fullUrl}`);
 
     try {
       const response = await axios.get(fullUrl, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat mengambil time slot ID flash sale:', error);
@@ -1758,11 +1757,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk membuat flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
         const response = await axios.post(fullUrl, body, { headers });
-        console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+        
         return response.data;
     } catch (error) {
         console.error('Kesalahan saat membuat flash sale:', error);
@@ -1791,7 +1789,6 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mendapatkan kriteria item flash sale: URL=${fullUrl}`);
 
     try {
       const response = await axios.get(fullUrl, { headers });
@@ -1839,11 +1836,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk menambah item flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
       const response = await axios.post(fullUrl, body, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat menambah item flash sale:', error);
@@ -1885,7 +1881,6 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mendapatkan daftar flash sale: URL=${fullUrl}`);
 
     try {
       const response = await axios.get(fullUrl, { headers });
@@ -1918,11 +1913,9 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mendapatkan detail flash sale toko: URL=${fullUrl}`);
 
     try {
       const response = await axios.get(fullUrl, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat mengambil detail flash sale toko:', error);
@@ -1965,11 +1958,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mendapatkan daftar item flash sale: URL=${fullUrl}`);
 
     try {
       const response = await axios.get(fullUrl, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat mengambil daftar item flash sale:', error);
@@ -2010,11 +2002,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mengupdate status flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
       const response = await axios.post(fullUrl, body, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat mengupdate status flash sale:', error);
@@ -2075,11 +2066,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk mengupdate item flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
       const response = await axios.post(fullUrl, body, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat mengupdate item flash sale:', error);
@@ -2117,11 +2107,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk menghapus flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
       const response = await axios.post(fullUrl, body, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat menghapus flash sale:', error);
@@ -2162,11 +2151,10 @@ export class ShopeeAPI {
     const fullUrl = `${url}?${params.toString()}`;
     const headers = { 'Content-Type': 'application/json' };
 
-    console.info(`Mengirim permintaan untuk menghapus item flash sale: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
 
     try {
       const response = await axios.post(fullUrl, body, { headers });
-      console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+      
       return response.data;
     } catch (error) {
       console.error('Kesalahan saat menghapus item flash sale:', error);

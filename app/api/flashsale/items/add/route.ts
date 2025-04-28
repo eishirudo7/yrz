@@ -19,21 +19,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Log request headers
-    console.log('=== REQUEST HEADERS ===');
+   
     const headers: Record<string, string> = {};
     request.headers.forEach((value, key) => {
       headers[key] = value;
     });
-    console.log(headers);
+  
 
-    // Log request body
-    console.log('=== REQUEST BODY ===');
-    console.log(JSON.stringify({
-      shop_id,
-      flash_sale_id,
-      items
-    }, null, 2));
-
+    
     if (!shop_id || !flash_sale_id || !items) {
       return NextResponse.json(
         { error: 'Parameter shop_id, flash_sale_id, dan items diperlukan' },
@@ -75,7 +68,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('=== SENDING REQUEST TO SHOPEE API ===');
+ 
     const startTime = new Date();
     const result = await addShopFlashSaleItems(shopIdNumber, { 
       flash_sale_id: flashSaleIdNumber,
