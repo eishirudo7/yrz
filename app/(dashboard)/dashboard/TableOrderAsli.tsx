@@ -18,11 +18,17 @@ import { OrderDetails } from './OrderDetails'
 import { useShippingDocument } from '@/app/hooks/useShippingDocument';
 import { Button } from "@/components/ui/button";
 import { mergePDFs } from '@/app/utils/pdfUtils';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { OrderHistory } from './OrderHistory';
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import ChatButton from '@/components/ChatButton';
 import {
   DropdownMenu,
@@ -31,22 +37,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  CancellationConfirmDialog,
-  UnprintedConfirmDialog,
-  PrintAllConfirmDialog,
-  ProcessAllConfirmDialog,
-  RejectAllConfirmDialog,
-  PrintReportDialog,
-  SyncSummaryDialog,
-  AcceptAllConfirmDialog,
-  PrintReport,
-  FailedOrderInfo,
-  SyncSummary
-} from "./components/Dialog";
-
-// Import OrderTable
-import { OrderTable } from './components/Table';
+import { Loader2 } from "lucide-react";
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -143,6 +134,7 @@ const StatusBadge = React.memo(({ status, order, onProcess, onCancellationAction
   <div className="flex items-center gap-2">
     <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(status)}`}>
       {getStatusIcon(status)}
+      {status}
     </span>
     {status === 'READY_TO_SHIP' && (
       <Button
@@ -221,7 +213,13 @@ interface TableState {
   paymentType: 'all' | 'cod' | 'non_cod';
 }
 
-
+// 2. Buat interface untuk metrics
+interface TableMetrics {
+  readyToShipCount: number;
+  cancelRequestCount: number;
+  unprintedCount: number;
+  totalPrintableDocuments: number;
+}
 
 // 1. Pisahkan MobileSelect menjadi komponen terpisah untuk mengurangi re-render
 const MobileSelect = React.memo(({ 
@@ -607,19 +605,9 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     error: documentError 
   } = useShippingDocument();
 
-  // Ubah definisi handleDownloadDocument
-  const handleDownloadDocument = useCallback(async (order: { order_sn: string; shop_id?: number; shipping_carrier?: string }) => {
+  // Ganti fungsi handleDownloadDocument yang lama
+  const handleDownloadDocument = useCallback(async (order: Order) => {
     try {
-      if (!order.shop_id) {
-        // Jika tidak ada shop_id, cari order dengan order_sn tersebut
-        const fullOrder = orders.find(o => o.order_sn === order.order_sn);
-        if (!fullOrder) {
-          toast.error('Pesanan tidak ditemukan');
-          return;
-        }
-        order = fullOrder;
-      }
-
       const params = {
         order_sn: order.order_sn,
         shipping_document_type: "THERMAL_AIR_WAYBILL" as const,
@@ -627,7 +615,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       };
 
       // Destructure response untuk mendapatkan blob
-      const { blob } = await downloadDocument(order.shop_id!, [params]);
+      const { blob } = await downloadDocument(order.shop_id, [params]);
       const url = URL.createObjectURL(blob); // Gunakan blob, bukan seluruh response
       
       window.open(url, '_blank');
@@ -643,10 +631,15 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       console.error('Error downloading document:', error);
       toast.error('Gagal mengunduh dokumen');
     }
-  }, [downloadDocument, onOrderUpdate, orders]);
+  }, [downloadDocument, onOrderUpdate]);
 
   // Tambahkan state baru untuk failed orders
-  const [failedOrders, setFailedOrders] = useState<FailedOrderInfo[]>([]);
+  const [failedOrders, setFailedOrders] = useState<{
+    orderSn: string;
+    shopName: string;
+    carrier: string;
+    trackingNumber: string;
+  }[]>([]);
 
 
   // Tambahkan interface untuk menyimpan blob
@@ -673,11 +666,10 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     let totalFailed = 0;
     const shopReports: {
       shopName: string;
-      total: number; 
-      processed: number; 
+      success: number;
       failed: number;
     }[] = [];
-    const newFailedOrders: FailedOrderInfo[] = [];
+    const newFailedOrders: typeof failedOrders = [];
     const newShopBlobs: ShopBlob[] = [];
 
     try {
@@ -792,7 +784,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                   newFailedOrders.push({
                     orderSn: failedOrderSn,
                     shopName,
-                    courier: result.carrier
+                    carrier: result.carrier,
+                    trackingNumber: orderData.tracking_number || '-'
                   });
                 }
               });
@@ -808,8 +801,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
           // Tambahkan laporan untuk toko ini
           shopReports.push({
             shopName,
-            total: shopSuccess + shopFailed,
-            processed: shopSuccess,
+            success: shopSuccess,
             failed: shopFailed
           });
 
@@ -1363,7 +1355,15 @@ const shops = useMemo(() => {
 
 // Tambahkan state untuk dialog laporan
 const [isPrintReportOpen, setIsPrintReportOpen] = useState(false);
-const [printReport, setPrintReport] = useState<PrintReport>({
+const [printReport, setPrintReport] = useState<{
+  totalSuccess: number;
+  totalFailed: number;
+  shopReports: {
+    shopName: string;
+    success: number;
+    failed: number;
+  }[];
+}>({
   totalSuccess: 0,
   totalFailed: 0,
   shopReports: []
@@ -1383,7 +1383,16 @@ const [syncProgress, setSyncProgress] = useState<{
 
 // Tambahkan state untuk dialog ringkasan
 const [isSyncSummaryOpen, setIsSyncSummaryOpen] = useState(false);
-const [syncSummary, setSyncSummary] = useState<SyncSummary>({
+const [syncSummary, setSyncSummary] = useState<{
+  totalOrders: number;
+  processedOrders: number;
+  shopReports: {
+    shopName: string;
+    total: number;
+    processed: number;
+    failed: number;
+  }[];
+}>({
   totalOrders: 0,
   processedOrders: 0,
   shopReports: []
@@ -2015,99 +2024,800 @@ const handleAcceptAllCancellations = useCallback(async () => {
         </Card>
       </div>
 
-      <OrderTable
-        orders={orders}
-        filteredOrders={filteredOrders}
-        isLoading={isLoading || false}
-        tableState={tableState}
-        derivedData={derivedData}
-        isLoadingForOrder={isLoadingForOrder}
-        handleSelectOrder={handleSelectOrder}
-        handleSelectAll={handleSelectAll}
-        handleDownloadDocument={handleDownloadDocument}
-        setSelectedOrderSn={setSelectedOrderSn}
-        setIsDetailOpen={setIsDetailOpen}
-        handleUsernameClick={handleUsernameClick}
-        formatDate={formatDate}
-        isToday={isToday}
-        isOverdue={isOverdue}
-        calculateOrderTotal={calculateOrderTotal}
-        getSkuSummary={getSkuSummary}
-        groupItemsBySku={groupItemsBySku}
-        handleProcessOrder={handleProcessOrder}
-        handleCancellationAction={handleCancellationAction}
+      <div className="rounded-md border overflow-x-auto mt-2">
+        <Table className="w-full dark:bg-gray-900">
+          <TableHeader>
+            <TableRow className="dark:border-gray-700">
+              {/* Update tampilan checkbox header */}
+              <TableHead className={`w-10 p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
+                <div className="flex justify-center">
+                  <Checkbox
+                    ref={checkboxRef}
+                    checked={
+                      filteredOrders.filter(order => derivedData.isOrderCheckable(order)).length > 0 && 
+                      filteredOrders
+                        .filter(order => derivedData.isOrderCheckable(order))
+                        .every(order => tableState.selectedOrders.includes(order.order_sn))
+                    }
+                    onCheckedChange={handleSelectAll}
+                    className="h-4 w-4"
+                  />
+                </div>
+              </TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white w-10 text-center whitespace-nowrap">#</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[80px] sm:min-w-[100px]">Toko</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[120px]">Tanggal</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">No. Pesanan</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Username</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Harga</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Escrow Final</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">SKU (Qty)</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[150px]">Kurir</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap min-w-[100px]">Status</TableHead>
+              <TableHead className="font-bold uppercase text-xs text-black dark:text-white whitespace-nowrap w-[100px] text-center">Cetak</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              // Skeleton loader untuk baris-baris tabel saat loading
+              [...Array(5)].map((_, index) => (
+                <TableRow 
+                  key={`skeleton-${index}`} 
+                  className={`${index % 2 === 0 ? 'bg-muted dark:bg-gray-800/50' : 'bg-gray-100/20 dark:bg-gray-900'}`}
+                >
+                  {/* Sel pertama (checkbox) */}
+                  <TableCell className={`p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
+                    <div className="flex justify-center">
+                      <div className="h-4 w-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                    </div>
+                  </TableCell>
+                  
+                  {/* Nomor urut */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mx-auto" />
+                  </TableCell>
+                  
+                  {/* Nama toko */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Tanggal */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-14 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Nomor pesanan */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Username */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="flex">
+                      <div className="h-3 w-4 mr-2 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                    </div>
+                  </TableCell>
+                  
+                  {/* Harga */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Escrow */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* SKU/Qty */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Kurir */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-3 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Status */}
+                  <TableCell className="p-1 h-[32px] text-xs">
+                    <div className="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  </TableCell>
+                  
+                  {/* Tombol cetak */}
+                  <TableCell className="text-center p-1 h-[32px]">
+                    <div className="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse mx-auto" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              // Konten tabel asli saat tidak loading
+              filteredOrders.length > 0 ? (
+                filteredOrders.map((order: Order, index: number) => (
+                  <TableRow 
+                    key={`${order.order_sn}`} 
+                    className={`
+                      ${order.order_status === "IN_CANCEL" 
+                        ? 'bg-red-100 dark:bg-red-900/50' 
+                        : order.order_status === "CANCELLED"
+                          ? 'bg-gray-300 dark:bg-gray-800' 
+                          : index % 2 === 0 
+                            ? 'bg-muted dark:bg-gray-800/50' 
+                            : 'bg-gray-100/20 dark:bg-gray-900'
+                      }
+                      hover:bg-primary/10 dark:hover:bg-primary/20 hover:shadow-sm transition-colors
+                    `}
+                  >
+                    <TableCell className={`p-1 h-[32px] align-middle ${!tableState.showCheckbox && 'hidden'}`}>
+                      <div className="flex justify-center">
+                        <Checkbox
+                          checked={tableState.selectedOrders.includes(order.order_sn)}
+                          disabled={!derivedData.isOrderCheckable(order)}
+                          onCheckedChange={(checked) => 
+                            handleSelectOrder(order.order_sn, checked as boolean)
+                          }
+                          className="h-4 w-4"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center whitespace-nowrap">{index + 1}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap max-w-[80px] sm:max-w-none overflow-hidden text-ellipsis">{order.shop_name}</TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">{formatDate(order.pay_time)}</TableCell>
+                    <TableCell 
+                      className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap cursor-pointer hover:text-primary"
+                      onClick={() => {
+                        setSelectedOrderSn(order.order_sn)
+                        setIsDetailOpen(true)
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-4 flex justify-center">
+                          {/* Jika perlu menampilkan ikon untuk READY_TO_SHIP dan days_to_ship > 0, tambahkan kondisi di sini */}
+                          {(order.order_status === 'PROCESSED' || order.order_status === 'IN_CANCEL') && order.ship_by_date && (
+                            <>
+                              {order.ship_by_date && isOverdue(order.ship_by_date) && (
+                                <span title={`Pesanan melewati batas waktu pengiriman (${formatDate(order.ship_by_date)})`}>
+                                  <AlertTriangle size={14} className="text-red-500" />
+                                </span>
+                              )}
+                              {order.ship_by_date && isToday(order.ship_by_date) && !isOverdue(order.ship_by_date) && (
+                                <span title={`Batas pengiriman hari ini (${formatDate(order.ship_by_date)})`}>
+                                  <AlertCircle size={14} className="text-amber-500" />
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {/* Jangan menampilkan apapun di sini jika tidak ada ikon yang perlu ditampilkan */}
+                        </div>
+                        <span>{order.order_sn}</span>
+                        {order.cod && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500">
+                            COD
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-6 flex justify-center">
+                          {order.buyer_username && derivedData.usernameCounts[order.buyer_username] > 1 && (
+                            <span 
+                              className="inline-flex items-center justify-center w-4 h-4 bg-blue-100 text-blue-800 text-[10px] font-medium rounded-full dark:bg-blue-900 dark:text-blue-300"
+                              title={`Pembeli ini memiliki ${derivedData.usernameCounts[order.buyer_username]} pesanan`}
+                            >
+                              {derivedData.usernameCounts[order.buyer_username]}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center">
+                          <button
+                            onClick={() => handleUsernameClick(order.buyer_user_id)}
+                            className="hover:text-primary mr-2"
+                          >
+                            {order.buyer_username}
+                          </button>
+                          
+                          {/* Tombol Chat dengan ikon saja */}
+                          <ChatButton
+                            shopId={order.shop_id}
+                            toId={order.buyer_user_id}
+                            toName={order.buyer_username || "Pembeli"}
+                            toAvatar={""} 
+                            shopName={order.shop_name}
+                            iconSize={14}
+                            iconOnly={true}
+                            orderId={order.order_sn}
+                            orderStatus={order.order_status} // Tambahkan orderStatus
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      Rp {calculateOrderTotal(order).toLocaleString('id-ID')}
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <Popover >
+                        <PopoverTrigger asChild>
+                          <button className="hover:text-primary">
+                            {getSkuSummary(order.items)}
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-[90vw] max-w-[280px] sm:w-80 p-0 shadow-xl dark:shadow-lg dark:shadow-gray-900/50"
+                          align="center"
+                          side="top"
+                          sideOffset={5}
+                        >
+                          <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+                            <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50">
+                              <h4 className="font-medium text-sm text-gray-900 dark:text-gray-100">Detail Item</h4>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto">
+                              {Object.entries(groupItemsBySku(order.items)).map(([sku, items], index, array) => (
+                                <div 
+                                  key={sku}
+                                  className={`flex flex-col ${
+                                    index !== array.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : ''
+                                  }`}
+                                >
+                                  <div className="px-3 bg-gray-50/50 dark:bg-gray-800/30">
+                                    <span className="font-medium text-[11px] text-gray-700 dark:text-gray-300">
+                                      SKU: {sku}
+                                    </span>
+                                  </div>
+                                  <div className="px-3 py-1.5">
+                                    <div className="space-y-1">
+                                      {items.map((item: OrderItem, itemIndex: number) => (
+                                        <div key={itemIndex} className="flex justify-between items-start text-[11px] leading-tight">
+                                          <div className="flex-1">
+                                            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                              {item.model_name?.replace(/,/, '-') || '-'}
+                                            </span>
+                                            <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">
+                                              ({item.model_quantity_purchased}x)
+                                            </span>
+                                          </div>
+                                          <span className="text-[10px] text-gray-700 dark:text-gray-300 ml-3 tabular-nums">
+                                            Rp {item.model_discounted_price.toLocaleString('id-ID')}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
+                    </TableCell>
+                    <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
+                      <StatusBadge 
+                        status={order.order_status as OrderStatus} 
+                        order={order}
+                        onProcess={handleProcessOrder}
+                        onCancellationAction={handleCancellationAction}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center p-1 h-[32px]">
+                      <Button
+                        onClick={() => handleDownloadDocument(order)}
+                        disabled={isLoadingForOrder(order.order_sn) || order.document_status !== 'READY'}
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 p-0"
+                      >
+                        {isLoadingForOrder(order.order_sn) ? (
+                          <RefreshCcw size={12} className="animate-spin" />
+                        ) : order.is_printed ? (
+                          <PrinterCheck size={12} className="text-green-500 hover:text-green-600" />
+                        ) : (
+                          <Printer size={12} className="text-primary hover:text-primary/80" />
+                        )}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center py-4 dark:text-gray-400">
+                    Tidak ada data untuk ditampilkan
+                  </TableCell>
+                </TableRow>
+              )
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      
+      <OrderDetails 
+        orderSn={selectedOrderSn}
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
       />
 
-      <CancellationConfirmDialog
-        open={isConfirmOpen}
-        onOpenChange={setIsConfirmOpen}
-        selectedAction={selectedAction}
-        onConfirm={handleConfirmAction}
-      />
+      <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Konfirmasi Pembatalan
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-gray-300">
+              Apakah Anda yakin ingin {selectedAction.action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan untuk pesanan ini?
+              {selectedAction.action === 'ACCEPT' 
+                ? ' Pesanan akan dibatalkan.'
+                : ' Pembeli tidak akan dapat mengajukan pembatalan lagi.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmAction}
+              className={`text-white ${
+                selectedAction.action === 'ACCEPT' 
+                  ? 'bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800' 
+                  : 'bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800'
+              }`}
+            >
+              {selectedAction.action === 'ACCEPT' ? 'Terima Pembatalan' : 'Tolak Pembatalan'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <UnprintedConfirmDialog
-        open={isUnprintedConfirmOpen}
-        onOpenChange={setIsUnprintedConfirmOpen}
-        unprintedCount={derivedData.unprintedCount}
-        onConfirm={handleConfirmUnprinted}
-      />
+      <AlertDialog open={isUnprintedConfirmOpen} onOpenChange={setIsUnprintedConfirmOpen}>
+        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Konfirmasi Cetak Dokumen Belum Print
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-gray-300">
+              Anda akan mencetak {derivedData.unprintedCount} dokumen yang belum pernah dicetak sebelumnya. 
+              Setelah dicetak, dokumen akan ditandai sebagai sudah dicetak. Lanjutkan?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmUnprinted}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
+            >
+              Cetak Dokumen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <PrintAllConfirmDialog
-        open={isPrintAllConfirmOpen}
-        onOpenChange={setIsPrintAllConfirmOpen}
-        selectedOrdersCount={tableState.selectedOrders.length}
-        totalPrintableDocuments={derivedData.totalPrintableDocuments}
-        onConfirm={handleConfirmPrintAll}
-      />
-
-      <ProcessAllConfirmDialog
-        open={isProcessAllConfirmOpen}
-        onOpenChange={setIsProcessAllConfirmOpen}
-        readyToShipCount={derivedData.readyToShipCount}
-        onConfirm={() => {
-                setIsProcessAllConfirmOpen(false);
-                handleProcessAllOrders();
-              }}
-      />
-
-      <RejectAllConfirmDialog
-        open={isRejectAllConfirmOpen}
-        onOpenChange={setIsRejectAllConfirmOpen}
-        cancelRequestCount={derivedData.cancelRequestCount}
-        onConfirm={handleRejectAllCancellations}
-      />
-
-      <PrintReportDialog 
-        open={isPrintReportOpen}
-        onOpenChange={setIsPrintReportOpen}
-        printReport={printReport}
-        failedOrders={failedOrders}
-        isLoadingForOrder={isLoadingForOrder}
-        onDownloadDocument={(order) => handleDownloadDocument(order)}
-        onClose={() => {
-                setIsPrintReportOpen(false);
-                setFailedOrders([]);
-              }}
-      />
-
-      <SyncSummaryDialog
-        open={isSyncSummaryOpen}
-        onOpenChange={setIsSyncSummaryOpen}
-        syncSummary={syncSummary}
-      />
-
-      <AcceptAllConfirmDialog
-        open={isAcceptAllConfirmOpen}
-        onOpenChange={setIsAcceptAllConfirmOpen}
-        eligibleForAccept={eligibleForAccept}
-        onConfirm={handleAcceptAllCancellations}
-      />
+      <AlertDialog open={isPrintAllConfirmOpen} onOpenChange={setIsPrintAllConfirmOpen}>
+        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Konfirmasi Cetak Dokumen
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-gray-300">
+              Anda akan mencetak {tableState.selectedOrders.length > 0 
+                ? tableState.selectedOrders.length 
+                : derivedData.totalPrintableDocuments} dokumen yang siap cetak. Lanjutkan?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmPrintAll}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
+            >
+              Cetak Dokumen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OrderHistory 
         userId={selectedUserId}
         isOpen={isOrderHistoryOpen}
         onClose={() => setIsOrderHistoryOpen(false)}
       />
+
+      {/* Tambahkan Dialog Konfirmasi */}
+      <AlertDialog open={isProcessAllConfirmOpen} onOpenChange={setIsProcessAllConfirmOpen}>
+        <AlertDialogContent className="dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Konfirmasi Proses Pesanan
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-gray-300">
+              Anda akan memproses {derivedData.readyToShipCount} pesanan yang siap kirim. 
+              Proses ini tidak dapat dibatalkan. Lanjutkan?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                setIsProcessAllConfirmOpen(false);
+                handleProcessAllOrders();
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white dark:bg-blue-700 dark:hover:bg-blue-800"
+            >
+              Proses Semua
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-white/20 text-white dark:bg-white/20 dark:text-white text-[10px] font-medium">
+                {derivedData.readyToShipCount}
+              </span>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Tambahkan Dialog Konfirmasi Reject All */}
+      <AlertDialog open={isRejectAllConfirmOpen} onOpenChange={setIsRejectAllConfirmOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-red-500" />
+              <span>Tolak Semua Pembatalan</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Anda akan menolak {derivedData.cancelRequestCount} permintaan pembatalan pesanan.
+              </p>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-2 text-blue-800 text-xs dark:bg-blue-900/30 dark:border-blue-800/30 dark:text-blue-300">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>Pembeli tidak akan dapat mengajukan pembatalan lagi untuk pesanan-pesanan ini.</p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="mt-0">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleRejectAllCancellations}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Tolak Semua
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog Laporan Pencetakan */}
+      <AlertDialog open={isPrintReportOpen} onOpenChange={setIsPrintReportOpen}>
+        <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col dark:bg-gray-800 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">
+              Laporan Hasil Pencetakan
+            </AlertDialogTitle>
+            
+            {/* Tambahkan div dengan overflow-y-auto untuk area yang bisa di-scroll */}
+            <AlertDialogDescription className="dark:text-gray-300 overflow-y-auto">
+              <div className="space-y-4 pr-2"> {/* Tambahkan padding-right untuk jarak dari scrollbar */}
+                {/* Statistik tetap di atas dan tidak ikut scroll */}
+                <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pt-4 pb-2">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                      <div className="text-xl font-bold text-green-700 dark:text-green-400">
+                        {printReport.totalSuccess}
+                      </div>
+                      <div className="text-xs text-green-600 dark:text-green-300">
+                        Berhasil
+                      </div>
+                    </div>
+                    <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                      <div className="text-xl font-bold text-red-700 dark:text-red-400">
+                        {printReport.totalFailed}
+                      </div>
+                      <div className="text-xs text-red-600 dark:text-red-300">
+                        Gagal
+                      </div>
+                    </div>
+                    <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <div className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                        {printReport.totalSuccess + printReport.totalFailed}
+                      </div>
+                      <div className="text-xs text-blue-600 dark:text-blue-300">
+                        Total
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detail per Toko dalam container yang bisa di-scroll */}
+                <div className="mt-4">
+                  <h4 className="font-medium mb-2 dark:text-white sticky top-[100px] bg-white dark:bg-gray-800 py-2 z-10">
+                    Detail per Toko ({printReport.shopReports.length}):
+                  </h4>
+                  
+                  {/* Tambahkan container dengan fixed height dan scroll */}
+                  <div className="max-h-[400px] overflow-y-auto pr-2"> {/* Tambah padding-right untuk jarak dari scrollbar */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {printReport.shopReports.map((report, index) => (
+                        <div 
+                          key={index}
+                          className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-medium text-sm dark:text-white truncate flex-1 mr-2">
+                              {report.shopName}
+                            </div>
+                            <Button
+                              onClick={() => {
+                                // Cek apakah ada blob tersimpan
+                                if (shopBlobs.some(sb => sb.shopName === report.shopName)) {
+                                  openSavedPDF(report.shopName);
+                                } else {
+                                  // Jika tidak ada, download ulang
+                                  const shopOrders = orders.filter(order => 
+                                    order.shop_name === report.shopName && 
+                                    derivedData.isOrderCheckable(order)
+                                  );
+                                  handleBulkPrint(shopOrders);
+                                }
+                              }}
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-gray-200 dark:hover:bg-gray-700"
+                              title={`${shopBlobs.some(sb => sb.shopName === report.shopName) 
+                                ? 'Buka PDF tersimpan' 
+                                : 'Download ulang dokumen'} ${report.shopName}`}
+                            >
+                              <Download size={14} className="text-gray-600 dark:text-gray-400" />
+                            </Button>
+                          </div>
+                          <div className="text-xs mt-2 space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 dark:text-gray-400">Berhasil:</span>
+                              <span className="text-green-600 dark:text-green-400 font-medium">
+                                {report.success}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 dark:text-gray-400">Gagal:</span>
+                              <span className="text-red-600 dark:text-red-400 font-medium">
+                                {report.failed}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 dark:text-gray-400">Total:</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                {report.success + report.failed}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Daftar Pesanan Gagal */}
+                {failedOrders.length > 0 && (
+                  <div className="mt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-medium dark:text-white">
+                        Daftar Pesanan Gagal ({failedOrders.length}):
+                      </h4>
+                      <Button
+                        onClick={() => {
+                          const failedOrdersData = orders.filter(order => 
+                            failedOrders.some(failed => failed.orderSn === order.order_sn)
+                          );
+                          handleBulkPrint(failedOrdersData);
+                        }}
+                        size="sm"
+                        className="h-7 bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
+                      >
+                        <Printer size={14} className="mr-1" />
+                        Cetak Ulang
+                      </Button>
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="dark:border-gray-700">
+                            <TableHead className="font-bold text-xs dark:text-white w-[300px]">No. Pesanan</TableHead>
+                            <TableHead className="font-bold text-xs dark:text-white w-[300px]">Toko</TableHead>
+                            <TableHead className="font-bold text-xs dark:text-white w-[200px]">Kurir</TableHead>
+                            <TableHead className="font-bold text-xs dark:text-white w-[60px] text-center">Aksi</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {failedOrders.map((order, index) => {
+                            const orderData = orders.find(o => o.order_sn === order.orderSn);
+                            return (
+                              <TableRow key={order.orderSn} className="dark:border-gray-700">
+                                <TableCell className="text-xs dark:text-gray-300 py-2">
+                                  <div className="flex items-center gap-1">
+                                    <span className="truncate">{order.orderSn}</span>
+                                    {orderData?.cod && (
+                                      <span className="px-1 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500 shrink-0">
+                                        COD
+                                      </span>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs dark:text-gray-300 py-2">
+                                  <span className="truncate block">{order.shopName}</span>
+                                </TableCell>
+                                <TableCell className="text-xs dark:text-gray-300 py-2">
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    {order.carrier}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-center py-2">
+                                  {orderData && (
+                                    <Button
+                                      onClick={() => handleDownloadDocument(orderData)}
+                                      disabled={isLoadingForOrder(order.orderSn)}
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 hover:text-primary dark:hover:text-primary"
+                                    >
+                                      {isLoadingForOrder(order.orderSn) ? (
+                                        <RefreshCcw size={12} className="animate-spin" />
+                                      ) : (
+                                        <Printer size={12} />
+                                      )}
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="border-t dark:border-gray-700">
+            <AlertDialogAction 
+              onClick={() => {
+                setIsPrintReportOpen(false);
+                setFailedOrders([]);
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
+            >
+              Tutup
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={isSyncSummaryOpen} onOpenChange={setIsSyncSummaryOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col dark:bg-gray-800 dark:border-gray-700">
+          <DialogHeader className="px-6 py-4 border-b dark:border-gray-700">
+            <DialogTitle className="dark:text-white">Ringkasan Sinkronisasi</DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {/* Statistik Utama */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                  {syncSummary.totalOrders}
+                </div>
+                <div className="text-sm text-blue-600 dark:text-blue-400">
+                  Total Pesanan
+                </div>
+              </div>
+              <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg">
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {syncSummary.processedOrders}
+                </div>
+                <div className="text-sm text-green-600 dark:text-green-400">
+                  Berhasil
+                </div>
+              </div>
+              <div className="p-3 bg-red-50 dark:bg-red-900/30 rounded-lg">
+                <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                  {syncSummary.totalOrders - syncSummary.processedOrders}
+                </div>
+                <div className="text-sm text-red-600 dark:text-red-400">
+                  Gagal
+                </div>
+              </div>
+            </div>
+
+            {/* Detail per Toko */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
+                Detail per Toko
+              </h3>
+              <div className="space-y-2">
+                {syncSummary.shopReports.map((report, index) => (
+                  <div 
+                    key={index}
+                    className="p-3 border rounded-lg dark:border-gray-700 bg-white dark:bg-gray-800"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm dark:text-white">
+                        {report.shopName}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Total: {report.total}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs">
+                      <div className="flex items-center gap-1">
+                        <span className="text-green-500">●</span>
+                        <span className="text-gray-600 dark:text-gray-300">
+                          Berhasil: {report.processed}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-red-500">●</span>
+                        <span className="text-gray-600 dark:text-gray-300">
+                          Gagal: {report.failed}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tambahkan dialog konfirmasi untuk menerima semua */}
+      <AlertDialog open={isAcceptAllConfirmOpen} onOpenChange={setIsAcceptAllConfirmOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <span>Terima Semua Pembatalan</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Anda akan menerima {eligibleForAccept} permintaan pembatalan pesanan yang belum dicetak.
+              </p>
+              
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-2 text-amber-800 text-xs dark:bg-amber-900/30 dark:border-amber-800/30 dark:text-amber-300">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <p>Pesanan-pesanan ini akan dibatalkan secara permanen dan tidak dapat dikembalikan.</p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel className="mt-0">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleAcceptAllCancellations}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Terima Semua
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Tambahkan progress bar untuk bulk accept jika sedang berjalan */}
+      
     </div>
   );
 }

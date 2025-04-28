@@ -138,6 +138,7 @@ export const useDashboard = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAdsLoading, setIsAdsLoading] = useState(true);
 
   const createOrderSubscription = () => {
     // Mendapatkan daftar shop_id dari daftar toko user
@@ -324,6 +325,7 @@ export const useDashboard = () => {
 
     try {
       localStorage.setItem(USER_LAST_FETCH_KEY, now.toString());
+      setIsAdsLoading(true);
       const response = await fetch(`/api/ads?_timestamp=${now}`);
       if (!response.ok) {
         throw new Error('Gagal mengambil data iklan');
@@ -331,9 +333,11 @@ export const useDashboard = () => {
       const data = await response.json();
       // Simpan data ke cache
       localStorage.setItem(USER_CACHED_ADS_DATA_KEY, JSON.stringify(data));
+      setIsAdsLoading(false);
       return data;
     } catch (error) {
       console.error('Error saat mengambil data iklan:', error);
+      setIsAdsLoading(false);
       return null;
     }
   };
@@ -506,52 +510,62 @@ export const useDashboard = () => {
           shops: shops
         });
         
-        // 5. Proses orders untuk shipping documents jika diperlukan
-        await processOrders(ordersWithShopName || []);
+        // 5. Ubah menjadi non-blocking: Jalankan proses berikutnya secara asinkronus tanpa menunggu
+        setIsLoading(false);
         
-        // 6. Ambil data iklan dari API terpisah
-        console.log('Mengambil data iklan...');
-        const adsData = await fetchAdsData();
-        
-        if (adsData) {
-          console.log('Data iklan berhasil diambil');
+        // 6. Proses dokumen dan iklan secara asinkronus di belakang layar
+        Promise.all([
+          // Proses shipping documents jika diperlukan
+          processOrders(ordersWithShopName || []),
           
-          // 7. Update dashboard dengan data iklan
-          setDashboardData(prevData => {
-            const newSummary = { ...prevData.summary };
+          // Ambil data iklan dari API terpisah
+          (async () => {
+            console.log('Mengambil data iklan...');
+            const adsData = await fetchAdsData();
             
-            // Parse total cost - hapus desimal
-            if (adsData.raw_total_cost) {
-              // Gunakan raw_total_cost jika tersedia
-              newSummary.totalIklan = Math.floor(adsData.raw_total_cost);
-            } else {
-              // Jika tidak, parse dari string dan bulatkan ke bawah
-              const parsedValue = parseFloat(adsData.total_cost.replace('Rp. ', '').replace(/\./g, '').replace(',', '.'));
-              newSummary.totalIklan = Math.floor(parsedValue);
+            if (adsData) {
+              console.log('Data iklan berhasil diambil');
+              
+              // Update dashboard dengan data iklan
+              setDashboardData(prevData => {
+                const newSummary = { ...prevData.summary };
+                
+                // Parse total cost - hapus desimal
+                if (adsData.raw_total_cost) {
+                  // Gunakan raw_total_cost jika tersedia
+                  newSummary.totalIklan = Math.floor(adsData.raw_total_cost);
+                } else {
+                  // Jika tidak, parse dari string dan bulatkan ke bawah
+                  const parsedValue = parseFloat(adsData.total_cost.replace('Rp. ', '').replace(/\./g, '').replace(',', '.'));
+                  newSummary.totalIklan = Math.floor(parsedValue);
+                }
+                
+                // Parse data iklan per toko - juga hapus desimal
+                adsData.ads_data.forEach((ad: AdData) => {
+                  let cost;
+                  if (ad.raw_cost) {
+                    cost = Math.floor(ad.raw_cost);
+                  } else {
+                    cost = Math.floor(parseFloat(ad.cost.replace('Rp. ', '').replace(/\./g, '').replace(',', '.')));
+                  }
+                  newSummary.iklanPerToko[ad.shop_name] = cost;
+                });
+                
+                return {
+                  ...prevData,
+                  summary: newSummary
+                };
+              });
             }
-            
-            // Parse data iklan per toko - juga hapus desimal
-            adsData.ads_data.forEach((ad: AdData) => {
-              let cost;
-              if (ad.raw_cost) {
-                cost = Math.floor(ad.raw_cost);
-              } else {
-                cost = Math.floor(parseFloat(ad.cost.replace('Rp. ', '').replace(/\./g, '').replace(',', '.')));
-              }
-              newSummary.iklanPerToko[ad.shop_name] = cost;
-            });
-            
-            return {
-              ...prevData,
-              summary: newSummary
-            };
-          });
-        }
+          })()
+        ]).catch(error => {
+          console.error('Error saat proses background:', error);
+          // Tidak perlu set error state di sini karena data utama sudah dimuat
+        });
         
       } catch (error) {
         console.error('Error saat mengambil data dashboard:', error);
         setError(error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui');
-      } finally {
         setIsLoading(false);
       }
     };
@@ -599,6 +613,7 @@ export const useDashboard = () => {
   return {
     ...dashboardData,
     isLoading,
+    isAdsLoading,
     error,
     refreshData
   };

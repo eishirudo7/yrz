@@ -6,14 +6,17 @@ import { ChevronDown, ChevronUp, ShoppingCart, DollarSign, BarChart2, Store } fr
 
 type OrdersSummaryProps = {
   summary: DashboardSummary
+  isAdsLoading: boolean
 }
 
 export const SummaryHeader = memo(({ 
   summary,
+  isAdsLoading,
   isVisible,
   onToggle 
 }: { 
   summary: DashboardSummary;
+  isAdsLoading: boolean;
   isVisible: boolean;
   onToggle: () => void;
 }) => {
@@ -57,8 +60,15 @@ export const SummaryHeader = memo(({
                   <div className="text-xs font-medium text-primary-foreground/80 hidden sm:block">TOTAL IKLAN</div>
                   <div className="text-xs font-medium text-primary-foreground/80 sm:hidden">IKLAN</div>
                   <div className="text-xs sm:text-lg font-bold text-primary-foreground">
-                    <span className="hidden sm:inline">Rp </span>
-                    {summary.totalIklan.toLocaleString('id-ID')}
+                    
+                    {isAdsLoading ? (
+                      <span className="h-5 w-20 bg-gray-300 rounded animate-pulse inline-block" />
+                    ) : (
+                      <>
+                        <span className="hidden sm:inline">Rp </span>
+                        {summary.totalIklan.toLocaleString('id-ID')}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -127,13 +137,14 @@ export const SummaryTable = memo(({ summary }: { summary: DashboardSummary }) =>
 });
 SummaryTable.displayName = 'SummaryTable';
 
-export function OrdersSummary({ summary }: OrdersSummaryProps) {
+export function OrdersSummary({ summary, isAdsLoading }: OrdersSummaryProps) {
   const [isRingkasanVisible, setIsRingkasanVisible] = useState(false);
 
   return (
     <div className="space-y-2">
       <SummaryHeader 
         summary={summary}
+        isAdsLoading={isAdsLoading}
         isVisible={isRingkasanVisible}
         onToggle={() => setIsRingkasanVisible(!isRingkasanVisible)}
       />
