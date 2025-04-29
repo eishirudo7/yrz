@@ -63,7 +63,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <MiniChatContainer />
           </SSEProvider>
         </UserDataProvider>
-        <Toaster richColors expand={false} />
+        <Toaster richColors expand={false} position="top-right" />
       </body>
     </html>
   )

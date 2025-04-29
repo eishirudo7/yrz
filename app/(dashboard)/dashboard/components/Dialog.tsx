@@ -318,38 +318,40 @@ export function PrintReportDialog({
                   Detail per Toko ({printReport.shopReports.length}):
                 </h4>
                 
-                {printReport.shopReports.map((report, index) => (
-                  <div 
-                    key={index}
-                    className="p-3 border rounded-lg dark:border-gray-700 mb-2"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium dark:text-white">
-                        {report.shopName}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        Total: {report.total}
-                      </span>
-                    </div>
-                    <div className="flex gap-4 text-xs">
-                      <div className="flex items-center gap-1">
-                        <span className="text-green-500">●</span>
-                        <span className="text-gray-600 dark:text-gray-300">
-                          Berhasil: {report.processed}
+                <div className="grid grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
+                  {printReport.shopReports.map((report, index) => (
+                    <div 
+                      key={index}
+                      className="p-3 border rounded-lg dark:border-gray-700 bg-white dark:bg-gray-800"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium dark:text-white truncate">
+                          {report.shopName}
+                        </span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 shrink-0">
+                          Total: {report.total}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-red-500">●</span>
-                        <span className="text-gray-600 dark:text-gray-300">
-                          Gagal: {report.failed}
-                        </span>
+                      <div className="flex gap-4 text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="text-green-500">●</span>
+                          <span className="text-gray-600 dark:text-gray-300">
+                            Berhasil: {report.processed}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-red-500">●</span>
+                          <span className="text-gray-600 dark:text-gray-300">
+                            Gagal: {report.failed}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
                 
                 {failedOrders.length > 0 && (
-                  <div>
+                  <div className="mt-4">
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="font-medium dark:text-white">
                         Daftar Pesanan Gagal ({failedOrders.length}):

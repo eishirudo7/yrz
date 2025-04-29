@@ -3,14 +3,12 @@
 import { useEffect } from 'react'
 import { useSSE } from '@/app/services/SSEService'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 import { ShoppingBag, MessageSquare, AlertTriangle, Bell } from 'lucide-react'
 import useStoreChat from '@/stores/useStoreChat'
 
 export function GlobalNotification() {
-  const { lastMessage, isConnected } = useSSE();
-  const router = useRouter();
-  const { conversations, handleSSEMessage } = useStoreChat();
+  const { lastMessage } = useSSE();
+  const { handleSSEMessage } = useStoreChat();
 
   useEffect(() => {
     if (!lastMessage) return;
@@ -52,7 +50,7 @@ export function GlobalNotification() {
           const chatData = {
             conversationId: message.conversation_id,
             shopId: message.shop_id,
-            toId: message.sender_id,
+            toId: message.sender,
             toName: message.sender_name,
             toAvatar: message.sender_avatar || '',
             shopName: message.shop_name,
