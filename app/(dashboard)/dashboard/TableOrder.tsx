@@ -1,13 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Order } from '@/app/hooks/useDashboard'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Impor ikon-ikon yang diperlukan
@@ -2036,6 +2029,18 @@ const handleAcceptAllCancellations = useCallback(async () => {
         groupItemsBySku={groupItemsBySku}
         handleProcessOrder={handleProcessOrder}
         handleCancellationAction={handleCancellationAction}
+        handleOrderSnClick={(orderSn) => {
+          console.log('handleOrderSnClick dipanggil dengan orderSn:', orderSn);
+          setSelectedOrderSn(orderSn);
+          setIsDetailOpen(true);
+        }}
+      />
+
+      {/* Tambahkan OrderDetails component */}
+      <OrderDetails
+        orderSn={selectedOrderSn}
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
       />
 
       <CancellationConfirmDialog

@@ -44,6 +44,7 @@ interface OrderTableProps {
   groupItemsBySku: (items: any[] | undefined) => Record<string, any[]>;
   handleProcessOrder: (order: Order) => void;
   handleCancellationAction: (orderSn: string, action: 'ACCEPT' | 'REJECT') => void;
+  handleOrderSnClick: (orderSn: string) => void;
 }
 
 // Pastikan style th dan td konsisten
@@ -66,7 +67,7 @@ TableHeadWrapper.displayName = 'TableHeadWrapper';
 
 // Buat komponen untuk cell dengan ellipsis
 const EllipsisCell = forwardRef<HTMLTableCellElement, React.ComponentPropsWithoutRef<'td'> & { tooltip?: string }>(
-  ({ className, children, tooltip, style, ...props }, ref) => {
+  ({ className, children, tooltip, style, onClick, ...props }, ref) => {
     return (
       <TableCell 
         ref={ref}
@@ -78,6 +79,7 @@ const EllipsisCell = forwardRef<HTMLTableCellElement, React.ComponentPropsWithou
           maxWidth: style?.width || 'auto',
         }}
         title={tooltip || (typeof children === 'string' ? children : undefined)}
+        onClick={onClick}
         {...props}
       >
         {children}
@@ -106,7 +108,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   getSkuSummary,
   groupItemsBySku,
   handleProcessOrder,
-  handleCancellationAction
+  handleCancellationAction,
+  handleOrderSnClick
 }) => {
   const checkboxRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -187,7 +190,8 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     sku: { width: '15.5%', minWidth: '160px' },
     courier: { width: '14%', minWidth: '220px' },
     status: { width: '9%', minWidth: '200px' },
-    print: { width: '4%', minWidth: '40px' }
+    print: { width: '4%', minWidth: '40px' },
+    order_sn: { width: '12%', minWidth: '170px' }
   };
 
   const tableMinWidth = 1700; // Sesuaikan dengan total lebar ideal untuk semua kolom
@@ -387,16 +391,17 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                 {formatDate(order.pay_time)}
               </TableCell>
               <EllipsisCell 
-                className="cursor-pointer hover:text-primary"
-                style={{width: columnWidths.orderNumber.width}}
+                className="text-xs font-medium"
+                tooltip={order.order_sn}
                 onClick={() => {
-                  setSelectedOrderSn(order.order_sn)
-                  setIsDetailOpen(true)
+                  console.log('EllipsisCell diklik untuk order_sn:', order.order_sn);
+                  handleOrderSnClick(order.order_sn);
                 }}
               >
-                <div className="flex items-center gap-1.5 overflow-hidden">
-                  
-                  <span className="overflow-hidden text-overflow-ellipsis">{order.order_sn}</span>
+                <div className="flex items-center">
+                  <button className="hover:text-primary mr-2">
+                    {order.order_sn}
+                  </button>
                   {order.cod && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-600 text-white dark:bg-red-500 flex-shrink-0">
                       COD

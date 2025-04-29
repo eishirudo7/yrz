@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { useUbahPesanan, PerubahanPesanan } from '@/app/hooks/useUbahPesanan'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Trash2, FileText, MessageSquare, Send, Printer, RefreshCcw, ChevronLeft, ChevronRight } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
+import { Trash2, FileText, MessageSquare, Send, Printer, RefreshCcw, ChevronLeft, ChevronRight, CheckCircle, XCircle } from "lucide-react"
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -73,7 +73,6 @@ export default function UbahPesananPage() {
     handleStatusFilterChange
   } = useUbahPesanan()
   
-  const { toast } = useToast()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PerubahanPesanan | null>(null)
   const [chatMessage, setChatMessage] = useState('')
@@ -116,10 +115,7 @@ export default function UbahPesananPage() {
   const handleDeleteClick = async (id: number) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus perubahan pesanan ini?')) {
       await hapusPerubahanPesanan(id)
-      toast({
-        title: "Perubahan pesanan dihapus",
-        description: "Data perubahan pesanan telah berhasil dihapus.",
-      })
+      toast.success('Data perubahan pesanan telah berhasil dihapus')
     }
   }
 
@@ -146,11 +142,7 @@ export default function UbahPesananPage() {
         })
         setChatMessage('')
       } catch (error) {
-        toast({
-          title: "Gagal mengirim pesan",
-          description: "Terjadi kesalahan saat mengirim pesan.",
-          variant: "destructive"
-        })
+        toast.error('Gagal mengirim pesan')
       }
     }
   }
@@ -173,17 +165,10 @@ export default function UbahPesananPage() {
         URL.revokeObjectURL(url);
       }, 1000);
 
-      toast({
-        title: "Dokumen berhasil dicetak",
-        description: "Dokumen pengiriman telah berhasil dicetak.",
-      });
+      toast.success('Dokumen pengiriman telah berhasil dicetak');
     } catch (error) {
       console.error('Error downloading document:', error);
-      toast({
-        title: "Gagal mencetak dokumen",
-        description: "Terjadi kesalahan saat mencetak dokumen.",
-        variant: "destructive"
-      });
+      toast.error('Gagal mencetak dokumen');
     }
   };
 
@@ -203,11 +188,7 @@ export default function UbahPesananPage() {
       setOrderDetails(result.data)
     } catch (error) {
       console.error('Error fetching order details:', error)
-      toast({
-        title: "Gagal mengambil detail pesanan",
-        description: "Terjadi kesalahan saat mengambil data pesanan.",
-        variant: "destructive"
-      })
+      toast.error('Gagal mengambil data pesanan')
     } finally {
       setLoadingDetails(false)
     }
@@ -216,11 +197,7 @@ export default function UbahPesananPage() {
   const handleCardPrint = (order: PerubahanPesanan) => {
     // Validasi data yang diperlukan
     if (!order.nomor_invoice || !order.shop_id) {
-      toast({
-        title: "Gagal mencetak dokumen",
-        description: "Data pesanan tidak lengkap untuk mencetak dokumen.",
-        variant: "destructive"
-      });
+      toast.error('Data pesanan tidak lengkap untuk mencetak dokumen');
       return;
     }
 
@@ -240,6 +217,47 @@ export default function UbahPesananPage() {
       total_belanja: 0,
       create_time: 0
     });
+  };
+
+  // Tambahkan fungsi untuk menangani aksi pembatalan
+  const handleCancellationAction = async (orderSn: string, action: 'ACCEPT' | 'REJECT') => {
+    try {
+      toast.promise(
+        async () => {
+          const response = await fetch('/api/handle-cancellation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              shopId: selectedOrder?.shop_id,
+              orderSn: orderSn,
+              operation: action
+            })
+          });
+
+          const result = await response.json();
+          
+          if (!result.success) {
+            throw new Error(result.message || 'Gagal memproses pembatalan');
+          }
+
+          // Refresh data pesanan setelah berhasil
+          if (selectedOrder?.userid) {
+            await fetchOrderDetails(selectedOrder.userid.toString());
+          }
+
+          return result;
+        },
+        {
+          loading: 'Memproses pembatalan...',
+          success: `Berhasil ${action === 'ACCEPT' ? 'menerima' : 'menolak'} pembatalan`,
+          error: (err: Error) => err.message || 'Gagal memproses pembatalan'
+        }
+      );
+    } catch (error) {
+      console.error('Gagal memproses pembatalan:', error);
+    }
   };
 
   // Loading state
@@ -342,7 +360,14 @@ export default function UbahPesananPage() {
           <Card key={order.id} className="overflow-hidden shadow-md">
             <CardHeader className="p-4 bg-gray-50">
               <CardTitle className="text-sm font-medium text-gray-700 flex justify-between items-center">
-                <span>No. Invoice: {order.nomor_invoice || 'N/A'}</span>
+                <div className="flex items-center gap-2 w-full">
+                  <span>No. Invoice: {order.nomor_invoice || 'N/A'}</span>
+                  {order.status_pesanan && (
+                    <Badge variant="outline" className="ml-auto mr-2">
+                      {order.status_pesanan}
+                    </Badge>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <MessageSquare 
                     className="h-5 w-5 text-blue-500 hover:text-blue-600 cursor-pointer" 
@@ -369,7 +394,9 @@ export default function UbahPesananPage() {
             
             <CardContent className="p-4">
               <div className="flex justify-between items-center mb-3">
-                <p className="text-sm font-semibold">{order.nama_toko}</p>
+                <div>
+                  <p className="text-sm font-semibold">{order.nama_toko}</p>
+                </div>
                 <p className="text-xs text-gray-500">ID: {order.id_pengguna}</p>
               </div>
               
@@ -666,14 +693,16 @@ export default function UbahPesananPage() {
                 {selectedOrder && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Status Perubahan:</span>
-                    <Button 
-                      variant={selectedOrder.status === "DICATAT" ? "default" : "destructive"}
-                      size="sm"
-                      onClick={() => handleStatusClick(selectedOrder)}
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      {selectedOrder.status}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant={selectedOrder.status === "DICATAT" ? "default" : "destructive"}
+                        size="sm"
+                        onClick={() => handleStatusClick(selectedOrder)}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        {selectedOrder.status}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -698,8 +727,30 @@ export default function UbahPesananPage() {
                         {/* Header Pesanan */}
                         <div className="p-3 border-b">
                           <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xs font-medium">No. Pesanan: {order.order_sn}</h3>
+                            <h3 className="text-xs font-medium">ORDER SN : {order.order_sn}</h3>
                             <div className="flex items-center gap-2">
+                              {order.order_status === 'IN_CANCEL' && (
+                                <div className="flex gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900/30"
+                                    onClick={() => handleCancellationAction(order.order_sn, 'ACCEPT')}
+                                    title="Terima Pembatalan"
+                                  >
+                                    <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-900/30"
+                                    onClick={() => handleCancellationAction(order.order_sn, 'REJECT')}
+                                    title="Tolak Pembatalan"
+                                  >
+                                    <XCircle size={16} className="text-red-600 dark:text-red-400" />
+                                  </Button>
+                                </div>
+                              )}
                               <Badge variant="outline" className="bg-black text-white hover:bg-black text-xs">
                                 {order.order_status}
                               </Badge>
