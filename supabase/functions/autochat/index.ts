@@ -440,8 +440,16 @@ async function processConversation(
   conversation_id: string,
   user_id_int: number,
   jumlah_pesanan: number = 0,
-  daftar_pesanan: any[] = []
+  daftar_pesanan: any[] = [],
+  config: Config
 ) {
+  // Inisialisasi OpenAI client
+  const openai = new OpenAI({
+    apiKey: config.openai_api,
+    maxRetries: 3,
+    timeout: 30000,
+  });
+
   const maxRetries = 3;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -504,8 +512,28 @@ async function processConversation(
         tool_choice: "auto"
       };
 
+      // Log pesan yang akan dikirim ke OpenAI
+      await logger.info("📤 Mengirim request ke OpenAI:")
+      await logger.info(`Model: ${config.openai_model}`)
+      await logger.info(`Temperature: ${config.openai_temperature}`)
+      await logger.info("Messages:")
+      conversation.forEach(msg => {
+        logger.info(`- ${msg.role}: ${msg.content}`)
+      })
+
       const response = await openai.chat.completions.create(data);
       const message = response.choices[0].message;
+
+      // Log respon dari OpenAI
+      await logger.info("📥 Respon dari OpenAI:")
+      await logger.info(`Content: ${message.content}`)
+      if (message.tool_calls) {
+        await logger.info("Tool Calls:")
+        message.tool_calls.forEach(call => {
+          logger.info(`- Function: ${call.function.name}`)
+          logger.info(`  Arguments: ${call.function.arguments}`)
+        })
+      }
 
       if (message.tool_calls && ada_pesanan) {
         for (const tool_call of message.tool_calls) {
@@ -571,7 +599,7 @@ async function processChat(
     // Cek status chat untuk shop_id tertentu
     const status_result = status_chat.find(item => item.shop_id === shop_id);
     if (status_result && !status_result.status_chat) {
-      await logger.info(`Skip membalas chat untuk shop_id ${shop_id} karena status_chat = False`);
+      await logger.info(`⏭️ Skip membalas chat untuk shop_id ${shop_id} karena status_chat = False`)
       return;
     }
 
@@ -621,9 +649,25 @@ async function processChat(
     if (last_message) {
       const message_type = last_message.message_type
       if (!['text', 'image', 'sticker', 'video', 'image_with_text'].includes(message_type)) {
-        await logger.info(`Pesan terakhir bukan text/image/sticker/video/image_with_text (type: ${message_type}), skip balasan`)
+        await logger.info(`⏭️ Skip membalas chat karena tipe pesan terakhir adalah ${message_type} (bukan text/image/sticker/video/image_with_text)`)
         return
       }
+    }
+
+    // Log ringkasan chat
+    await logger.info("\n📝 Ringkasan Chat:")
+    await logger.info(`👤 Pengguna: ${to_name}`)
+    await logger.info(`🏪 Toko: ${shop_name}`)
+    await logger.info(`🆔 ID Chat: ${conversation_id}`)
+    await logger.info(`📱 Unread Count: ${unread_count}`)
+    
+    // Hanya tampilkan pesan terakhir
+    if (last_message) {
+      const isShop = last_message.from_shop_id === shop_id
+      const role = isShop ? "🤖 Toko" : "👤 Pengguna"
+      const content = last_message.content?.text || `[${last_message.message_type}]`
+      await logger.info(`\n💬 Pesan Terakhir:`)
+      await logger.info(`${role}: ${content}`)
     }
 
     const first_message = messages[0]
@@ -767,13 +811,15 @@ async function processChat(
       conversation_id,
       parseInt(to_id),
       jumlah_pesanan,
-      daftar_pesanan
+      daftar_pesanan,
+      config
     )
 
     if (teks_balasan) {
-      await logger.info("==========================================Balasan AI==========================================")
-      await logger.info(`👤 ${chat.to_name}: ${chat.latest_message_content.text}`)
-      await logger.info(`🤖 AI: ${teks_balasan}`)
+      await logger.info("\n✅ Status Balasan:")
+      await logger.info(`👤 Pengguna: ${chat.to_name}`)
+      await logger.info(`💬 Pesan Terakhir: ${chat.latest_message_content.text}`)
+      await logger.info(`🤖 Balasan AI: ${teks_balasan}`)
 
       const chat_data = {
         marketplace: 'shopee',
@@ -793,7 +839,7 @@ async function processChat(
       }
     } else {
       if (ada_pesanan) {
-        await logger.info(`⚠️ Tidak ada balasan yang dikirim ${chat.to_name} karena keluhan sudah ada untuk nomor pesanan: ${nomor_pesanan}, Status pesanan: ${status_pesanan}`)
+        await logger.info(`⏭️ Tidak ada balasan yang dikirim ke ${chat.to_name} karena keluhan sudah ada untuk nomor pesanan: ${nomor_pesanan}, Status pesanan: ${status_pesanan}`)
       } else {
         await logger.info("ℹ️ Tidak ada pesanan yang terkait dengan pengguna ini. Chat diproses normal.")
       }
@@ -866,7 +912,7 @@ serve(async (req: Request) => {
         logger.error(`Error saat menjalankan proses order: ${error}`)
         return false
       }),
-      fetch("https://yorozuya.me/api/msg/get_conversation_list?unread=true&limit=20", {
+      fetch("https://yorozuya.me/api/msg/get_conversation_list?unread=true&limit=50", {
         headers: {
           ...authHeaders,
           'Cookie': cookieString

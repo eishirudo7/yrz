@@ -21,6 +21,7 @@
 .DS_Store
 *.pem
 /chat
+/supabase
 # debug
 npm-debug.log*
 yarn-debug.log*
