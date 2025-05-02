@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -19,7 +19,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CheckCircle, AlertCircle, XCircle, Info, Printer, RefreshCcw } from 'lucide-react'
+import { CheckCircle, AlertCircle, XCircle, Info, Printer, RefreshCcw, AlertTriangle } from 'lucide-react'
 import { OrderStatus } from "../types"
 
 // Dialog Konfirmasi Pembatalan
@@ -248,7 +248,14 @@ export function RejectAllConfirmDialog({
 export interface PrintReport {
   totalSuccess: number
   totalFailed: number
-  shopReports: { shopName: string; total: number; processed: number; failed: number }[]
+  shopReports: {
+    shopName: string
+    total: number
+    processed: number
+    failed: number
+    expectedTotal?: number
+    actualProcessed?: number
+  }[]
 }
 
 export interface FailedOrderInfo {
@@ -265,6 +272,9 @@ export function PrintReportDialog({
   isLoadingForOrder,
   onDownloadDocument,
   onClose,
+  expectedTotal,
+  actualTotal,
+  onMismatch
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -273,17 +283,49 @@ export function PrintReportDialog({
   isLoadingForOrder: (orderSn: string) => boolean
   onDownloadDocument: (order: { order_sn: string }) => void
   onClose: () => void
+  expectedTotal?: number
+  actualTotal?: number
+  onMismatch?: () => void
 }) {
+  useEffect(() => {
+    if (expectedTotal && actualTotal && expectedTotal !== actualTotal) {
+      onMismatch?.();
+    }
+  }, [expectedTotal, actualTotal, onMismatch]);
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col dark:bg-gray-800 dark:border-gray-700">
         <AlertDialogHeader>
-          <AlertDialogTitle className="dark:text-white">
-            Laporan Hasil Pencetakan
+          <AlertDialogTitle className="dark:text-white flex items-center justify-between">
+            <span>Laporan Hasil Pencetakan</span>
+            {expectedTotal && actualTotal && expectedTotal !== actualTotal && (
+              <span className="text-sm text-red-500 flex items-center">
+                <AlertTriangle size={14} className="mr-1" />
+                Jumlah dokumen tidak sesuai
+              </span>
+            )}
           </AlertDialogTitle>
           
           <AlertDialogDescription className="dark:text-gray-300 overflow-y-auto">
-            <div className="space-y-4 pr-2">
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Ringkasan</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p>Total Berhasil: {printReport.totalSuccess}</p>
+                    <p>Total Gagal: {printReport.totalFailed}</p>
+                  </div>
+                  {expectedTotal && (
+                    <div>
+                      <p>Total Diproses: {actualTotal}</p>
+                      <p>Total Seharusnya: {expectedTotal}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 pt-4 pb-2">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">

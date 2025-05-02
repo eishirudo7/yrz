@@ -4,12 +4,7 @@ import { mergePDFs } from '@/app/utils/pdfUtils';
 
 const BATCH_SIZE = 50; // Batasan dari Shopee API
 
-// Definisikan interface untuk order list
-interface OrderItem {
-  order_sn: string;
-  shipping_document_type: string;
-  shipping_carrier: string | null;
-}
+
 
 export async function GET(req: NextRequest) {
   try {

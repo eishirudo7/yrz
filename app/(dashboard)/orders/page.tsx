@@ -1466,19 +1466,34 @@ export default function OrdersPage() {
         </div>
         
         {ordersWithoutEscrow.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={syncMissingEscrowData}
-            disabled={syncingEscrow}
-            className="flex items-center gap-2 mt-2 sm:mt-0"
-          >
-            <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
-            {syncingEscrow 
-              ? `Sync (${syncProgress.completed}/${syncProgress.total})` 
-              : `Sync Escrow (${ordersWithoutEscrow.length})`
-            }
-          </Button>
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncMissingEscrowData()}
+              disabled={syncingEscrow}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
+              {syncingEscrow 
+                ? `Sync (${syncProgress.completed}/${syncProgress.total})` 
+                : `Sync Escrow (${ordersWithoutEscrow.length})`
+              }
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncMissingEscrowData(true)}
+              disabled={syncingEscrow}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
+              {syncingEscrow 
+                ? `Sync All (${syncProgress.completed}/${syncProgress.total})` 
+                : `Sync All Escrow (${orders.length})`
+              }
+            </Button>
+          </div>
         )}
       </div>
        

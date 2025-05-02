@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { OrderDetails } from './OrderDetails'
 import { useShippingDocument } from '@/app/hooks/useShippingDocument';
 import { Button } from "@/components/ui/button";
-import { mergePDFs } from '@/app/utils/pdfUtils';
+import { mergePDFs, countPagesInBlob } from '@/app/utils/pdfUtils';
 import { toast } from "sonner";
 import { OrderHistory } from './OrderHistory';
 import { Input } from "@/components/ui/input"
@@ -664,14 +664,19 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   const processPrintingAndReport = async (ordersToPrint: Order[]) => {
     let totalSuccess = 0;
     let totalFailed = 0;
+    let totalProcessed = 0;
     const shopReports: {
       shopName: string;
-      total: number; 
-      processed: number; 
+      total: number;
+      processed: number;
       failed: number;
+      expectedTotal: number;
+      actualProcessed: number;
     }[] = [];
     const newFailedOrders: FailedOrderInfo[] = [];
     const newShopBlobs: ShopBlob[] = [];
+
+    console.log(`Starting to process ${ordersToPrint.length} orders`);
 
     try {
       // Kelompokkan berdasarkan shop_id
@@ -684,28 +689,31 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         return groups;
       }, {});
 
+      console.log(`Orders grouped by shop:`, Object.keys(ordersByShop).map(shopId => ({
+        shopId,
+        orderCount: ordersByShop[Number(shopId)].length
+      })));
+
       // Konversi ke array untuk pemrosesan paralel
       const shopEntries = Object.entries(ordersByShop);
-      
-      // Batasi jumlah proses paralel (misalnya 3 toko sekaligus)
       const PARALLEL_LIMIT = 3;
       const shopChunks = chunkArray(shopEntries, PARALLEL_LIMIT);
-      
-      // Inisialisasi progress
+
       setDocumentBulkProgress(prev => ({
         ...prev,
         total: ordersToPrint.length
       }));
 
-      // Proses setiap chunk secara paralel
       for (const shopChunk of shopChunks) {
-        // Proses toko dalam chunk secara paralel
         await Promise.all(shopChunk.map(async ([shopIdStr, shopOrders]) => {
           const shopId = parseInt(shopIdStr);
           const shopName = shopOrders[0].shop_name;
           let shopSuccess = 0;
           let shopFailed = 0;
+          let shopProcessed = 0;
           const blobs: Blob[] = [];
+
+          console.log(`Processing shop ${shopName} with ${shopOrders.length} orders`);
 
           setDocumentBulkProgress(prev => ({
             ...prev,
@@ -721,14 +729,21 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             return groups;
           }, {});
 
-          // Batasi jumlah proses paralel per kurir (misalnya 2 kurir sekaligus)
+          console.log(`Orders grouped by carrier for shop ${shopName}:`, 
+            Object.entries(ordersByCarrier).map(([carrier, orders]) => ({
+              carrier,
+              orderCount: orders.length
+            }))
+          );
+
           const CARRIER_PARALLEL_LIMIT = 2;
           const carrierEntries = Object.entries(ordersByCarrier);
           const carrierChunks = chunkArray(carrierEntries, CARRIER_PARALLEL_LIMIT);
 
           for (const carrierChunk of carrierChunks) {
-            // Proses kurir dalam chunk secara paralel
             const carrierResults = await Promise.all(carrierChunk.map(async ([carrier, carrierOrders]) => {
+              console.log(`Processing carrier ${carrier} with ${carrierOrders.length} orders`);
+
               setDocumentBulkProgress(prev => ({
                 ...prev,
                 currentCarrier: carrier,
@@ -744,18 +759,46 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
               try {
                 const { blob, failedOrders } = await downloadDocument(shopId, orderParams);
                 
+                if (!blob || blob.size === 0) {
+                  console.error(`Empty blob received for carrier ${carrier}`);
+                  return {
+                    carrier,
+                    blob: null,
+                    failedOrders: carrierOrders.map(o => o.order_sn),
+                    successCount: 0,
+                    failedCount: carrierOrders.length,
+                    carrierOrders
+                  };
+                }
+
+                // Hitung jumlah halaman
+                const pageCount = await countPagesInBlob(blob);
+                console.log(`Received PDF with ${pageCount} pages for carrier ${carrier}`);
+
+                if (pageCount < carrierOrders.length) {
+                  console.error(`Page count mismatch for carrier ${carrier}: got ${pageCount} pages but need at least ${carrierOrders.length} pages`);
+                  // Jika jumlah halaman lebih sedikit dari jumlah order, anggap semua order gagal
+                  return {
+                    carrier,
+                    blob: null,
+                    failedOrders: carrierOrders.map(o => o.order_sn),
+                    successCount: 0,
+                    failedCount: carrierOrders.length,
+                    carrierOrders
+                  };
+                }
+
                 return {
                   carrier,
                   blob,
                   failedOrders,
                   successCount: carrierOrders.length - failedOrders.length,
                   failedCount: failedOrders.length,
-                  carrierOrders
+                  carrierOrders,
+                  pageCount
                 };
               } catch (error) {
-                console.error(`Error downloading documents for carrier ${carrier}:`, error);
-                
-                // Kembalikan semua order sebagai gagal
+                console.error(`Error processing carrier ${carrier}:`, error);
                 return {
                   carrier,
                   blob: null,
@@ -767,7 +810,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
               }
             }));
 
-            // Proses hasil dari setiap kurir
             for (const result of carrierResults) {
               if (result.blob) {
                 blobs.push(result.blob);
@@ -775,10 +817,11 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
               
               shopSuccess += result.successCount;
               shopFailed += result.failedCount;
+              shopProcessed += result.successCount;
               totalSuccess += result.successCount;
               totalFailed += result.failedCount;
+              totalProcessed += result.successCount;
 
-              // Tambahkan failed orders ke daftar
               result.failedOrders.forEach(failedOrderSn => {
                 const orderData = result.carrierOrders.find(o => o.order_sn === failedOrderSn);
                 if (orderData) {
@@ -790,7 +833,6 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                 }
               });
 
-              // Update progress
               setDocumentBulkProgress(prev => ({
                 ...prev,
                 processed: prev.processed + result.carrierOrders.length
@@ -798,19 +840,29 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             }
           }
 
-          // Tambahkan laporan untuk toko ini
           shopReports.push({
             shopName,
             total: shopSuccess + shopFailed,
             processed: shopSuccess,
-            failed: shopFailed
+            failed: shopFailed,
+            expectedTotal: shopOrders.length,
+            actualProcessed: shopProcessed
           });
 
-          // Gabungkan PDF untuk toko ini jika ada
           if (blobs.length > 0) {
             try {
+              console.log(`Merging ${blobs.length} PDFs for shop ${shopName}`);
               const mergedPDF = await mergePDFs(blobs);
-              // Simpan blob untuk toko ini
+              
+              // Validasi hasil merge
+              const totalPages = await countPagesInBlob(mergedPDF);
+              console.log(`Merged PDF has ${totalPages} pages for shop ${shopName}`);
+
+              if (totalPages < shopSuccess) {
+                console.error(`Page count mismatch after merge for shop ${shopName}: got ${totalPages} pages but need at least ${shopSuccess} pages`);
+                throw new Error('Merged PDF has fewer pages than orders');
+              }
+
               newShopBlobs.push({
                 shopName,
                 blob: mergedPDF
@@ -836,15 +888,32 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             } catch (error) {
               console.error(`Error merging PDFs for shop ${shopName}:`, error);
               toast.error(`Gagal menggabungkan PDF untuk ${shopName}`);
+              
+              // Tandai semua order yang belum ditandai gagal sebagai gagal
+              const remainingOrders = shopOrders.filter(
+                order => !newFailedOrders.some(f => f.orderSn === order.order_sn)
+              );
+              
+              remainingOrders.forEach(order => {
+                newFailedOrders.push({
+                  orderSn: order.order_sn,
+                  shopName,
+                  courier: order.shipping_carrier || 'unknown'
+                });
+              });
+
+              totalSuccess -= remainingOrders.length;
+              totalFailed += remainingOrders.length;
+              shopSuccess -= remainingOrders.length;
+              shopFailed += remainingOrders.length;
             }
           }
         }));
       }
 
-      // Update state shopBlobs dengan blob yang baru
       setShopBlobs(newShopBlobs);
 
-      // Tampilkan laporan
+      // Update laporan akhir
       setPrintReport({
         totalSuccess,
         totalFailed,
@@ -854,6 +923,12 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
       if (newFailedOrders.length > 0) {
         setFailedOrders(newFailedOrders);
+      }
+
+      // Validasi akhir
+      if (totalProcessed !== ordersToPrint.length) {
+        console.error(`Final count mismatch: processed ${totalProcessed} of ${ordersToPrint.length} orders`);
+        toast.error('Jumlah dokumen yang diproses tidak sesuai dengan jumlah pesanan');
       }
 
     } catch (error) {

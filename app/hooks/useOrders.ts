@@ -186,19 +186,32 @@ export function useOrders(dateRange?: DateRange | undefined) {
     }
   }
 
-  const syncMissingEscrowData = async () => {
-    if (syncingEscrow || ordersWithoutEscrow.length === 0) return;
+  const syncMissingEscrowData = async (syncAll: boolean = false) => {
+    // Jika sedang sync, jangan lakukan apa-apa
+    if (syncingEscrow) return;
+
+    // Tentukan pesanan yang akan di-sync
+    const ordersToSync = syncAll 
+      ? orders.filter(order => 
+          order.order_status !== 'CANCELLED' && 
+          order.order_status !== 'UNPAID'
+        )
+      : ordersWithoutEscrow;
+
+    if (ordersToSync.length === 0) {
+      toast.info('Tidak ada pesanan yang perlu disinkronkan');
+      return;
+    }
 
     setSyncingEscrow(true);
-    setSyncProgress({ completed: 0, total: ordersWithoutEscrow.length });
+    setSyncProgress({ completed: 0, total: ordersToSync.length });
 
     let updatedOrders = [...orders];
     let completed = 0;
 
-
     try {
       // Kelompokkan order berdasarkan shop_id
-      const ordersByShop = ordersWithoutEscrow.reduce((acc, order) => {
+      const ordersByShop = ordersToSync.reduce((acc, order) => {
         if (!order.shop_id) return acc;
         
         if (!acc[order.shop_id]) {
@@ -241,7 +254,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
               );
             }
             completed++;
-            setSyncProgress({ completed, total: ordersWithoutEscrow.length });
+            setSyncProgress({ completed, total: ordersToSync.length });
           }
         } else {
           throw new Error(result.message || 'Gagal menyinkronkan data escrow');
