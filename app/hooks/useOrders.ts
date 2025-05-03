@@ -56,6 +56,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncingEscrow, setSyncingEscrow] = useState(false)
+  const [syncType, setSyncType] = useState<'missing' | 'all' | null>(null)
   const [syncProgress, setSyncProgress] = useState({ completed: 0, total: 0 })
   
   // State untuk menyimpan parameter terakhir untuk refetch
@@ -186,9 +187,75 @@ export function useOrders(dateRange?: DateRange | undefined) {
     }
   }
 
+  // Tambahkan fungsi helper untuk memproses batch
+  const processBatch = async (
+    batch: Order[], 
+    shopId: number,
+    updateProgress: (count: number) => void
+  ) => {
+    const orderSns = batch.map(order => order.order_sn);
+    
+    const response = await fetch(`/api/escrow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        shopId: parseInt(shopId.toString()),
+        orderSns 
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Gagal menyinkronkan data escrow');
+    }
+
+    // Update progress setelah batch selesai
+    updateProgress(orderSns.length);
+
+    // Pastikan result.data adalah array
+    if (!Array.isArray(result.data)) {
+      console.error('Expected array of results but got:', result.data);
+      return [];
+    }
+
+    // Return array of processed results dengan akses yang benar ke escrow_amount_after_adjustment
+    return result.data.map((item: any) => ({
+      order_sn: item.order_sn,
+      success: item.success,
+      escrow_amount_after_adjustment: item.data?.order_income?.escrow_amount_after_adjustment ?? null
+    }));
+  };
+
+  // Fungsi helper untuk memproses array dalam chunks
+  const processInChunks = async <T, R>(
+    items: T[],
+    chunkSize: number,
+    processor: (chunk: T[]) => Promise<R[]>
+  ): Promise<R[]> => {
+    const results: R[] = [];
+    
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, Math.min(i + chunkSize, items.length));
+      const chunkResults = await Promise.all(chunk.map(item => processor([item]).then(r => r[0])));
+      results.push(...chunkResults);
+    }
+    
+    return results;
+  };
+
   const syncMissingEscrowData = async (syncAll: boolean = false) => {
     // Jika sedang sync, jangan lakukan apa-apa
     if (syncingEscrow) return;
+
+    // Set tipe sync yang sedang berjalan
+    setSyncType(syncAll ? 'all' : 'missing');
 
     // Tentukan pesanan yang akan di-sync
     const ordersToSync = syncAll 
@@ -200,6 +267,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
     if (ordersToSync.length === 0) {
       toast.info('Tidak ada pesanan yang perlu disinkronkan');
+      setSyncType(null);
       return;
     }
 
@@ -223,49 +291,53 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
       // Proses setiap kelompok shop_id
       for (const [shopId, shopOrders] of Object.entries(ordersByShop)) {
-        const orderSns = shopOrders.map(order => order.order_sn);
-        
-        const response = await fetch(`/api/escrow`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            shopId: parseInt(shopId),
-            orderSns 
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        // Bagi pesanan menjadi batch-batch 100
+        const batchSize = 100;
+        const batches = [];
+        for (let i = 0; i < shopOrders.length; i += batchSize) {
+          batches.push(shopOrders.slice(i, i + batchSize));
         }
 
-        const result = await response.json();
-        
-        if (result.success && result.data) {
-          // Perbarui data orders dengan data escrow yang baru
-          for (const updatedOrder of result.data) {
-            if (updatedOrder.success) {
-              updatedOrders = updatedOrders.map(order => 
-                order.order_sn === updatedOrder.order_sn ? { 
-                  ...order, 
-                  escrow_amount_after_adjustment: updatedOrder.data.escrow_amount_after_adjustment 
-                } : order
-              );
-            }
-            completed++;
-            setSyncProgress({ completed, total: ordersToSync.length });
+        // Proses 4 batch secara paralel
+        const updateProgressCount = (count: number) => {
+          completed += count;
+          setSyncProgress({ completed, total: ordersToSync.length });
+        };
+
+        // Proses batches dalam chunks 4
+        const results = await processInChunks(
+          batches,
+          4,
+          async (batchChunk) => {
+            const batchPromises = batchChunk.map(batch => 
+              processBatch(batch, parseInt(shopId), updateProgressCount)
+            );
+            return Promise.all(batchPromises);
           }
-        } else {
-          throw new Error(result.message || 'Gagal menyinkronkan data escrow');
-        }
+        );
+
+        // Flatten results dan update orders
+        const flattenedResults = results.flat().flat(); // Double flatten karena nested arrays
+        
+        // Update orders dengan hasil yang valid
+        updatedOrders = updatedOrders.map(order => {
+          const result = flattenedResults.find(r => r.order_sn === order.order_sn);
+          if (result?.success && result?.escrow_amount_after_adjustment !== undefined) {
+            return {
+              ...order,
+              escrow_amount_after_adjustment: result.escrow_amount_after_adjustment
+            };
+          }
+          return order;
+        });
       }
       
       setOrders(updatedOrders);
       
       // Filter kembali pesanan yang masih belum memiliki data escrow
       const stillWithoutEscrow = updatedOrders.filter(
-        order => (order.escrow_amount_after_adjustment === null || 
+        order => (order.escrow_amount_after_adjustment === undefined || 
+                 order.escrow_amount_after_adjustment === null || 
                  order.escrow_amount_after_adjustment === 0) &&
                  order.order_status !== 'CANCELLED' &&
                  order.order_status !== 'UNPAID'
@@ -278,6 +350,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
       toast.error(err instanceof Error ? err.message : 'Gagal menyinkronkan data escrow');
     } finally {
       setSyncingEscrow(false);
+      setSyncType(null);
     }
   };
 
@@ -294,6 +367,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
     error,
     syncMissingEscrowData,
     syncingEscrow,
+    syncType,
     syncProgress,
     adsData,
     totalAdsSpend,

@@ -245,6 +245,7 @@ export default function OrdersPage() {
     error: ordersError,
     syncMissingEscrowData,
     syncingEscrow,
+    syncType,
     syncProgress,
     adsData,
     totalAdsSpend,
@@ -1465,36 +1466,36 @@ export default function OrdersPage() {
           </div>
         </div>
         
+        <div className="flex items-center gap-2 mt-2 sm:mt-0">
         {ordersWithoutEscrow.length > 0 && (
-          <div className="flex items-center gap-2 mt-2 sm:mt-0">
-            <Button
-              variant="outline"
-              size="sm"
+          <Button
+            variant="outline"
+            size="sm"
               onClick={() => syncMissingEscrowData()}
-              disabled={syncingEscrow}
+            disabled={syncingEscrow}
               className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
-              {syncingEscrow 
-                ? `Sync (${syncProgress.completed}/${syncProgress.total})` 
-                : `Sync Escrow (${ordersWithoutEscrow.length})`
-              }
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => syncMissingEscrowData(true)}
-              disabled={syncingEscrow}
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncingEscrow ? 'animate-spin' : ''}`} />
-              {syncingEscrow 
-                ? `Sync All (${syncProgress.completed}/${syncProgress.total})` 
-                : `Sync All Escrow (${orders.length})`
-              }
-            </Button>
-          </div>
+          >
+              <RefreshCw className={`h-4 w-4 ${syncType === 'missing' ? 'animate-spin' : ''}`} />
+              {syncType === 'missing'
+                ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%` 
+              : `Sync Escrow (${ordersWithoutEscrow.length})`
+            }
+          </Button>
         )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncMissingEscrowData(true)}
+            disabled={syncingEscrow}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncType === 'all' ? 'animate-spin' : ''}`} />
+            {syncType === 'all'
+              ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%` 
+              : `Sync All (${orders.filter(o => o.order_status !== 'CANCELLED' && o.order_status !== 'UNPAID').length})`
+            }
+          </Button>
+        </div>
       </div>
        
       {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}

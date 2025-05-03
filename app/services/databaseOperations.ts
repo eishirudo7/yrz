@@ -284,7 +284,7 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
         seller_transaction_fee: orderIncome.seller_transaction_fee || null,
         actual_shipping_fee: orderIncome.actual_shipping_fee || null,
         buyer_payment_method: orderIncome.buyer_payment_method || null,
-        ams_commission_fee: orderIncome.ams_commission_fee || null,
+        ams_commission_fee: orderIncome.order_ams_commission_fee || null,
         updated_at: new Date().toISOString(),
         escrow_amount_after_adjustment: orderIncome.escrow_amount_after_adjustment || 0
       };
@@ -298,7 +298,9 @@ export async function upsertOrderData(orderData: any, shopId: number): Promise<v
           throw new Error(`Gagal menyimpan detail escrow: ${error.message}`);
         }
         
-        console.log(`Detail escrow berhasil disimpan untuk order_sn: ${responseData.order_sn}`);
+        const amsCommissionFee = orderIncome.order_ams_commission_fee || 0;
+        const amsInfo = amsCommissionFee > 0 ? ` (AMS Fee: Rp ${amsCommissionFee.toLocaleString('id-ID')})` : '';
+        console.log(`Detail escrow berhasil disimpan untuk order_sn: ${responseData.order_sn} dengan total escrow: Rp ${(orderIncome.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}${amsInfo}`);
       }, 3, 1000);
       
     } catch (error) {
