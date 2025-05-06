@@ -667,8 +667,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     let totalProcessed = 0;
     const shopReports: {
       shopName: string;
-      total: number;
-      processed: number;
+      total: number; 
+      processed: number; 
       failed: number;
       expectedTotal: number;
       actualProcessed: number;
@@ -698,7 +698,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       const shopEntries = Object.entries(ordersByShop);
       const PARALLEL_LIMIT = 3;
       const shopChunks = chunkArray(shopEntries, PARALLEL_LIMIT);
-
+      
       setDocumentBulkProgress(prev => ({
         ...prev,
         total: ordersToPrint.length
@@ -787,7 +787,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                     carrierOrders
                   };
                 }
-
+                
                 return {
                   carrier,
                   blob,

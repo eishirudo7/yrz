@@ -28,12 +28,12 @@ export async function mergePDFs(pdfBlobs: Blob[]): Promise<Blob> {
   
   for (const blob of pdfBlobs) {
     try {
-      const arrayBuffer = await blob.arrayBuffer();
-      const pdf = await PDFDocument.load(arrayBuffer);
-      const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-      copiedPages.forEach((page) => {
-        mergedPdf.addPage(page);
-      });
+    const arrayBuffer = await blob.arrayBuffer();
+    const pdf = await PDFDocument.load(arrayBuffer);
+    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+    copiedPages.forEach((page) => {
+      mergedPdf.addPage(page);
+    });
     } catch (error) {
       console.error('Error merging PDF:', error);
       throw new Error(`Failed to merge PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);

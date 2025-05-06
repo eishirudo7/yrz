@@ -399,7 +399,12 @@ export function PrintReportDialog({
                         Daftar Pesanan Gagal ({failedOrders.length}):
                       </h4>
                       <Button
-                        onClick={() => onClose()}
+                        onClick={() => {
+                          onClose();
+                          onDownloadDocument({ 
+                            order_sn: failedOrders.map(order => order.orderSn).join(',')
+                          });
+                        }}
                         size="sm"
                         className="h-7 bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
                       >

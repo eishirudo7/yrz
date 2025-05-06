@@ -1,6 +1,7 @@
 import { withRetry } from '@/app/services/databaseOperations';
 import { UserSettingsService, Shop } from '@/app/services/userSettingsService';
 import { processReadyToShipOrders } from "@/app/services/shopeeService";
+import { supabase } from '@/lib/supabase';
 
 export async function prosesOrder(shopId: number, orderSn: string, shippingMethod: string = 'dropoff', interval: number = 5): Promise<any> {
     // Menambahkan delay sesuai interval dalam detik
@@ -191,8 +192,19 @@ export class PremiumFeatureService {
       // Ambil template pesan berdasarkan status
       let template: string;
       if (statusType === 'cancel') {
-        template = userSettings.in_cancel_msg || 
-          `Halo ${buyerUsername},\\n\\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\\n\\nDitunggu ya kak responnya.`;
+        // Cek status cetak pesanan
+        const isPrinted = await this.isOrderPrinted(orderSn);
+        
+        // Split template berdasarkan karakter '||'
+        const [unpackedMsg, packedMsg] = (userSettings.in_cancel_msg || '').split('||').map(msg => msg.trim());
+        
+        if (isPrinted) {
+          template = packedMsg || 
+            `Halo ${buyerUsername},\\n\\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas dan siap kirim, jadi mohon maaf sekali tidak bisa kami konfirmasi pembatalan pesanannya.`;
+        } else {
+          template = unpackedMsg || 
+            `Halo ${buyerUsername},\\n\\nUntuk pesanan dengan nomor ${orderSn} belum kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\\n\\nDitunggu ya kak responnya.`;
+        }
       } else {
         template = userSettings.in_return_msg || 
           `Halo ${buyerUsername},\\n\\nPengembalian pesanan ${orderSn} harus dengan alasan yang jelas ya kak, jika terkesan tidak jelas atau mempermainkan seller maka akan kami banding juga ke shopee \\n\\nTerima kasih..`;
@@ -296,6 +308,27 @@ export class PremiumFeatureService {
     } catch (error) {
       console.error(`Error getting premium shops for ${userId}:`, error);
       return [];
+    }
+  }
+
+  /**
+   * Memeriksa status cetak pesanan
+   * @param orderSn - Nomor pesanan yang akan diperiksa
+   * @returns Boolean yang menunjukkan apakah pesanan sudah dicetak
+   */
+  static async isOrderPrinted(orderSn: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('is_printed')
+        .eq('order_sn', orderSn)
+        .single();
+
+      if (error) throw error;
+      return data?.is_printed || false;
+    } catch (error) {
+      console.error(`Error checking print status for order ${orderSn}:`, error);
+      return false;
     }
   }
 } 
