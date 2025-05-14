@@ -600,11 +600,21 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     error: documentError 
   } = useShippingDocument();
 
-  // Ubah definisi handleDownloadDocument
-  const handleDownloadDocument = useCallback(async (order: { order_sn: string; shop_id?: number; shipping_carrier?: string }) => {
+  // Update state di awal file, setelah deklarasi state lainnya
+  const [printRetryProgress, setPrintRetryProgress] = useState<{
+    total: number;
+    processed: number;
+    currentOrder: string;
+  }>({
+    total: 0,
+    processed: 0,
+    currentOrder: ''
+  });
+
+  // Update fungsi handleDownloadDocument
+  const handleDownloadDocument = useCallback(async (order: { order_sn: string; shop_id?: number; shipping_carrier?: string }, isRetry = false) => {
     try {
       if (!order.shop_id) {
-        // Jika tidak ada shop_id, cari order dengan order_sn tersebut
         const fullOrder = orders.find(o => o.order_sn === order.order_sn);
         if (!fullOrder) {
           toast.error('Pesanan tidak ditemukan');
@@ -619,9 +629,15 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         shipping_carrier: order.shipping_carrier
       };
 
-      // Destructure response untuk mendapatkan blob
+      if (isRetry) {
+        setPrintRetryProgress(prev => ({
+          ...prev,
+          currentOrder: order.order_sn
+        }));
+      }
+
       const { blob } = await downloadDocument(order.shop_id!, [params]);
-      const url = URL.createObjectURL(blob); // Gunakan blob, bukan seluruh response
+      const url = URL.createObjectURL(blob);
       
       window.open(url, '_blank');
       
@@ -631,6 +647,13 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
       if (onOrderUpdate) {
         onOrderUpdate(order.order_sn, { is_printed: true });
+      }
+
+      if (isRetry) {
+        setPrintRetryProgress(prev => ({
+          ...prev,
+          processed: prev.processed + 1
+        }));
       }
     } catch (error) {
       console.error('Error downloading document:', error);
@@ -854,15 +877,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
               console.log(`Merging ${blobs.length} PDFs for shop ${shopName}`);
               const mergedPDF = await mergePDFs(blobs);
               
-              // Validasi hasil merge
-              const totalPages = await countPagesInBlob(mergedPDF);
-              console.log(`Merged PDF has ${totalPages} pages for shop ${shopName}`);
-
-              if (totalPages < shopSuccess) {
-                console.error(`Page count mismatch after merge for shop ${shopName}: got ${totalPages} pages but need at least ${shopSuccess} pages`);
-                throw new Error('Merged PDF has fewer pages than orders');
-              }
-
+              // Simpan hasil merge
               newShopBlobs.push({
                 shopName,
                 blob: mergedPDF
@@ -2163,11 +2178,45 @@ const handleAcceptAllCancellations = useCallback(async () => {
         printReport={printReport}
         failedOrders={failedOrders}
         isLoadingForOrder={isLoadingForOrder}
-        onDownloadDocument={(order) => handleDownloadDocument(order)}
+        onDownloadDocument={async (orders) => {
+          if (Array.isArray(orders)) {
+            setPrintRetryProgress({
+              total: orders.length,
+              processed: 0,
+              currentOrder: ''
+            });
+            
+            try {
+              // Dapatkan data order lengkap dari filteredOrders
+              const ordersToRetry = orders.map(o => {
+                const fullOrder = filteredOrders.find(fo => fo.order_sn === o.order_sn);
+                if (!fullOrder) {
+                  throw new Error(`Order ${o.order_sn} tidak ditemukan`);
+                }
+                return fullOrder;
+              });
+
+              await processPrintingAndReport(ordersToRetry);
+            } catch (error) {
+              console.error('Error retrying print:', error);
+              toast.error('Gagal mencetak ulang beberapa dokumen');
+            }
+          } else {
+            await handleDownloadDocument(orders, true);
+          }
+        }}
         onClose={() => {
-                setIsPrintReportOpen(false);
-                setFailedOrders([]);
-              }}
+          if (!printRetryProgress.total || printRetryProgress.processed === printRetryProgress.total) {
+            setIsPrintReportOpen(false);
+            setFailedOrders([]);
+            setPrintRetryProgress({
+              total: 0,
+              processed: 0,
+              currentOrder: ''
+            });
+          }
+        }}
+        retryProgress={printRetryProgress}
       />
 
       <SyncSummaryDialog

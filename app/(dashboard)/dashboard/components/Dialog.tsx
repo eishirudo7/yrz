@@ -21,6 +21,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CheckCircle, AlertCircle, XCircle, Info, Printer, RefreshCcw, AlertTriangle } from 'lucide-react'
 import { OrderStatus } from "../types"
+import { Progress } from "@/components/ui/progress"
 
 // Dialog Konfirmasi Pembatalan
 export function CancellationConfirmDialog({
@@ -274,18 +275,24 @@ export function PrintReportDialog({
   onClose,
   expectedTotal,
   actualTotal,
-  onMismatch
+  onMismatch,
+  retryProgress
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   printReport: PrintReport
   failedOrders: FailedOrderInfo[]
   isLoadingForOrder: (orderSn: string) => boolean
-  onDownloadDocument: (order: { order_sn: string }) => void
+  onDownloadDocument: (order: { order_sn: string } | Array<{ order_sn: string }>) => void
   onClose: () => void
   expectedTotal?: number
   actualTotal?: number
   onMismatch?: () => void
+  retryProgress?: {
+    total: number;
+    processed: number;
+    currentOrder: string;
+  }
 }) {
   useEffect(() => {
     if (expectedTotal && actualTotal && expectedTotal !== actualTotal) {
@@ -308,6 +315,28 @@ export function PrintReportDialog({
           </AlertDialogTitle>
           
           <AlertDialogDescription className="dark:text-gray-300 overflow-y-auto">
+            {retryProgress && retryProgress.total > 0 && (
+              <div className="mb-4 p-2 bg-white dark:bg-gray-900/50 border rounded-lg">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Printer size={14} className="text-primary animate-pulse" />
+                      <span className="font-medium">
+                        Mencetak Ulang: {retryProgress.currentOrder}
+                      </span>
+                    </div>
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {retryProgress.processed}/{retryProgress.total}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={(retryProgress.processed / retryProgress.total) * 100} 
+                    className="h-1"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               {/* Summary */}
               <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg">
@@ -400,16 +429,18 @@ export function PrintReportDialog({
                       </h4>
                       <Button
                         onClick={() => {
-                          onClose();
-                          onDownloadDocument({ 
-                            order_sn: failedOrders.map(order => order.orderSn).join(',')
-                          });
+                          onDownloadDocument(
+                            failedOrders.map(order => ({
+                              order_sn: order.orderSn
+                            }))
+                          );
                         }}
                         size="sm"
                         className="h-7 bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
+                        disabled={Boolean(retryProgress?.total)}
                       >
                         <Printer size={14} className="mr-1" />
-                        Cetak Ulang
+                        Cetak Ulang {failedOrders.length} Dokumen
                       </Button>
                     </div>
                     <div className="max-h-[200px] overflow-y-auto border rounded-lg">
