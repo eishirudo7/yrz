@@ -719,7 +719,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
       // Konversi ke array untuk pemrosesan paralel
       const shopEntries = Object.entries(ordersByShop);
-      const PARALLEL_LIMIT = 3;
+      const PARALLEL_LIMIT = 5; // Naikkan limit parallel toko
       const shopChunks = chunkArray(shopEntries, PARALLEL_LIMIT);
       
       setDocumentBulkProgress(prev => ({
@@ -759,7 +759,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             }))
           );
 
-          const CARRIER_PARALLEL_LIMIT = 2;
+          const CARRIER_PARALLEL_LIMIT = 3; // Naikkan limit parallel kurir
           const carrierEntries = Object.entries(ordersByCarrier);
           const carrierChunks = chunkArray(carrierEntries, CARRIER_PARALLEL_LIMIT);
 

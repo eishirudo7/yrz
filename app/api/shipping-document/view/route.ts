@@ -3,6 +3,7 @@ import { downloadShippingDocument, createShippingDocument, getTrackingNumber as 
 import { mergePDFs } from '@/app/utils/pdfUtils';
 
 const BATCH_SIZE = 50; // Batasan dari Shopee API
+const BATCH_DELAY = 300; // Turunkan delay antar batch
 
 
 
@@ -42,8 +43,8 @@ export async function GET(req: NextRequest) {
     // Proses batches secara parallel dengan rate limiting
     await Promise.all(
       batches.map(async (batch, index) => {
-        // Rate limiting dengan delay bertahap
-        await new Promise(resolve => setTimeout(resolve, index * 1000));
+        // Rate limiting dengan delay yang lebih pendek
+        await new Promise(resolve => setTimeout(resolve, index * BATCH_DELAY));
 
         const orderList = batch.map(orderSn => ({
           order_sn: orderSn,
