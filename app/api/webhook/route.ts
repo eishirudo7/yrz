@@ -8,6 +8,8 @@ import { UpdateService } from '@/app/services/updateService';
 import { ViolationService } from '@/app/services/violationService';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 import { PremiumFeatureService } from '@/app/services/premiumFeatureService';
+import { syncBookingsByBookingSns } from '@/app/services/bookingSyncs';
+import { updateTrackingNumber, updateBookingOrder } from '@/app/services/bookingService';
 
 export async function POST(req: NextRequest) {
   // Segera kirim respons 200
@@ -34,7 +36,9 @@ async function processWebhookData(webhookData: any) {
       15: handleDocumentUpdate,
       5: handleUpdate,
       28: handlePenalty,
-      16: handleViolation
+      16: handleViolation,
+      24: handleBookingTrackingUpdate,
+      26: handleBooking
     };
 
     const handler = handlers[code] || handleOther;
@@ -203,7 +207,68 @@ async function handleOther(data: any) {
 
 async function handleDocumentUpdate(data: any) {
   console.log('Menangani pembaruan dokumen', data);
-  await updateDocumentStatus(data.data.ordersn);
+  try {
+    const documentData = data.data;
+    const shopId = data.shop_id;
+    
+    // Ambil shop name untuk notifikasi
+    const autoShipData = await redis.get('auto_ship');
+    let shopName = '';
+    
+    if (autoShipData) {
+      const shops = JSON.parse(autoShipData);
+      const shop = shops.find((s: any) => s.shop_id === shopId);
+      shopName = shop?.shop_name || '';
+    }
+
+    // Handle document status update untuk orders (existing functionality)
+    if (documentData.ordersn || documentData.order_sn) {
+      const orderSn = documentData.ordersn || documentData.order_sn;
+      await updateDocumentStatus(orderSn);
+      
+      // Kirim notifikasi untuk order document update
+      sendEventToShopOwners({
+        type: 'order_document_update',
+        order_sn: orderSn,
+        package_number: documentData.package_number,
+        status: documentData.status,
+        shop_id: shopId,
+        shop_name: shopName,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Handle document status update untuk booking orders jika ada booking_sn
+    if (documentData.booking_sn) {
+      const documentStatus = documentData.status === 'READY' ? 'READY' : 
+                           documentData.status === 'FAILED' ? 'ERROR' : 'PENDING';
+      
+      const updateResult = await updateBookingOrder(shopId, documentData.booking_sn, {
+        document_status: documentStatus
+      });
+      
+      if (updateResult.success) {
+        console.info(`Successfully updated document status for booking ${documentData.booking_sn}: ${documentStatus}`);
+        
+        // Kirim notifikasi untuk booking document update
+        sendEventToShopOwners({
+          type: 'booking_document_update',
+          booking_sn: documentData.booking_sn,
+          package_number: documentData.package_number,
+          status: documentData.status,
+          document_status: documentStatus,
+          shop_id: shopId,
+          shop_name: shopName,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error(`Failed to update document status for booking ${documentData.booking_sn}:`, updateResult.message);
+      }
+    }
+
+  } catch (error) {
+    console.error('Error handling document update webhook:', error);
+  }
 }
 
 async function handlePenalty(data: any) {
@@ -298,5 +363,98 @@ async function handleViolation(data: any) {
   } catch (error) {
     console.error('Error handling violation webhook:', error);
     throw error;
+  }
+}
+
+async function handleBookingTrackingUpdate(data: any) {
+  console.log('Handling booking tracking number update', data);
+  try {
+    const bookingData = data.data;
+    const shopId = data.shop_id;
+    
+    // Extract booking tracking data
+    const bookingSn = bookingData.booking_sn;
+    const trackingNumber = bookingData.tracking_number;
+    
+    if (!bookingSn || !trackingNumber) {
+      console.warn('Missing booking_sn or tracking_number in webhook data:', bookingData);
+      return;
+    }
+
+    // Ambil shop name untuk notifikasi
+    const autoShipData = await redis.get('auto_ship');
+    let shopName = '';
+    
+    if (autoShipData) {
+      const shops = JSON.parse(autoShipData);
+      const shop = shops.find((s: any) => s.shop_id === shopId);
+      shopName = shop?.shop_name || '';
+    }
+
+    // Update tracking number di database
+    const updateResult = await updateTrackingNumber(shopId, bookingSn, trackingNumber);
+    
+    if (updateResult.success) {
+      console.info(`Successfully updated tracking number for booking ${bookingSn}: ${trackingNumber}`);
+      
+      // Kirim notifikasi real-time untuk tracking update
+      sendEventToShopOwners({
+        type: 'booking_tracking_update',
+        booking_sn: bookingSn,
+        tracking_number: trackingNumber,
+        shop_id: shopId,
+        shop_name: shopName,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.error(`Failed to update tracking number for booking ${bookingSn}:`, updateResult.message);
+    }
+
+  } catch (error) {
+    console.error('Error handling booking tracking update webhook:', error);
+  }
+}
+
+async function handleBooking(data: any) {
+  console.log('Handling booking event', data);
+  try {
+    const bookingData = data.data;
+    const shopId = data.shop_id;
+    
+    // Ambil shop name untuk notifikasi
+    const autoShipData = await redis.get('auto_ship');
+    let shopName = '';
+    
+    if (autoShipData) {
+      const shops = JSON.parse(autoShipData);
+      const shop = shops.find((s: any) => s.shop_id === shopId);
+      shopName = shop?.shop_name || '';
+    }
+
+    // Sync booking berdasarkan booking_sn yang diterima
+    if (bookingData.booking_sn) {
+      const bookingSns = Array.isArray(bookingData.booking_sn) 
+        ? bookingData.booking_sn 
+        : [bookingData.booking_sn];
+
+      await syncBookingsByBookingSns(shopId, bookingSns, {
+        onProgress: (progress) => {
+          console.log(`Booking sync progress: ${progress.current}/${progress.total}`);
+        }
+      });
+
+      // Kirim notifikasi real-time untuk booking update
+      sendEventToShopOwners({
+        type: 'booking_update',
+        booking_sn: bookingData.booking_sn,
+        booking_status: bookingData.booking_status,
+        shop_id: shopId,
+        shop_name: shopName,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error) {
+    console.error('Error handling booking webhook:', error);
   }
 }

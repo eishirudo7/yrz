@@ -17,7 +17,8 @@ import {
   Zap,
   RotateCcw,
   UserIcon,
-  Star
+  Star,
+  CalendarCheck
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,7 @@ export const navItems = [
   { href: '/', icon: LayoutDashboard, label: 'Dashboard', showAlways: true },
   { href: '/webchat', icon: MessageSquare, label: 'Chat', showAlways: true },
   { href: '/orders', icon: ShoppingBag, label: 'Orders', showAlways: true },
+  { href: '/booking', icon: CalendarCheck, label: 'Booking Orders', showAlways: true },
   { href: '/ubah_pesanan', icon: ShoppingCart, label: 'Perubahan Pesanan', proOnly: true },
   { href: '/return', icon: RotateCcw, label: 'Return', showAlways: true },
   { href: '/produk', icon: Package, label: 'Produk', showAlways: true },

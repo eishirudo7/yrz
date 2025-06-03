@@ -19,6 +19,7 @@ interface SyncStatus {
     progress: { current: number; total: number } | null;
     error: string | null;
     isSyncing: boolean;
+    phase?: string;
   };
 }
 
@@ -457,6 +458,13 @@ function ShopCard({
       {/* Sync Progress */}
       {syncStatus[shop.shop_id]?.isSyncing && (
         <div className="bg-blue-50 dark:bg-blue-900/20 p-1.5 sm:p-2 rounded-md">
+          {/* Phase indicator */}
+          {syncStatus[shop.shop_id]?.phase && (
+            <p className="text-xs text-blue-700 dark:text-blue-300 mb-1">
+              {syncStatus[shop.shop_id]?.phase}
+            </p>
+          )}
+          
           <div className="w-full bg-blue-100 dark:bg-blue-800/50 rounded-full h-1.5">
             <div 
               className="bg-blue-500 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
@@ -613,7 +621,8 @@ export default function ShopsPage() {
         [shopId]: { 
           progress: { current: 0, total: 0 },
           error: null,
-          isSyncing: true
+          isSyncing: true,
+          phase: 'Memulai sinkronisasi...'
         }
       }));
 
@@ -622,7 +631,10 @@ export default function ShopsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ shopId })
+        body: JSON.stringify({ 
+          shopId,
+          includeBookings: true // Include booking orders sync
+        })
       });
 
       if (!response.ok) {
@@ -637,27 +649,59 @@ export default function ShopsPage() {
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
+        
+        // Split by lines in case multiple JSON objects in one chunk
+        const lines = chunk.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
         try {
-          const progress = JSON.parse(chunk);
+            const data = JSON.parse(line);
           
-          if (typeof progress.processed === 'number' && typeof progress.total === 'number') {
+            // Handle progress updates
+            if (data.type === 'combined' && typeof data.processed === 'number' && typeof data.total === 'number') {
             setSyncStatus(prev => ({
               ...prev,
               [shopId]: {
                 ...prev[shopId],
                 progress: { 
-                  current: progress.processed, 
-                  total: progress.total 
+                    current: data.processed, 
+                    total: data.total 
                 },
-                isSyncing: true
+                  isSyncing: true,
+                  phase: data.phase || 'Mensinkronkan...'
               }
             }));
           }
-        } catch (e) {
-          // Biarkan error parsing tanpa logging
+            
+            // Handle completion
+            if (data.completed === true) {
+              console.info(`Sinkronisasi selesai untuk toko ${shopId}:`, data.data);
+              
+              setSyncStatus(prev => ({
+                ...prev,
+                [shopId]: {
+                  ...prev[shopId],
+                  isSyncing: false,
+                  phase: 'Selesai'
+                }
+              }));
+              
+              break;
+            }
+            
+            // Handle errors
+            if (data.success === false && data.error) {
+              throw new Error(data.error);
+            }
+            
+          } catch (parseError) {
+            // Ignore JSON parse errors for partial chunks
+            console.debug('Parse error for chunk:', line);
         }
       }
+      }
 
+      // Final cleanup - ensure syncing is set to false
       setSyncStatus(prev => ({
         ...prev,
         [shopId]: {
@@ -667,6 +711,7 @@ export default function ShopsPage() {
       }));
 
     } catch (err: any) {
+      console.error('Error sinkronisasi:', err);
       setSyncStatus(prev => ({
         ...prev,
         [shopId]: {

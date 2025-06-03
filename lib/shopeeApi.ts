@@ -2662,6 +2662,542 @@ async replyProductComment(
     throw error;
   }
 }
+
+/**
+ * Mengambil daftar booking/reservation orders dari Shopee
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param options Parameter pencarian booking
+ * @returns Response dari API dengan daftar booking
+ */
+async getBookingList(
+  shopId: number,
+  accessToken: string,
+  options: {
+    time_range_field: 'create_time' | 'update_time',
+    time_from: number,
+    time_to: number,
+    page_size?: number,
+    cursor?: string,
+    booking_status?: string,
+    response_optional_fields?: string[]
+  }
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/order/get_booking_list';
+  const path = '/api/v2/order/get_booking_list';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi page_size
+  if (options.page_size && (options.page_size < 1 || options.page_size > 100)) {
+    throw new Error('page_size harus antara 1 dan 100');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken,
+    time_range_field: options.time_range_field,
+    time_from: options.time_from.toString(),
+    time_to: options.time_to.toString(),
+    page_size: (options.page_size || 50).toString(),
+    cursor: options.cursor || ''
+  });
+
+  if (options.booking_status && options.booking_status !== 'ALL') {
+    params.append('booking_status', options.booking_status);
+  }
+
+  if (options.response_optional_fields && options.response_optional_fields.length > 0) {
+    params.append('response_optional_fields', options.response_optional_fields.join(','));
+  }
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk mendapatkan daftar booking: URL=${fullUrl}`);
+
+  try {
+    const response = await axios.get(fullUrl, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat mengambil daftar booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Mengambil detail booking/reservation order tertentu dari Shopee
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingSnList Array nomor booking yang akan diambil detailnya
+ * @param responseOptionalFields Field opsional yang ingin dikembalikan
+ * @returns Response dari API dengan detail booking
+ */
+async getBookingDetail(
+  shopId: number,
+  accessToken: string,
+  bookingSnList: string[],
+  responseOptionalFields?: string[]
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/order/get_booking_detail';
+  const path = '/api/v2/order/get_booking_detail';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (bookingSnList.length === 0 || bookingSnList.some(sn => sn.trim().length === 0)) {
+    throw new Error('booking_sn_list tidak boleh kosong');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken,
+    booking_sn_list: bookingSnList.map(sn => sn.trim()).join(',') // Multiple booking numbers dipisah koma
+  });
+
+  if (responseOptionalFields && responseOptionalFields.length > 0) {
+    params.append('response_optional_fields', responseOptionalFields.join(','));
+  }
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk mendapatkan detail booking: URL=${fullUrl}`);
+
+  try {
+    const response = await axios.get(fullUrl, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat mengambil detail booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Mengambil parameter pengiriman untuk booking/reservation order dari Shopee
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingSn Nomor booking yang akan diambil parameter pengirimannya
+ * @returns Response dari API dengan parameter pengiriman booking
+ */
+async getBookingShippingParameter(
+  shopId: number,
+  accessToken: string,
+  bookingSn: string
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/logistics/get_booking_shipping_parameter';
+  const path = '/api/v2/logistics/get_booking_shipping_parameter';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (!bookingSn || bookingSn.trim().length === 0) {
+    throw new Error('booking_sn tidak boleh kosong');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken,
+    booking_sn: bookingSn.trim()
+  });
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk mendapatkan parameter pengiriman booking: URL=${fullUrl}`);
+
+  try {
+    const response = await axios.get(fullUrl, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat mengambil parameter pengiriman booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Melakukan pengiriman booking/reservation order dari Shopee
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingSn Nomor booking yang akan dikirim
+ * @param pickup Parameter pickup jika menggunakan metode pickup
+ * @param dropoff Parameter dropoff jika menggunakan metode dropoff
+ * @returns Response dari API hasil pengiriman booking
+ */
+async shipBooking(
+  shopId: number,
+  accessToken: string,
+  bookingSn: string,
+  pickup?: any,
+  dropoff?: any
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/logistics/ship_booking';
+  const path = '/api/v2/logistics/ship_booking';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (!bookingSn || bookingSn.trim().length === 0) {
+    throw new Error('booking_sn tidak boleh kosong');
+  }
+
+  if (!pickup && !dropoff) {
+    throw new Error('Harus menyediakan informasi pickup atau dropoff');
+  }
+
+  if (pickup && dropoff) {
+    throw new Error('Tidak dapat menggunakan pickup dan dropoff bersamaan');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken
+  });
+
+  const body: any = {
+    booking_sn: bookingSn.trim()
+  };
+
+  if (pickup) {
+    body.pickup = pickup;
+  } else if (dropoff) {
+    body.dropoff = dropoff;
+  }
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk ship booking: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
+
+  try {
+    const response = await axios.post(fullUrl, body, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    
+    return {
+      success: !response.data.error,
+      ...response.data
+    };
+  } catch (error) {
+    console.error('Kesalahan saat melakukan ship booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+      return {
+        success: false,
+        error: error.response.data?.error || 'request_failed',
+        message: error.response.data?.message || 'Terjadi kesalahan saat ship booking',
+        request_id: error.response.data?.request_id || ''
+      };
+    }
+    return {
+      success: false,
+      error: 'internal_error',
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
+      request_id: ''
+    };
+  }
+}
+
+/**
+ * Mengambil tracking number dari booking/reservation order yang sudah dikirim
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingSn Nomor booking yang akan diambil tracking numbernya
+ * @param packageNumber Nomor package (opsional)
+ * @returns Response dari API dengan tracking number booking
+ */
+async getBookingTrackingNumber(
+  shopId: number,
+  accessToken: string,
+  bookingSn: string,
+  packageNumber?: string
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/logistics/get_booking_tracking_number';
+  const path = '/api/v2/logistics/get_booking_tracking_number';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (!bookingSn || bookingSn.trim().length === 0) {
+    throw new Error('booking_sn tidak boleh kosong');
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken,
+    booking_sn: bookingSn.trim()
+  });
+
+  // Tambahkan package_number jika disediakan
+  if (packageNumber && packageNumber.trim().length > 0) {
+    params.append('package_number', packageNumber.trim());
+  }
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk mendapatkan tracking number booking: URL=${fullUrl}`);
+
+  try {
+    const response = await axios.get(fullUrl, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat mengambil tracking number booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Membuat dokumen pengiriman untuk booking/reservation order
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingList Daftar booking yang akan dibuatkan dokumen pengiriman
+ * @param documentType Jenis dokumen pengiriman
+ * @returns Response dari API dengan informasi dokumen yang dibuat
+ */
+async createBookingShippingDocument(
+  shopId: number,
+  accessToken: string,
+  bookingList: Array<{
+    booking_sn: string,
+    package_number?: string,
+    tracking_number?: string
+  }>,
+  documentType: string = 'THERMAL_AIR_WAYBILL'
+): Promise<any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/logistics/create_booking_shipping_document';
+  const path = '/api/v2/logistics/create_booking_shipping_document';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (!bookingList || bookingList.length === 0) {
+    throw new Error('booking_list tidak boleh kosong');
+  }
+
+  if (bookingList.length > 50) {
+    throw new Error('booking_list tidak boleh lebih dari 50 item');
+  }
+
+  // Validasi setiap booking
+  bookingList.forEach((booking, index) => {
+    if (!booking.booking_sn || booking.booking_sn.trim().length === 0) {
+      throw new Error(`booking_sn tidak boleh kosong pada index ${index}`);
+    }
+  });
+
+  // Validasi document type
+  const validDocumentTypes = [
+    'THERMAL_AIR_WAYBILL',
+    'NORMAL_AIR_WAYBILL', 
+    'A4_PDF'
+  ];
+  
+  if (!validDocumentTypes.includes(documentType)) {
+    throw new Error(`Document type tidak valid. Harus salah satu dari: ${validDocumentTypes.join(', ')}`);
+  }
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken
+  });
+
+  const body = {
+    booking_list: bookingList.map(booking => ({
+      booking_sn: booking.booking_sn.trim(),
+      ...(booking.package_number && { package_number: booking.package_number.trim() }),
+      ...(booking.tracking_number && { tracking_number: booking.tracking_number.trim() })
+    })),
+    shipping_document_type: documentType
+  };
+
+  const fullUrl = `${url}?${params.toString()}`;
+  const headers = { 'Content-Type': 'application/json' };
+
+  console.info(`Mengirim permintaan untuk membuat dokumen pengiriman booking: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
+
+  try {
+    const response = await axios.post(fullUrl, body, { headers });
+    console.info(`Response status: ${response.status}, Konten response: ${JSON.stringify(response.data)}`);
+    return response.data;
+  } catch (error) {
+    console.error('Kesalahan saat membuat dokumen pengiriman booking:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+    throw error;
+  }
+}
+
+/**
+ * Mengunduh dokumen pengiriman booking yang sudah dibuat
+ * @param shopId ID toko
+ * @param accessToken Token akses
+ * @param bookingList Daftar booking yang akan diunduh dokumennya
+ * @returns Buffer file PDF atau response error
+ */
+async downloadBookingShippingDocument(
+  shopId: number,
+  accessToken: string,
+  bookingList: Array<{
+    booking_sn: string,
+    package_number?: string,
+    shipping_document_type?: string
+  }>
+): Promise<Buffer | any> {
+  const url = 'https://partner.shopeemobile.com/api/v2/logistics/download_booking_shipping_document';
+  const path = '/api/v2/logistics/download_booking_shipping_document';
+  const [timest, sign] = this._generateSign(path, accessToken, shopId);
+
+  // Validasi input
+  if (!bookingList || bookingList.length === 0) {
+    throw new Error('booking_list tidak boleh kosong');
+  }
+
+  if (bookingList.length > 50) {
+    throw new Error('booking_list tidak boleh lebih dari 50 item');
+  }
+
+  // Validasi setiap booking
+  bookingList.forEach((booking, index) => {
+    if (!booking.booking_sn || booking.booking_sn.trim().length === 0) {
+      throw new Error(`booking_sn tidak boleh kosong pada index ${index}`);
+    }
+  });
+
+  const params = new URLSearchParams({
+    partner_id: this.partnerId.toString(),
+    timestamp: timest.toString(),
+    sign,
+    shop_id: shopId.toString(),
+    access_token: accessToken
+  });
+
+  const body = {
+    booking_list: bookingList.map(booking => {
+      const formattedBooking: {
+        booking_sn: string,
+        package_number?: string,
+        shipping_document_type?: string
+      } = {
+        booking_sn: booking.booking_sn.trim()
+      };
+
+      if (booking.package_number && booking.package_number.trim() !== '') {
+        formattedBooking.package_number = booking.package_number.trim();
+      }
+
+      if (booking.shipping_document_type && booking.shipping_document_type.trim() !== '') {
+        formattedBooking.shipping_document_type = booking.shipping_document_type.trim();
+      }
+
+      return formattedBooking;
+    })
+  };
+
+  const fullUrl = `${url}?${params.toString()}`;
+
+  console.info(`Mengirim permintaan untuk mengunduh dokumen pengiriman booking: URL=${fullUrl}, Body=${JSON.stringify(body)}`);
+
+  try {
+    // Ubah konfigurasi axios untuk menerima response berupa arraybuffer
+    const response = await axios.post(fullUrl, body, { 
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      responseType: 'arraybuffer' // Untuk menerima file binary
+    });
+
+    // Pastikan response adalah PDF
+    if (response.headers['content-type']?.includes('application/pdf')) {
+      console.info(`Berhasil mengunduh dokumen PDF untuk ${bookingList.length} booking`);
+      return Buffer.from(response.data);
+    }
+
+    // Jika bukan PDF, mungkin ada pesan error dari API
+    const errorResponse = JSON.parse(response.data.toString());
+    console.error('Error response dari Shopee API:', errorResponse);
+    
+    return {
+      error: errorResponse.error || "unknown_error",
+      message: errorResponse.message || "Terjadi kesalahan dari API Shopee",
+      request_id: errorResponse.request_id || ''
+    };
+
+  } catch (error) {
+    console.error('Kesalahan saat mengunduh dokumen pengiriman booking:', error);
+    
+    // Jika error response berisi data
+    if (axios.isAxiosError(error) && error.response?.data) {
+      try {
+        const errorData = JSON.parse(error.response.data.toString());
+        return {
+          error: errorData.error || "api_error",
+          message: errorData.message || "Terjadi kesalahan dari API Shopee",
+          request_id: errorData.request_id || ''
+        };
+      } catch (e) {
+        // Jika tidak bisa di-parse sebagai JSON
+        return {
+          error: "parse_error",
+          message: `Terjadi kesalahan saat memproses response: ${error.message}`,
+          request_id: ''
+        };
+      }
+    }
+
+    return {
+      error: "request_error",
+      message: `Terjadi kesalahan saat request: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      request_id: ''
+    };
+  }
+}
 }
 
 export default ShopeeAPI;
