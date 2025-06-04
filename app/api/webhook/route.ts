@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertOrderData, upsertOrderItems, upsertLogisticData, trackingUpdate, updateDocumentStatus, withRetry, updateOrderStatusOnly, saveEscrowDetail } from '@/app/services/databaseOperations';
 import { getOrderDetail } from '@/app/services/shopeeService';
-import { getEscrowDetail } from '@/app/services/shopeeService';
+import { getEscrowDetail, shipBooking, createBookingShippingDocument } from '@/app/services/shopeeService';
 import { redis } from '@/app/services/redis';
 import { PenaltyService } from '@/app/services/penaltyService';
 import { UpdateService } from '@/app/services/updateService';
@@ -397,6 +397,50 @@ async function handleBookingTrackingUpdate(data: any) {
     if (updateResult.success) {
       console.info(`Successfully updated tracking number for booking ${bookingSn}: ${trackingNumber}`);
       
+      // Auto-create shipping document setelah tracking number tersedia
+      try {
+        console.log(`Auto-creating shipping document for booking: ${bookingSn} with tracking: ${trackingNumber}`);
+        
+        const documentResult = await createBookingShippingDocument(
+          shopId, 
+          [{ 
+            booking_sn: bookingSn,
+            tracking_number: trackingNumber
+          }], 
+          'THERMAL_AIR_WAYBILL'
+        );
+        
+        if (documentResult.success) {
+          console.log(`Shipping document berhasil dibuat untuk booking ${bookingSn}`);
+          
+          // Update database status menjadi READY setelah document dibuat
+          const docUpdateResult = await updateBookingOrder(shopId, bookingSn, {
+            document_status: 'READY'
+          });
+          
+          if (docUpdateResult.success) {
+            console.log(`Database status updated to READY for booking ${bookingSn}`);
+          } else {
+            console.error(`Failed to update database status for booking ${bookingSn}:`, docUpdateResult.message);
+          }
+          
+          // Kirim notifikasi document creation berhasil
+          sendEventToShopOwners({
+            type: 'booking_document_created',
+            booking_sn: bookingSn,
+            document_type: 'THERMAL_AIR_WAYBILL',
+            document_status: 'READY',
+            shop_id: shopId,
+            shop_name: shopName,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.error(`Gagal membuat shipping document untuk booking ${bookingSn}:`, documentResult.message);
+        }
+      } catch (error) {
+        console.error(`Error saat membuat shipping document untuk booking ${bookingSn}:`, error);
+      }
+      
       // Kirim notifikasi real-time untuk tracking update
       sendEventToShopOwners({
         type: 'booking_tracking_update',
@@ -442,6 +486,31 @@ async function handleBooking(data: any) {
           console.log(`Booking sync progress: ${progress.current}/${progress.total}`);
         }
       });
+
+      // Fitur Premium - Auto Ship untuk Booking Orders
+      if (bookingData.booking_status === 'READY_TO_SHIP') {
+        try {
+          console.log(`Auto-shipping booking: ${bookingData.booking_sn}`);
+          const shipResult = await shipBooking(shopId, bookingData.booking_sn, 'dropoff');
+          
+          if (shipResult.success) {
+            console.log(`Booking ${bookingData.booking_sn} berhasil di-ship otomatis`);
+            
+            // Kirim notifikasi auto-ship berhasil
+            sendEventToShopOwners({
+              type: 'booking_auto_shipped',
+              booking_sn: bookingData.booking_sn,
+              shop_id: shopId,
+              shop_name: shopName,
+              timestamp: new Date().toISOString()
+            });
+          } else {
+            console.error(`Gagal auto-ship booking ${bookingData.booking_sn}:`, shipResult.message);
+          }
+        } catch (error) {
+          console.error(`Error saat auto-ship booking ${bookingData.booking_sn}:`, error);
+        }
+      }
 
       // Kirim notifikasi real-time untuk booking update
       sendEventToShopOwners({

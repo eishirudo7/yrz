@@ -32,7 +32,10 @@ import {
   CreditCard,
   Eye,
   SendHorizonal,
-  Loader2
+  Loader2,
+  Printer,
+  Download,
+  CheckCircle
 } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
@@ -68,6 +71,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 
 function formatDate(booking: Booking): string {
   try {
@@ -254,14 +258,17 @@ export default function BookingPage() {
     to: new Date(),
   })
   
-  const [selectedBookingStatus, setSelectedBookingStatus] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP'>('ALL')
+  const [selectedBookingStatus, setSelectedBookingStatus] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSING'>('ALL')
   const [selectedMatchStatus, setSelectedMatchStatus] = useState<'ALL' | 'MATCH_PENDING' | 'MATCH_SUCCESSFUL' | 'MATCH_FAILED'>('ALL')
+  const [selectedDocumentStatus, setSelectedDocumentStatus] = useState<'ALL' | 'PENDING' | 'READY' | 'PRINTED' | 'ERROR'>('ALL')
   const [selectedBookings, setSelectedBookings] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedBookingDetail, setSelectedBookingDetail] = useState<Booking | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [shippingBooking, setShippingBooking] = useState<string | null>(null)
+  const [printingBookings, setPrintingBookings] = useState<string[]>([])
+  const [creatingDocuments, setCreatingDocuments] = useState<string[]>([])
 
   const {
     bookings,
@@ -288,23 +295,43 @@ export default function BookingPage() {
       filtered = filtered.filter(booking => booking.match_status === selectedMatchStatus);
     }
     
+    // Filter berdasarkan document status
+    if (selectedDocumentStatus !== 'ALL') {
+      if (selectedDocumentStatus === 'PRINTED') {
+        filtered = filtered.filter(booking => booking.is_printed === true);
+      } else if (selectedDocumentStatus === 'PENDING') {
+        filtered = filtered.filter(booking => !booking.document_status || booking.document_status === 'PENDING');
+      } else {
+        filtered = filtered.filter(booking => booking.document_status === selectedDocumentStatus);
+      }
+    }
+    
     // Filter berdasarkan search term
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(booking => 
         booking.booking_sn.toLowerCase().includes(term) ||
         booking.buyer_username?.toLowerCase().includes(term) ||
-        booking.shop_name?.toLowerCase().includes(term)
+        booking.shop_name?.toLowerCase().includes(term) ||
+        booking.tracking_number?.toLowerCase().includes(term)
       );
     }
     
     return filtered;
-  }, [bookings, selectedBookingStatus, selectedMatchStatus, searchTerm]);
+  }, [bookings, selectedBookingStatus, selectedMatchStatus, selectedDocumentStatus, searchTerm]);
+
+  // Derived data untuk print
+  const printableBookings = useMemo(() => {
+    return filteredBookings.filter(booking => 
+      booking.document_status === 'READY' && !booking.is_printed
+    );
+  }, [filteredBookings]);
 
   // Handle status card click
-  const handleStatusCardClick = (status: 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP') => {
+  const handleStatusCardClick = (status: 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSING') => {
     setSelectedBookingStatus(status);
     setSelectedMatchStatus('ALL'); // Reset match status filter
+    setSelectedDocumentStatus('ALL'); // Reset document status filter
     setSelectedBookings([]);
   };
 
@@ -380,6 +407,107 @@ export default function BookingPage() {
     }
   };
 
+  // Handle print documents
+  const handlePrintDocuments = async (bookingList?: Booking[]) => {
+    const bookingsToPrint = bookingList || (
+      selectedBookings.length > 0 
+        ? filteredBookings.filter(booking => selectedBookings.includes(booking.booking_sn))
+        : printableBookings
+    );
+
+    // Filter only bookings with READY document status
+    const readyBookings = bookingsToPrint.filter(booking => 
+      booking.document_status === 'READY' && !booking.is_printed
+    );
+
+    if (readyBookings.length === 0) {
+      toast.info('Tidak ada dokumen yang siap dicetak. Pastikan status dokumen adalah "READY"');
+      return;
+    }
+
+    // Show warning if some bookings were filtered out
+    if (bookingsToPrint.length > readyBookings.length) {
+      const filteredCount = bookingsToPrint.length - readyBookings.length;
+      toast.warning(`${filteredCount} booking dilewati karena dokumen belum siap`);
+    }
+
+    const bookingSns = readyBookings.map(b => b.booking_sn);
+    setPrintingBookings(bookingSns);
+
+    try {
+      // Group by shop_id untuk batch download
+      const bookingsByShop = readyBookings.reduce((groups: { [key: number]: Booking[] }, booking) => {
+        if (!groups[booking.shop_id]) {
+          groups[booking.shop_id] = [];
+        }
+        groups[booking.shop_id].push(booking);
+        return groups;
+      }, {});
+
+      for (const [shopId, shopBookings] of Object.entries(bookingsByShop)) {
+        const bookingList = shopBookings.map(booking => ({
+          booking_sn: booking.booking_sn,
+          shipping_document_type: 'THERMAL_AIR_WAYBILL'
+        }));
+
+        // Download document
+        const response = await fetch('/api/shopee/download-booking-shipping-document', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            shopId: parseInt(shopId),
+            bookingList
+          })
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `booking-documents-${shopId}-${new Date().toISOString().split('T')[0]}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+
+          // Mark as printed
+          await fetch('/api/bookings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'mark_printed',
+              shop_id: parseInt(shopId),
+              booking_sn_list: shopBookings.map(b => b.booking_sn)
+            })
+          });
+
+          toast.success(`Dokumen berhasil diunduh untuk ${shopBookings.length} booking`);
+        } else {
+          const errorData = await response.json();
+          toast.error(`Gagal mengunduh dokumen: ${errorData.message}`);
+        }
+      }
+
+      // Refresh data
+      await refetch();
+      setSelectedBookings([]);
+
+    } catch (error) {
+      console.error('Error printing documents:', error);
+      toast.error('Gagal mencetak dokumen');
+    } finally {
+      setPrintingBookings([]);
+    }
+  };
+
+  // Auto create documents - now handled by webhook code 24 (handleBookingTrackingUpdate)
+  // No longer needed here since documents are created automatically when tracking number is received
+  
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -422,6 +550,45 @@ export default function BookingPage() {
     }
   };
 
+  // Get document status badge
+  const getDocumentStatusBadge = (booking: Booking) => {
+    // Show creating indicator if document is being created
+    if (creatingDocuments.includes(booking.booking_sn)) {
+      return (
+        <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
+          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          Membuat...
+        </Badge>
+      );
+    }
+
+    // Show error for PROCESSED bookings without valid tracking number
+    if (booking.booking_status === 'PROCESSED' && 
+        booking.document_status !== 'READY' && 
+        (!booking.tracking_number || booking.tracking_number.trim() === '')) {
+      return (
+        <Badge variant="secondary" className="bg-red-100 text-red-800 text-xs">
+          Tracking Invalid
+        </Badge>
+      );
+    }
+
+    if (booking.is_printed) {
+      return <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">Sudah Dicetak</Badge>;
+    }
+    
+    switch (booking.document_status) {
+      case 'READY':
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">Siap Cetak</Badge>;
+      case 'PENDING':
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">Menunggu</Badge>;
+      case 'ERROR':
+        return <Badge variant="secondary" className="bg-red-100 text-red-800 text-xs">Error</Badge>;
+      default:
+        return <Badge variant="outline" className="text-xs">-</Badge>;
+    }
+  };
+
   const TimeoutMessage = () => (
     <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
       <AlertCircle className="w-12 h-12 text-muted-foreground" />
@@ -448,39 +615,104 @@ export default function BookingPage() {
   return (
     <div className="container mx-auto p-4 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Booking Orders</h1>
-          <p className="text-muted-foreground">
-            Kelola booking orders dari semua toko Anda
-          </p>
+      <div className="flex flex-col space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Booking Orders</h1>
+          <div className="flex items-center space-x-2">
+            {/* Print Actions */}
+            {(selectedBookings.length > 0 || printableBookings.length > 0) && (
+              <div className="flex items-center space-x-2">
+                <Button
+                  onClick={() => handlePrintDocuments()}
+                  disabled={printingBookings.length > 0}
+                  size="sm"
+                  className="flex items-center space-x-2"
+                >
+                  {printingBookings.length > 0 ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Printer className="w-4 h-4" />
+                  )}
+                  <span>
+                    Print {selectedBookings.length > 0 ? `Selected (${selectedBookings.length})` : `All Ready (${printableBookings.length})`}
+                  </span>
+                </Button>
+              </div>
+            )}
+            
+            <Button
+              onClick={() => refetch()}
+              disabled={loading}
+              size="sm"
+              variant="outline"
+              className="flex items-center space-x-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </Button>
+          </div>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            onClick={refetch}
-            disabled={loading}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} />
-            Refresh
-          </Button>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <BookingStatusCard
+            title="Total"
+            count={summary.total}
+            icon="total"
+            onClick={() => handleStatusCardClick('ALL')}
+            isActive={selectedBookingStatus === 'ALL'}
+          />
+          <BookingStatusCard
+            title="Menunggu"
+            count={summary.pending}
+            icon="pending"
+            onClick={() => handleStatusCardClick('PENDING')}
+            isActive={selectedBookingStatus === 'PENDING'}
+          />
+          <BookingStatusCard
+            title="Dikonfirmasi"
+            count={summary.confirmed}
+            icon="confirmed"
+            onClick={() => handleStatusCardClick('CONFIRMED')}
+            isActive={selectedBookingStatus === 'CONFIRMED'}
+          />
+          <BookingStatusCard
+            title="Siap Kirim"
+            count={summary.ready_to_ship}
+            icon="ready_to_ship"
+            onClick={() => handleStatusCardClick('READY_TO_SHIP')}
+            isActive={selectedBookingStatus === 'READY_TO_SHIP'}
+          />
+          <BookingStatusCard
+            title="Selesai"
+            count={summary.completed}
+            icon="completed"
+            onClick={() => handleStatusCardClick('COMPLETED')}
+            isActive={selectedBookingStatus === 'COMPLETED'}
+          />
+          <BookingStatusCard
+            title="Dibatalkan"
+            count={summary.cancelled}
+            icon="cancelled"
+            onClick={() => handleStatusCardClick('CANCELLED')}
+            isActive={selectedBookingStatus === 'CANCELLED'}
+          />
         </div>
       </div>
 
-      {/* Date Range Picker */}
+      {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center">
-            <div className="flex flex-col sm:flex-row gap-2">
+        <CardContent className="pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Date Filter */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Rentang Tanggal</h4>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
-                    id="date"
                     variant="outline"
                     className={cn(
-                      "w-[280px] justify-start text-left font-normal",
+                      "w-full justify-start text-left font-normal",
                       !date && "text-muted-foreground"
                     )}
                   >
@@ -488,11 +720,11 @@ export default function BookingPage() {
                     {date?.from ? (
                       date.to ? (
                         <>
-                          {format(date.from, "LLL dd, y", { locale: id })} -{" "}
-                          {format(date.to, "LLL dd, y", { locale: id })}
+                          {format(date.from, "dd MMM", { locale: id })} -{" "}
+                          {format(date.to, "dd MMM", { locale: id })}
                         </>
                       ) : (
-                        format(date.from, "LLL dd, y", { locale: id })
+                        format(date.from, "dd MMM", { locale: id })
                       )
                     ) : (
                       <span>Pilih tanggal</span>
@@ -500,245 +732,291 @@ export default function BookingPage() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={date?.from}
-                    selected={date}
-                    onSelect={setDate}
-                    numberOfMonths={2}
-                    locale={id}
-                  />
+                  <div className="flex">
+                    <div className="flex flex-col space-y-2 p-3 border-r">
+                      <h4 className="font-medium text-sm">Preset</h4>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8"
+                        onClick={() => handlePresetDate(1)}
+                      >
+                        Hari ini
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8"
+                        onClick={() => handlePresetDate(7)}
+                      >
+                        7 hari terakhir
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="justify-start h-8"
+                        onClick={() => handlePresetDate(30)}
+                      >
+                        30 hari terakhir
+                      </Button>
+                    </div>
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={date?.from}
+                      selected={date}
+                      onSelect={setDate}
+                      numberOfMonths={2}
+                    />
+                  </div>
                   <div className="p-3 border-t">
-                    <Button onClick={handleApplyDate} className="w-full">
+                    <Button
+                      onClick={handleApplyDate}
+                      className="w-full"
+                      size="sm"
+                    >
                       Terapkan Filter
                     </Button>
                   </div>
                 </PopoverContent>
               </Popover>
-              
-              <div className="flex gap-1">
-                <Button variant="outline" size="sm" onClick={() => handlePresetDate(1)}>
-                  1 Hari
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handlePresetDate(7)}>
-                  7 Hari
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => handlePresetDate(30)}>
-                  30 Hari
-                </Button>
+            </div>
+
+            {/* Booking Status Filter */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Status Booking</h4>
+              <Select
+                value={selectedBookingStatus}
+                onValueChange={(value: typeof selectedBookingStatus) =>
+                  setSelectedBookingStatus(value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih status booking" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Status</SelectItem>
+                  <SelectItem value="PENDING">Menunggu</SelectItem>
+                  <SelectItem value="CONFIRMED">Dikonfirmasi</SelectItem>
+                  <SelectItem value="READY_TO_SHIP">Siap Kirim</SelectItem>
+                  <SelectItem value="PROCESSING">Diproses</SelectItem>
+                  <SelectItem value="SHIPPED">Dikirim</SelectItem>
+                  <SelectItem value="COMPLETED">Selesai</SelectItem>
+                  <SelectItem value="CANCELLED">Dibatalkan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Match Status Filter */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Status Match</h4>
+              <Select
+                value={selectedMatchStatus}
+                onValueChange={(value: typeof selectedMatchStatus) =>
+                  setSelectedMatchStatus(value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih status match" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Status</SelectItem>
+                  <SelectItem value="MATCH_PENDING">Pending</SelectItem>
+                  <SelectItem value="MATCH_SUCCESSFUL">Berhasil</SelectItem>
+                  <SelectItem value="MATCH_FAILED">Gagal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Document Status Filter */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Status Dokumen</h4>
+              <Select
+                value={selectedDocumentStatus}
+                onValueChange={(value: typeof selectedDocumentStatus) =>
+                  setSelectedDocumentStatus(value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih status dokumen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Status</SelectItem>
+                  <SelectItem value="PENDING">Menunggu</SelectItem>
+                  <SelectItem value="READY">Siap Cetak</SelectItem>
+                  <SelectItem value="PRINTED">Sudah Dicetak</SelectItem>
+                  <SelectItem value="ERROR">Error</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Search */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Pencarian</h4>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari booking SN, nama pembeli..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={handleSearch}
+                  className="pl-10"
+                />
+                {searchTerm && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                    onClick={() => setSearchTerm('')}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <BookingStatusCard
-          title="Total Booking"
-          count={summary.total}
-          icon="total"
-          onClick={() => handleStatusCardClick('ALL')}
-          isActive={selectedBookingStatus === 'ALL'}
-        />
-        <BookingStatusCard
-          title="Menunggu"
-          count={summary.pending}
-          icon="pending"
-          onClick={() => handleStatusCardClick('PENDING')}
-          isActive={selectedBookingStatus === 'PENDING'}
-        />
-        <BookingStatusCard
-          title="Dikonfirmasi"
-          count={summary.confirmed}
-          icon="confirmed"
-          onClick={() => handleStatusCardClick('CONFIRMED')}
-          isActive={selectedBookingStatus === 'CONFIRMED'}
-        />
-        <BookingStatusCard
-          title="Siap Kirim"
-          count={summary.ready_to_ship}
-          icon="ready_to_ship"
-          onClick={() => handleStatusCardClick('READY_TO_SHIP')}
-          isActive={selectedBookingStatus === 'READY_TO_SHIP'}
-        />
-        <BookingStatusCard
-          title="Dibatalkan"
-          count={summary.cancelled}
-          icon="cancelled"
-          onClick={() => handleStatusCardClick('CANCELLED')}
-          isActive={selectedBookingStatus === 'CANCELLED'}
-        />
-        <BookingStatusCard
-          title="Selesai"
-          count={summary.completed}
-          icon="completed"
-          onClick={() => handleStatusCardClick('COMPLETED')}
-          isActive={selectedBookingStatus === 'COMPLETED'}
-        />
-      </div>
-
-      {/* Search and Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Cari nomor booking, pembeli, atau toko..."
-                className="w-full pl-10 pr-4 py-2 border border-input rounded-lg bg-background"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={handleSearch}
-              />
-              {searchTerm && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-auto p-1"
-                  onClick={() => setSearchTerm('')}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-            
-            <Select value={selectedMatchStatus} onValueChange={(value) => setSelectedMatchStatus(value as any)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter Match Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Semua Match Status</SelectItem>
-                <SelectItem value="MATCH_PENDING">Match Pending</SelectItem>
-                <SelectItem value="MATCH_SUCCESSFUL">Match Berhasil</SelectItem>
-                <SelectItem value="MATCH_FAILED">Match Gagal</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Booking Table */}
+      {/* Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="border rounded-lg">
-            <ScrollArea className="h-[600px]">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedBookings.length === filteredBookings.length && filteredBookings.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead>Booking SN</TableHead>
+                  <TableHead>Pembeli</TableHead>
+                  <TableHead>Toko</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Match</TableHead>
+                  <TableHead>Dokumen</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 10 }).map((_, index) => (
+                    <TableRowSkeleton key={index} />
+                  ))
+                ) : filteredBookings.length === 0 ? (
                   <TableRow>
-                    <TableHead className="w-[50px] p-2">
-                      <Checkbox
-                        checked={selectedBookings.length === filteredBookings.length && filteredBookings.length > 0}
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
-                    <TableHead className="p-2">No. Booking</TableHead>
-                    <TableHead className="p-2">Toko</TableHead>
-                    <TableHead className="p-2">Status</TableHead>
-                    <TableHead className="p-2">Match Status</TableHead>
-                    <TableHead className="p-2">Pembeli</TableHead>
-                    <TableHead className="p-2">Total</TableHead>
-                    <TableHead className="p-2">Metode Bayar</TableHead>
-                    <TableHead className="p-2">Tanggal</TableHead>
-                    <TableHead className="p-2">Aksi</TableHead>
+                    <TableCell colSpan={9} className="h-32 text-center">
+                      <div className="flex flex-col items-center space-y-2">
+                        <ShoppingBag className="w-8 h-8 text-muted-foreground" />
+                        <p className="text-muted-foreground">Tidak ada booking ditemukan</p>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 10 }).map((_, index) => (
-                      <TableRowSkeleton key={index} />
-                    ))
-                  ) : filteredBookings.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8">
-                        <div className="flex flex-col items-center space-y-2">
-                          <ShoppingBag className="w-8 h-8 text-muted-foreground" />
-                          <p className="text-muted-foreground">
-                            {searchTerm ? 'Tidak ada booking yang sesuai dengan pencarian' : 'Tidak ada booking ditemukan'}
-                          </p>
+                ) : (
+                  filteredBookings.map((booking) => (
+                    <TableRow key={booking.booking_sn} className="hover:bg-muted/50">
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedBookings.includes(booking.booking_sn)}
+                          onCheckedChange={() => handleBookingSelect(booking.booking_sn)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {booking.booking_sn}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{getBuyerName(booking)}</span>
+                          {booking.recipient_address?.phone && (
+                            <span className="text-xs text-muted-foreground">
+                              {booking.recipient_address.phone}
+                            </span>
+                          )}
                         </div>
                       </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredBookings.map((booking) => (
-                      <TableRow key={booking.booking_sn} className="hover:bg-muted/50">
-                        <TableCell className="p-2">
-                          <Checkbox
-                            checked={selectedBookings.includes(booking.booking_sn)}
-                            onCheckedChange={() => handleBookingSelect(booking.booking_sn)}
-                          />
-                        </TableCell>
-                        <TableCell className="p-2 font-mono text-sm">
-                          {booking.booking_sn}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <div className="flex items-center space-x-2">
-                            <Store className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm truncate max-w-[120px]">
-                              {booking.shop_name || `Shop ${booking.shop_id}`}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="p-2">
-                          {getStatusBadge(booking.booking_status)}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          {getMatchStatusBadge(booking.match_status)}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <span className="text-sm truncate max-w-[100px]">
-                            {getBuyerName(booking)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <span className="font-medium">
-                            {getTotalAmount(booking)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <div className="flex items-center space-x-1">
-                            <CreditCard className="w-3 h-3 text-muted-foreground" />
-                            <span className="text-xs">
-                              {getPaymentMethod(booking)}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="p-2 text-sm">
-                          {formatDate(booking)}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <div className="flex space-x-1">
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Store className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm">{booking.shop_name || `Shop ${booking.shop_id}`}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(booking.booking_status)}
+                      </TableCell>
+                      <TableCell>
+                        {getMatchStatusBadge(booking.match_status)}
+                      </TableCell>
+                      <TableCell>
+                        {getDocumentStatusBadge(booking)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {formatDate(booking)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleViewDetail(booking)}
+                          >
+                            <Eye className="w-3 h-3" />
+                          </Button>
+                          
+                          {/* Ship Button */}
+                          {(booking.booking_status === 'CONFIRMED' || booking.booking_status === 'READY_TO_SHIP') && (
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleViewDetail(booking)}
+                              onClick={() => handleShipBooking(booking.booking_sn)}
+                              disabled={shippingBooking === booking.booking_sn}
+                              title="Ship Booking"
                             >
-                              <Eye className="w-3 h-3" />
+                              {shippingBooking === booking.booking_sn ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <SendHorizonal className="w-3 h-3" />
+                              )}
                             </Button>
-                            {(booking.booking_status === 'CONFIRMED' || booking.booking_status === 'READY_TO_SHIP') && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleShipBooking(booking.booking_sn)}
-                                disabled={shippingBooking === booking.booking_sn}
-                              >
-                                {shippingBooking === booking.booking_sn ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <SendHorizonal className="w-3 h-3" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                          )}
+
+                          {/* Print Button - Only show if document status is READY */}
+                          {booking.document_status === 'READY' && !booking.is_printed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePrintDocuments([booking])}
+                              disabled={printingBookings.includes(booking.booking_sn)}
+                              title="Print Dokumen"
+                            >
+                              {printingBookings.includes(booking.booking_sn) ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Printer className="w-3 h-3" />
+                              )}
+                            </Button>
+                          )}
+
+                          {/* Printed Status */}
+                          {booking.is_printed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              title="Sudah Dicetak"
+                            >
+                              <CheckCircle className="w-3 h-3 text-green-600" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -757,72 +1035,52 @@ export default function BookingPage() {
             <div className="space-y-4">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-4 w-1/2" />
             </div>
           ) : selectedBookingDetail && (
             <div className="space-y-6">
               {/* Basic Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="font-medium mb-2">Informasi Booking</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><strong>No. Booking:</strong> {selectedBookingDetail.booking_sn}</div>
-                    <div><strong>Status:</strong> {getStatusBadge(selectedBookingDetail.booking_status)}</div>
-                    <div><strong>Match Status:</strong> {getMatchStatusBadge(selectedBookingDetail.match_status)}</div>
-                    <div><strong>Dibuat:</strong> {formatDate(selectedBookingDetail)}</div>
-                    <div><strong>Diupdate:</strong> {new Date(selectedBookingDetail.update_time * 1000).toLocaleString('id-ID')}</div>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium mb-2">Informasi Pembeli</h4>
-                  <div className="space-y-2 text-sm">
-                    <div><strong>Nama:</strong> {getBuyerName(selectedBookingDetail)}</div>
-                    <div><strong>Dropshipper:</strong> {selectedBookingDetail.dropshipper || '-'}</div>
-                    <div><strong>Phone:</strong> {selectedBookingDetail.dropshipper_phone || '-'}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Address */}
               <div>
-                <h4 className="font-medium mb-2">Alamat Pengiriman</h4>
-                <div className="text-sm">
-                  {selectedBookingDetail.recipient_address ? (
-                    <>
-                      <div><strong>Nama:</strong> {selectedBookingDetail.recipient_address.name}</div>
-                      <div><strong>Telepon:</strong> {selectedBookingDetail.recipient_address.phone}</div>
-                      <div><strong>Alamat:</strong> {selectedBookingDetail.recipient_address.full_address}</div>
-                      <div><strong>Kota:</strong> {selectedBookingDetail.recipient_address.city}</div>
-                      <div><strong>Provinsi:</strong> {selectedBookingDetail.recipient_address.state}</div>
-                      <div><strong>Kode Pos:</strong> {selectedBookingDetail.recipient_address.zipcode}</div>
-                    </>
-                  ) : (
-                    <div className="text-muted-foreground">Alamat tidak tersedia</div>
-                  )}
+                <h4 className="font-medium mb-2">Informasi Booking</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div><strong>Booking SN:</strong> {selectedBookingDetail.booking_sn}</div>
+                  <div><strong>Order SN:</strong> {selectedBookingDetail.order_sn || '-'}</div>
+                  <div><strong>Status:</strong> {getStatusBadge(selectedBookingDetail.booking_status)}</div>
+                  <div><strong>Match Status:</strong> {getMatchStatusBadge(selectedBookingDetail.match_status)}</div>
+                  <div><strong>Toko:</strong> {selectedBookingDetail.shop_name || `Shop ${selectedBookingDetail.shop_id}`}</div>
+                  <div><strong>Kurir:</strong> {selectedBookingDetail.shipping_carrier || '-'}</div>
                 </div>
               </div>
 
-              {/* Items */}
-              {selectedBookingDetail.item_list && selectedBookingDetail.item_list.length > 0 && (
+              {/* Address Info */}
+              {selectedBookingDetail.recipient_address && (
                 <div>
-                  <h4 className="font-medium mb-2">Daftar Item</h4>
-                  <div className="space-y-2">
-                    {selectedBookingDetail.item_list?.map((item, index) => (
-                      <div key={index} className="border rounded p-2 text-sm">
-                        <div><strong>Nama:</strong> {item.item_name}</div>
-                        <div><strong>SKU:</strong> {item.item_sku || '-'}</div>
-                        <div><strong>Model:</strong> {item.model_name || '-'}</div>
-                        <div><strong>Model SKU:</strong> {item.model_sku || '-'}</div>
-                        <div><strong>Berat:</strong> {item.weight ? `${item.weight}g` : '-'}</div>
-                        <div><strong>Lokasi Produk:</strong> {item.product_location_id || '-'}</div>
-                      </div>
-                    )) || <div className="text-muted-foreground">Tidak ada item</div>}
+                  <h4 className="font-medium mb-2">Alamat Penerima</h4>
+                  <div className="bg-muted p-3 rounded text-sm">
+                    <div><strong>Nama:</strong> {selectedBookingDetail.recipient_address.name}</div>
+                    <div><strong>Telepon:</strong> {selectedBookingDetail.recipient_address.phone}</div>
+                    <div><strong>Alamat:</strong> {selectedBookingDetail.recipient_address.full_address}</div>
                   </div>
                 </div>
               )}
 
-              {/* Financial Info */}
+              {/* Items */}
+              {selectedBookingDetail.item_list && selectedBookingDetail.item_list.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Items</h4>
+                  <div className="space-y-2">
+                    {selectedBookingDetail.item_list.map((item: any, index: number) => (
+                      <div key={index} className="border p-3 rounded text-sm">
+                        <div><strong>Nama:</strong> {item.item_name}</div>
+                        <div><strong>SKU:</strong> {item.item_sku || '-'}</div>
+                        <div><strong>Berat:</strong> {item.weight || '-'} gram</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Financial & Shipping Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <h4 className="font-medium mb-2">Informasi Keuangan</h4>
@@ -839,13 +1097,13 @@ export default function BookingPage() {
                   <div className="space-y-2 text-sm">
                     <div><strong>Kurir:</strong> {selectedBookingDetail.shipping_carrier || '-'}</div>
                     <div><strong>No. Tracking:</strong> {selectedBookingDetail.tracking_number || 'Belum tersedia'}</div>
-                    <div><strong>Status Dokumen:</strong> {selectedBookingDetail.document_status || '-'}</div>
-                    <div><strong>Sudah Dicetak:</strong> {selectedBookingDetail.is_printed ? 'Ya' : 'Tidak'}</div>
+                    <div><strong>Status Dokumen:</strong> {getDocumentStatusBadge(selectedBookingDetail)}</div>
                   </div>
                 </div>
               </div>
             </div>
           )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -874,6 +1132,27 @@ export default function BookingPage() {
                   <>
                     <Truck className="w-4 h-4 mr-2" />
                     Kirim Booking
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Print button */}
+            {selectedBookingDetail && selectedBookingDetail.document_status === 'READY' && !selectedBookingDetail.is_printed && (
+              <Button
+                onClick={() => handlePrintDocuments([selectedBookingDetail])}
+                disabled={printingBookings.includes(selectedBookingDetail.booking_sn)}
+                className="min-w-[120px]"
+              >
+                {printingBookings.includes(selectedBookingDetail.booking_sn) ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Mencetak...
+                  </>
+                ) : (
+                  <>
+                    <Printer className="w-4 h-4 mr-2" />
+                    Print Dokumen
                   </>
                 )}
               </Button>
