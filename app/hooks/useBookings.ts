@@ -239,14 +239,20 @@ export function useBookings(dateRange?: DateRange | undefined) {
       // Cari booking di state lokal
       const booking = bookings.find(b => b.booking_sn === bookingSn)
       if (!booking) {
-        throw new Error('Booking tidak ditemukan')
+        return {
+          success: false,
+          message: 'Booking tidak ditemukan'
+        }
       }
 
       // Jika tracking number sudah ada di database, return langsung
       if (booking.tracking_number) {
         return {
-          tracking_number: booking.tracking_number,
-          shipping_carrier: booking.shipping_carrier
+          success: true,
+          data: {
+            tracking_number: booking.tracking_number,
+            shipping_carrier: booking.shipping_carrier
+          }
         }
       }
 
@@ -258,19 +264,31 @@ export function useBookings(dateRange?: DateRange | undefined) {
       const response = await fetch(url)
       
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        return {
+          success: false,
+          message: `HTTP error! status: ${response.status}`
+        }
       }
       
       const result = await response.json()
       
       if (result.success) {
-        return result.data
+        return {
+          success: true,
+          data: result.data
+        }
       } else {
-        throw new Error(result.message || 'Gagal mengambil tracking number')
+        return {
+          success: false,
+          message: result.message || 'Gagal mengambil tracking number'
+        }
       }
     } catch (err) {
       console.error('Error fetching tracking number:', err)
-      throw err
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Unknown error'
+      }
     }
   }, [bookings])
 

@@ -4,6 +4,8 @@ import { JSONStringify, JSONParse } from 'json-with-bigint';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { createClient } from "@/utils/supabase/server";
 
+const RETRY_DELAY = 2000; // 2 seconds
+
 export async function getShopInfo(shopId: number): Promise<any> {
     try {
         if (!shopId) {
@@ -842,6 +844,32 @@ export async function createBookingShippingDocument(
     const bookingCount = bookingList.length;
     const bookingSnList = bookingList.map(b => b.booking_sn).join(', ');
     console.info(`Berhasil membuat dokumen pengiriman untuk ${bookingCount} booking (${bookingSnList}) di toko ${shopId} dengan tipe ${documentType}`);
+    
+    // Update database dengan document_status = 'READY' setelah sukses create document
+    try {
+      const supabaseClient = await createClient();
+      const bookingSns = bookingList.map(b => b.booking_sn);
+      
+      const { data: updateData, error: updateError } = await supabaseClient
+        .from('booking_orders')
+        .update({
+          document_status: 'READY',
+          updated_at: new Date().toISOString()
+        })
+        .eq('shop_id', shopId)
+        .in('booking_sn', bookingSns)
+        .select('booking_sn');
+
+      if (updateError) {
+        console.error('Error updating document status in database:', updateError);
+        // Don't fail the whole operation, just log the error
+      } else {
+        console.info(`Updated document_status to 'READY' for ${updateData?.length || 0} bookings in database`);
+      }
+    } catch (dbError) {
+      console.error('Database update error after creating documents:', dbError);
+      // Don't fail the whole operation, just log the error
+    }
     
     return {
       success: true,

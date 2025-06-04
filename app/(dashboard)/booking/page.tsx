@@ -258,7 +258,7 @@ export default function BookingPage() {
     to: new Date(),
   })
   
-  const [selectedBookingStatus, setSelectedBookingStatus] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSING'>('ALL')
+  const [selectedBookingStatus, setSelectedBookingStatus] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSED'>('ALL')
   const [selectedMatchStatus, setSelectedMatchStatus] = useState<'ALL' | 'MATCH_PENDING' | 'MATCH_SUCCESSFUL' | 'MATCH_FAILED'>('ALL')
   const [selectedDocumentStatus, setSelectedDocumentStatus] = useState<'ALL' | 'PENDING' | 'READY' | 'PRINTED' | 'ERROR'>('ALL')
   const [selectedBookings, setSelectedBookings] = useState<string[]>([])
@@ -269,6 +269,7 @@ export default function BookingPage() {
   const [shippingBooking, setShippingBooking] = useState<string | null>(null)
   const [printingBookings, setPrintingBookings] = useState<string[]>([])
   const [creatingDocuments, setCreatingDocuments] = useState<string[]>([])
+  const [failedTrackingFetch, setFailedTrackingFetch] = useState<string[]>([])
 
   const {
     bookings,
@@ -328,7 +329,7 @@ export default function BookingPage() {
   }, [filteredBookings]);
 
   // Handle status card click
-  const handleStatusCardClick = (status: 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSING') => {
+  const handleStatusCardClick = (status: 'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSED') => {
     setSelectedBookingStatus(status);
     setSelectedMatchStatus('ALL'); // Reset match status filter
     setSelectedDocumentStatus('ALL'); // Reset document status filter
@@ -505,9 +506,6 @@ export default function BookingPage() {
     }
   };
 
-  // Auto create documents - now handled by webhook code 24 (handleBookingTrackingUpdate)
-  // No longer needed here since documents are created automatically when tracking number is received
-  
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -552,23 +550,12 @@ export default function BookingPage() {
 
   // Get document status badge
   const getDocumentStatusBadge = (booking: Booking) => {
-    // Show creating indicator if document is being created
+    // Show creating indicator if document is being created by backup system
     if (creatingDocuments.includes(booking.booking_sn)) {
       return (
         <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
           <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-          Membuat...
-        </Badge>
-      );
-    }
-
-    // Show error for PROCESSED bookings without valid tracking number
-    if (booking.booking_status === 'PROCESSED' && 
-        booking.document_status !== 'READY' && 
-        (!booking.tracking_number || booking.tracking_number.trim() === '')) {
-      return (
-        <Badge variant="secondary" className="bg-red-100 text-red-800 text-xs">
-          Tracking Invalid
+          Backup Creating...
         </Badge>
       );
     }
@@ -576,7 +563,8 @@ export default function BookingPage() {
     if (booking.is_printed) {
       return <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">Sudah Dicetak</Badge>;
     }
-    
+
+    // Show status based on booking workflow
     switch (booking.document_status) {
       case 'READY':
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">Siap Cetak</Badge>;
@@ -585,9 +573,254 @@ export default function BookingPage() {
       case 'ERROR':
         return <Badge variant="secondary" className="bg-red-100 text-red-800 text-xs">Error</Badge>;
       default:
-        return <Badge variant="outline" className="text-xs">-</Badge>;
+        // Show different status based on booking status
+        if (booking.booking_status === 'READY_TO_SHIP') {
+          return <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">Perlu Ship</Badge>;
+        } else if (booking.booking_status === 'PROCESSED' && booking.tracking_number) {
+          return <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-xs">Perlu Dokumen</Badge>;
+        } else if (booking.booking_status === 'SHIPPED' || booking.booking_status === 'PROCESSED') {
+          return <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-xs">Tunggu Webhook</Badge>;
+        } else {
+          return <Badge variant="outline" className="text-xs">-</Badge>;
+        }
     }
   };
+
+  // Backup auto-create documents for bookings that webhook might have missed
+  const backupCreateDocuments = useCallback(async () => {
+    if (loading || bookings.length === 0) return;
+
+    console.log('📊 Starting auto-create document scan...');
+    console.log(`📋 Total bookings loaded: ${bookings.length}`);
+
+    // Short delay to let webhook process first (webhook is primary, this is backup)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Step 1: Find PROCESSED bookings without tracking numbers
+    const processedWithoutTracking = bookings.filter(booking => {
+      return booking.booking_status === 'PROCESSED' && 
+        (!booking.tracking_number || booking.tracking_number.trim() === '') &&
+        !failedTrackingFetch.includes(booking.booking_sn); // Skip previously failed bookings
+    });
+
+    if (processedWithoutTracking.length > 0) {
+      console.log(`📞 Found ${processedWithoutTracking.length} PROCESSED bookings without tracking numbers`);
+      console.log('🔍 Fetching missing tracking numbers:', processedWithoutTracking.map(b => b.booking_sn));
+
+      const successfulUpdates: string[] = [];
+      const failedUpdates: string[] = [];
+
+      // Fetch tracking numbers for bookings that don't have them
+      for (const booking of processedWithoutTracking) {
+        try {
+          console.log(`📞 Fetching tracking number for booking ${booking.booking_sn}...`);
+          
+          const trackingResult = await getTrackingNumber(booking.booking_sn);
+          
+          if (trackingResult.success && trackingResult.data?.tracking_number) {
+            console.log(`✅ Got tracking number for ${booking.booking_sn}: ${trackingResult.data.tracking_number}`);
+            
+            // Update database with tracking number
+            try {
+              const updateResponse = await fetch('/api/bookings', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  action: 'update_tracking',
+                  shop_id: booking.shop_id, // IMPORTANT: Include shop_id!
+                  booking_sn: booking.booking_sn,
+                  tracking_number: trackingResult.data.tracking_number
+                })
+              });
+
+              const updateResult = await updateResponse.json();
+              
+              if (updateResponse.ok && updateResult.success) {
+                console.log(`💾 Database updated for ${booking.booking_sn} with tracking: ${trackingResult.data.tracking_number}`);
+                // Update local booking data
+                booking.tracking_number = trackingResult.data.tracking_number;
+                successfulUpdates.push(booking.booking_sn);
+              } else {
+                console.error(`❌ Failed to update database for ${booking.booking_sn}:`, updateResult.message);
+                console.error('❌ Update response:', updateResult);
+                failedUpdates.push(booking.booking_sn);
+              }
+            } catch (updateError) {
+              console.error(`💥 Database update error for ${booking.booking_sn}:`, updateError);
+              failedUpdates.push(booking.booking_sn);
+            }
+          } else {
+            console.log(`❌ Failed to get tracking number for ${booking.booking_sn}:`, trackingResult.message);
+            failedUpdates.push(booking.booking_sn);
+          }
+        } catch (error) {
+          console.error(`💥 Error fetching tracking for ${booking.booking_sn}:`, error);
+          failedUpdates.push(booking.booking_sn);
+        }
+      }
+
+      // Update failed tracking list to prevent infinite retries
+      if (failedUpdates.length > 0) {
+        console.log(`🚫 Adding ${failedUpdates.length} bookings to failed list to prevent infinite retries:`, failedUpdates);
+        setFailedTrackingFetch(prev => [...prev, ...failedUpdates]);
+      }
+
+      if (successfulUpdates.length > 0) {
+        console.log(`✅ Successfully updated ${successfulUpdates.length} bookings with tracking numbers`);
+        console.log('📞 Tracking number fetch completed, waiting before refresh...');
+        // Longer wait to ensure database updates are committed
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        console.log('🔄 Refreshing booking data to get updated tracking numbers...');
+        // Refresh bookings data to get updated tracking numbers
+        refetch();
+      } else {
+        console.log('❌ No successful tracking updates, skipping refresh');
+      }
+    }
+
+    // Step 2: Find bookings that need document creation (webhook might have missed)
+    const bookingsNeedingDocuments = bookings.filter(booking => {
+      const needsDocument = booking.booking_status === 'PROCESSED' && // Only PROCESSED status
+        booking.document_status !== 'READY' && // Document not ready yet
+        !booking.is_printed && // Not printed yet
+        !creatingDocuments.includes(booking.booking_sn) && // Not currently being processed
+        booking.tracking_number && // Must have tracking number
+        booking.tracking_number.trim() !== ''; // Tracking number must not be empty
+      
+      if (booking.booking_status === 'PROCESSED') {
+        console.log(`🔍 Booking ${booking.booking_sn}:`, {
+          status: booking.booking_status,
+          doc_status: booking.document_status || 'null',
+          is_printed: booking.is_printed,
+          has_tracking: !!booking.tracking_number,
+          tracking_number: booking.tracking_number,
+          needs_document: needsDocument
+        });
+      }
+      
+      return needsDocument;
+    });
+
+    console.log(`🎯 Found ${bookingsNeedingDocuments.length} bookings needing document creation`);
+
+    if (bookingsNeedingDocuments.length === 0) {
+      console.log('✅ No bookings need document creation - all good!');
+      return;
+    }
+
+    console.log(`🚀 Auto-creating documents for ${bookingsNeedingDocuments.length} bookings yang webhook missed`);
+    console.log('📦 Bookings to process:', bookingsNeedingDocuments.map(b => ({
+      booking_sn: b.booking_sn,
+      shop_id: b.shop_id,
+      tracking_number: b.tracking_number
+    })));
+
+    // Mark bookings as being processed
+    const bookingSns = bookingsNeedingDocuments.map(b => b.booking_sn);
+    setCreatingDocuments(prev => [...prev, ...bookingSns]);
+
+    // Group by shop_id for batch processing
+    const bookingsByShop = bookingsNeedingDocuments.reduce((groups: { [key: number]: Booking[] }, booking) => {
+      if (!groups[booking.shop_id]) {
+        groups[booking.shop_id] = [];
+      }
+      groups[booking.shop_id].push(booking);
+      return groups;
+    }, {});
+
+    console.log('🏪 Grouped by shops:', Object.entries(bookingsByShop).map(([shopId, bookings]) => ({
+      shop_id: shopId,
+      booking_count: bookings.length,
+      booking_sns: bookings.map(b => b.booking_sn)
+    })));
+
+    // Process each shop - ONE TIME ONLY, no retry
+    for (const [shopId, shopBookings] of Object.entries(bookingsByShop)) {
+      console.log(`🔄 Processing shop ${shopId} with ${shopBookings.length} bookings...`);
+      
+      try {
+        const requestPayload = {
+          shopId: parseInt(shopId),
+          bookingList: shopBookings.map(booking => ({ 
+            booking_sn: booking.booking_sn,
+            tracking_number: booking.tracking_number,
+            shipping_document_type: 'THERMAL_AIR_WAYBILL'
+          })),
+          documentType: 'THERMAL_AIR_WAYBILL'
+        };
+        
+        console.log('📤 API Request payload:', requestPayload);
+        
+        const response = await fetch('/api/shopee/create-booking-shipping-document', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestPayload)
+        });
+
+        const result = await response.json();
+        console.log('📥 API Response:', result);
+        
+        if (result.success) {
+          console.log(`✅ SUCCESS: Documents created for ${shopBookings.length} bookings in shop ${shopId}`);
+          toast.success(`Dokumen auto-created untuk ${shopBookings.length} booking`);
+          // Refresh data to get updated document status
+          setTimeout(() => {
+            console.log('🔄 Refreshing data to get updated document status...');
+            refetch();
+          }, 1000);
+        } else {
+          console.log(`❌ FAILED: Shop ${shopId} document creation failed:`, result.message);
+          
+          // Handle specific errors but NO RETRY - no spam logging
+          if (result.response?.result_list) {
+            const failedItems = result.response.result_list.filter((item: any) => item.fail_error);
+            
+            console.log('📊 Failed items breakdown:', failedItems.map((item: any) => ({
+              booking_sn: item.booking_sn,
+              error: item.fail_error,
+              message: item.fail_message
+            })));
+            
+            const cannotPrintCount = result.response.result_list.filter(
+              (item: any) => item.fail_error === 'logistics.booking_can_not_print'
+            ).length;
+            
+            const invalidTrackingCount = result.response.result_list.filter(
+              (item: any) => item.fail_error === 'logistics.tracking_number_invalid'
+            ).length;
+            
+            if (cannotPrintCount > 0) {
+              console.log(`⏰ ${cannotPrintCount} booking sudah terlambat untuk create document (logistics.booking_can_not_print)`);
+            }
+            
+            if (invalidTrackingCount > 0) {
+              console.log(`📋 ${invalidTrackingCount} booking dengan tracking number invalid (logistics.tracking_number_invalid)`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`💥 ERROR: Network/server error for shop ${shopId}:`, error);
+      }
+    }
+
+    // Remove from creating list
+    setCreatingDocuments(prev => prev.filter(sn => !bookingSns.includes(sn)));
+    console.log('🏁 Auto-create documents process completed');
+  }, [bookings, loading, creatingDocuments, refetch, getTrackingNumber]);
+
+  // Run backup document creation immediately after bookings data is loaded
+  useEffect(() => {
+    if (bookings.length > 0 && !loading) {
+      console.log('🎬 Bookings data loaded, starting auto-create process...');
+      // Run immediately after data is available
+      backupCreateDocuments();
+    }
+  }, [bookings.length, loading]); // Run when bookings first load and loading finished
 
   const TimeoutMessage = () => (
     <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
@@ -799,8 +1032,8 @@ export default function BookingPage() {
                   <SelectItem value="PENDING">Menunggu</SelectItem>
                   <SelectItem value="CONFIRMED">Dikonfirmasi</SelectItem>
                   <SelectItem value="READY_TO_SHIP">Siap Kirim</SelectItem>
-                  <SelectItem value="PROCESSING">Diproses</SelectItem>
                   <SelectItem value="SHIPPED">Dikirim</SelectItem>
+                  <SelectItem value="PROCESSED">Diproses</SelectItem>
                   <SelectItem value="COMPLETED">Selesai</SelectItem>
                   <SelectItem value="CANCELLED">Dibatalkan</SelectItem>
                 </SelectContent>
