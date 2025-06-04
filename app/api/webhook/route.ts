@@ -38,7 +38,7 @@ async function processWebhookData(webhookData: any) {
       28: handlePenalty,
       16: handleViolation,
       24: handleBookingTrackingUpdate,
-      26: handleBooking
+      23: handleBooking
     };
 
     const handler = handlers[code] || handleOther;
