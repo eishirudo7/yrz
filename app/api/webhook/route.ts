@@ -372,24 +372,24 @@ async function handleBookingTrackingUpdate(data: any) {
     const bookingData = data.data;
     const shopId = data.shop_id;
     
-    // Extract booking tracking data
+    // Extract booking tracking data - support both tracking_number and tracking_no
     const bookingSn = bookingData.booking_sn;
-    const trackingNumber = bookingData.tracking_number;
+    const trackingNumber = bookingData.tracking_number || bookingData.tracking_no;
+    const fOrderId = bookingData.forder_id;
+    const isAbo = bookingData.is_abo;
     
     if (!bookingSn || !trackingNumber) {
-      console.warn('Missing booking_sn or tracking_number in webhook data:', bookingData);
+      console.warn('Missing booking_sn or tracking number in webhook data:', bookingData);
       return;
     }
 
-    // Ambil shop name untuk notifikasi
-    const autoShipData = await redis.get('auto_ship');
-    let shopName = '';
-    
-    if (autoShipData) {
-      const shops = JSON.parse(autoShipData);
-      const shop = shops.find((s: any) => s.shop_id === shopId);
-      shopName = shop?.shop_name || '';
-    }
+    console.log(`Processing booking tracking update:`, {
+      booking_sn: bookingSn,
+      tracking_number: trackingNumber,
+      forder_id: fOrderId,
+      is_abo: isAbo,
+      shop_id: shopId
+    });
 
     // Update tracking number di database
     const updateResult = await updateTrackingNumber(shopId, bookingSn, trackingNumber);
@@ -423,33 +423,12 @@ async function handleBookingTrackingUpdate(data: any) {
           } else {
             console.error(`Failed to update database status for booking ${bookingSn}:`, docUpdateResult.message);
           }
-          
-          // Kirim notifikasi document creation berhasil
-          sendEventToShopOwners({
-            type: 'booking_document_created',
-            booking_sn: bookingSn,
-            document_type: 'THERMAL_AIR_WAYBILL',
-            document_status: 'READY',
-            shop_id: shopId,
-            shop_name: shopName,
-            timestamp: new Date().toISOString()
-          });
         } else {
           console.error(`Gagal membuat shipping document untuk booking ${bookingSn}:`, documentResult.message);
         }
       } catch (error) {
         console.error(`Error saat membuat shipping document untuk booking ${bookingSn}:`, error);
       }
-      
-      // Kirim notifikasi real-time untuk tracking update
-      sendEventToShopOwners({
-        type: 'booking_tracking_update',
-        booking_sn: bookingSn,
-        tracking_number: trackingNumber,
-        shop_id: shopId,
-        shop_name: shopName,
-        timestamp: new Date().toISOString()
-      });
     } else {
       console.error(`Failed to update tracking number for booking ${bookingSn}:`, updateResult.message);
     }
