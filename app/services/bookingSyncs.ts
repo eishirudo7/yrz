@@ -1,5 +1,5 @@
 import { getBookingList, getBookingDetail, getBookingTrackingNumber } from '@/app/services/shopeeService';
-import { saveBookingOrders, updateTrackingNumber } from '@/app/services/bookingService';
+import { saveBookingOrders, updateTrackingNumberForWebhook } from '@/app/services/bookingService';
 
 interface BookingSyncOptions {
   timeRangeField?: 'create_time' | 'update_time';
@@ -9,6 +9,7 @@ interface BookingSyncOptions {
   pageSize?: number;
   onProgress?: (progress: { current: number; total: number }) => void;
   onError?: (error: string) => void;
+  includeTracking?: boolean; // Flag untuk menentukan apakah perlu ambil tracking number
 }
 
 interface ShopeeBooking {
@@ -26,6 +27,7 @@ interface BookingListResponse {
   message?: string;
 }
 
+// Fungsi untuk webhook - TANPA tracking number
 async function processBookingDetails(shopId: number, bookingSns: string[]) {
   try {
     // Ambil detail booking dari Shopee API
@@ -50,21 +52,63 @@ async function processBookingDetails(shopId: number, bookingSns: string[]) {
           throw new Error(saveResult.message || 'Gagal menyimpan booking order');
         }
 
-        // SELALU coba ambil tracking number untuk semua booking, tidak peduli statusnya
+        console.info(`✅ Berhasil menyimpan booking ${bookingData.booking_sn} (status: ${bookingData.booking_status})`);
+        
+        return { bookingSn: bookingData.booking_sn, success: true };
+      } catch (error) {
+        console.error(`Gagal memproses booking ${bookingData.booking_sn}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return { bookingSn: bookingData.booking_sn, success: false };
+      }
+    }));
+
+    return results;
+  } catch (error) {
+    console.error(`Gagal memproses batch booking: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return bookingSns.map(sn => ({ bookingSn: sn, success: false }));
+  }
+}
+
+// Fungsi untuk sinkronisasi manual - DENGAN tracking number
+async function processBookingDetailsWithTracking(shopId: number, bookingSns: string[]) {
+  try {
+    // Ambil detail booking dari Shopee API
+    const response = await getBookingDetail(shopId, bookingSns);
+    
+    if (!response.success || !response.data?.booking_list) {
+      throw new Error(response.message || `Data booking kosong untuk bookings: ${bookingSns.join(',')}`);
+    }
+
+    const bookings = response.data.booking_list;
+
+    const results = await Promise.all(bookings.map(async (bookingData: ShopeeBooking) => {
+      try {
+        if (!bookingData.booking_sn) {
+          throw new Error(`Data booking tidak memiliki booking_sn yang valid`);
+        }
+
+        // Simpan data booking ke database
+        const saveResult = await saveBookingOrders([bookingData], shopId);
+        
+        if (!saveResult.success) {
+          throw new Error(saveResult.message || 'Gagal menyimpan booking order');
+        }
+
+        // UNTUK SINKRONISASI MANUAL: Ambil tracking number juga
         try {
           const trackingResponse = await getBookingTrackingNumber(shopId, bookingData.booking_sn);
           
           if (trackingResponse.success && trackingResponse.data?.tracking_number) {
-            await updateTrackingNumber(shopId, bookingData.booking_sn, trackingResponse.data.tracking_number);
-            console.info(`Updated tracking number untuk booking ${bookingData.booking_sn}: ${trackingResponse.data.tracking_number}`);
-            // Note: Document status tetap PENDING, tidak diubah dari sinkronisasi
+            await updateTrackingNumberForWebhook(shopId, bookingData.booking_sn, trackingResponse.data.tracking_number);
+            console.info(`✅ Updated tracking number untuk booking ${bookingData.booking_sn}: ${trackingResponse.data.tracking_number}`);
           } else {
-            console.info(`Tracking number belum tersedia untuk booking ${bookingData.booking_sn} (status: ${bookingData.booking_status})`);
+            console.info(`⏳ Tracking number belum tersedia untuk booking ${bookingData.booking_sn} (status: ${bookingData.booking_status})`);
           }
         } catch (trackingError) {
-          console.error(`Gagal mengambil tracking number untuk booking ${bookingData.booking_sn}:`, trackingError);
+          console.error(`Gagal memproses tracking number untuk booking ${bookingData.booking_sn}:`, trackingError);
           // Tidak throw error karena booking tetap tersimpan
         }
+
+        console.info(`✅ Berhasil menyimpan booking ${bookingData.booking_sn} (status: ${bookingData.booking_status})`);
         
         return { bookingSn: bookingData.booking_sn, success: true };
       } catch (error) {
@@ -99,6 +143,7 @@ export async function syncBookings(shopId: number, options: BookingSyncOptions =
       endTime: now,
       bookingStatus: 'ALL' as const,
       pageSize: 50,
+      includeTracking: false, // Default: webhook sync (tanpa tracking)
       ...options
     };
 
@@ -106,7 +151,7 @@ export async function syncBookings(shopId: number, options: BookingSyncOptions =
     let totalBookings = 0;
     const processedBookings: string[] = [];
 
-    console.info(`[BookingSync] Memulai sinkronisasi booking untuk shopId: ${shopId}`);
+    console.info(`[BookingSync] Memulai sinkronisasi booking untuk shopId: ${shopId} (includeTracking: ${syncOptions.includeTracking})`);
 
     // Ambil data pertama untuk mendapatkan total bookings
     const initialResponse = await getBookingList(shopId, { 
@@ -152,7 +197,11 @@ export async function syncBookings(shopId: number, options: BookingSyncOptions =
     
     for (let i = 0; i < firstBatch.length; i += BATCH_SIZE) {
       const bookingBatch = firstBatch.slice(i, i + BATCH_SIZE);
-      const results = await processBookingDetails(shopId, bookingBatch.map(b => b.booking_sn));
+      
+      // Pilih fungsi berdasarkan includeTracking flag
+      const results = syncOptions.includeTracking 
+        ? await processBookingDetailsWithTracking(shopId, bookingBatch.map(b => b.booking_sn))
+        : await processBookingDetails(shopId, bookingBatch.map(b => b.booking_sn));
       
       results.forEach(result => {
         if (result.success) {
@@ -182,7 +231,11 @@ export async function syncBookings(shopId: number, options: BookingSyncOptions =
 
       for (let i = 0; i < response.data.booking_list.length; i += BATCH_SIZE) {
         const bookingBatch = response.data.booking_list.slice(i, i + BATCH_SIZE);
-        const results = await processBookingDetails(shopId, bookingBatch.map(b => b.booking_sn));
+        
+        // Pilih fungsi berdasarkan includeTracking flag
+        const results = syncOptions.includeTracking 
+          ? await processBookingDetailsWithTracking(shopId, bookingBatch.map(b => b.booking_sn))
+          : await processBookingDetails(shopId, bookingBatch.map(b => b.booking_sn));
         
         results.forEach(result => {
           if (result.success) {
@@ -234,7 +287,12 @@ export async function syncBookingsByBookingSns(
   options: Omit<BookingSyncOptions, 'timeRangeField' | 'startTime' | 'endTime' | 'bookingStatus' | 'pageSize'> = {}
 ): Promise<SyncBookingsResult> {
   try {
-    console.info(`[BookingSync] Memulai sinkronisasi booking spesifik untuk shopId: ${shopId}, bookings: ${bookingSns.length}`);
+    const syncOptions = {
+      includeTracking: false, // Default: webhook sync (tanpa tracking)
+      ...options
+    };
+
+    console.info(`[BookingSync] Memulai sinkronisasi booking spesifik untuk shopId: ${shopId}, bookings: ${bookingSns.length} (includeTracking: ${syncOptions.includeTracking})`);
     
     if (!bookingSns || bookingSns.length === 0) {
       return {
@@ -263,7 +321,11 @@ export async function syncBookingsByBookingSns(
     const BATCH_SIZE = 20;
     for (let i = 0; i < bookingSns.length; i += BATCH_SIZE) {
       const bookingBatch = bookingSns.slice(i, i + BATCH_SIZE);
-      const results = await processBookingDetails(shopId, bookingBatch);
+      
+      // Pilih fungsi berdasarkan includeTracking flag
+      const results = syncOptions.includeTracking 
+        ? await processBookingDetailsWithTracking(shopId, bookingBatch)
+        : await processBookingDetails(shopId, bookingBatch);
       
       results.forEach(result => {
         if (result.success) {

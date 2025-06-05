@@ -153,6 +153,7 @@ export async function POST(request: NextRequest) {
             let bookingResult;
             if (!bookingSns || bookingSns.length === 0) {
               bookingResult = await syncBookings(shopId, {
+                includeTracking: true,
                 onProgress: (progress) => {
                   totalBookingsProcessed = progress.current;
                   totalBookingsCount = progress.total;
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
               });
             } else {
               bookingResult = await syncBookingsByBookingSns(shopId, bookingSns, {
+                includeTracking: true,
                 onProgress: (progress) => {
                   totalBookingsProcessed = progress.current;
                   totalBookingsCount = progress.total;

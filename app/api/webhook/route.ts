@@ -9,7 +9,7 @@ import { ViolationService } from '@/app/services/violationService';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 import { PremiumFeatureService } from '@/app/services/premiumFeatureService';
 import { syncBookingsByBookingSns } from '@/app/services/bookingSyncs';
-import { updateTrackingNumber, updateBookingOrder } from '@/app/services/bookingService';
+import { updateTrackingNumberForWebhook, updateBookingOrderForWebhook } from '@/app/services/bookingService';
 
 export async function POST(req: NextRequest) {
   // Segera kirim respons 200
@@ -243,7 +243,7 @@ async function handleDocumentUpdate(data: any) {
       const documentStatus = documentData.status === 'READY' ? 'READY' : 
                            documentData.status === 'FAILED' ? 'ERROR' : 'PENDING';
       
-      const updateResult = await updateBookingOrder(shopId, documentData.booking_sn, {
+      const updateResult = await updateBookingOrderForWebhook(shopId, documentData.booking_sn, {
         document_status: documentStatus
       });
       
@@ -392,7 +392,7 @@ async function handleBookingTrackingUpdate(data: any) {
     });
 
     // Update tracking number di database
-    const updateResult = await updateTrackingNumber(shopId, bookingSn, trackingNumber);
+    const updateResult = await updateTrackingNumberForWebhook(shopId, bookingSn, trackingNumber);
     
     if (updateResult.success) {
       console.info(`Successfully updated tracking number for booking ${bookingSn}: ${trackingNumber}`);
@@ -414,7 +414,7 @@ async function handleBookingTrackingUpdate(data: any) {
           console.log(`Shipping document berhasil dibuat untuk booking ${bookingSn}`);
           
           // Update database status menjadi READY setelah document dibuat
-          const docUpdateResult = await updateBookingOrder(shopId, bookingSn, {
+          const docUpdateResult = await updateBookingOrderForWebhook(shopId, bookingSn, {
             document_status: 'READY'
           });
           

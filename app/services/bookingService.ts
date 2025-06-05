@@ -517,6 +517,80 @@ export async function updateTrackingNumber(
 }
 
 /**
+ * Update tracking number untuk booking order (khusus untuk webhook)
+ * @param shopId ID toko
+ * @param bookingSn Booking SN
+ * @param trackingNumber Nomor tracking
+ * @returns Hasil operasi update
+ */
+export async function updateTrackingNumberForWebhook(
+  shopId: number,
+  bookingSn: string,
+  trackingNumber: string
+): Promise<{
+  success: boolean;
+  message: string;
+  data?: any;
+}> {
+  return updateBookingOrderForWebhook(shopId, bookingSn, {
+    tracking_number: trackingNumber
+  });
+}
+
+/**
+ * Mengupdate status booking order (khusus untuk webhook - tanpa autentikasi user)
+ * @param shopId ID toko
+ * @param bookingSn Booking SN
+ * @param updateData Data yang akan diupdate
+ * @returns Hasil operasi update
+ */
+export async function updateBookingOrderForWebhook(
+  shopId: number,
+  bookingSn: string,
+  updateData: Partial<BookingOrderData>
+): Promise<{
+  success: boolean;
+  message: string;
+  data?: any;
+}> {
+  try {
+    // Langsung update tanpa validasi user authentication untuk webhook
+    const { data, error } = await supabase
+      .from('booking_orders')
+      .update({
+        ...updateData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('shop_id', shopId)
+      .eq('booking_sn', bookingSn)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error mengupdate booking order via webhook:', error);
+      return {
+        success: false,
+        message: `Gagal mengupdate booking order: ${error.message}`
+      };
+    }
+
+    console.info(`Berhasil mengupdate booking order ${bookingSn} untuk toko ${shopId} via webhook`);
+    return {
+      success: true,
+      message: 'Berhasil mengupdate booking order',
+      data: data
+    };
+
+  } catch (error) {
+    console.error('Kesalahan saat mengupdate booking order via webhook:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+    };
+  }
+}
+
+/**
  * Mark dokumen sebagai sudah dicetak
  * @param shopId ID toko
  * @param bookingSnList Array booking SN yang dokumennya sudah dicetak
