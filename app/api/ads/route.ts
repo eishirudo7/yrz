@@ -167,7 +167,7 @@ export async function GET(req: NextRequest, res: NextResponse) {
                 const performance = await getAdsDailyPerformance(shopId, startDate, endDate);
                 
                 // Cek jika terjadi rate limit
-                if (performance?.error === 'ads.rate_limit.exceed_api') {
+                if (performance?.error === 'ads_rate_limit_total_api') {
                     retries++;
                     console.log(`Rate limit terdeteksi untuk toko ID ${shopId}, retry ke-${retries}/${maxRetries} setelah ${retryDelay}ms`);
                     await sleep(retryDelay);
