@@ -1,4 +1,4 @@
-import { ShopeeAPI } from '@/lib/shopeeApi';
+import { ShopeeAPI } from '@/lib/shopee';
 
 export const SHOPEE_PARTNER_ID = Number(process.env.SHOPEE_PARTNER_ID!);
 export const SHOPEE_PARTNER_KEY = String(process.env.SHOPEE_PARTNER_KEY!);

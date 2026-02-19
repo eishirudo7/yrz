@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { downloadShippingDocument, createShippingDocument, getTrackingNumber as getShopeeTrackingNumber } from '@/app/services/shopeeService';
-import { mergePDFs } from '@/app/utils/pdfUtils';
+import { mergePDFs } from '@/utils/pdfUtils';
 
 const BATCH_SIZE = 50; // Batasan dari Shopee API
 const BATCH_DELAY = 300; // Turunkan delay antar batch
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 
         try {
           const response = await downloadShippingDocument(shopId, orderList);
-          
+
           if (response instanceof Buffer) {
             pdfBlobs.push(response);
             return;
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
             const failedOrderMatch = response.message.match(/order_sn: (\w+) print failed/);
             if (failedOrderMatch) {
               const failedOrderSn = failedOrderMatch[1];
-              
+
               // Retry dengan tracking number
               try {
                 const trackingResponse = await getShopeeTrackingNumber(shopId, failedOrderSn);
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
               } catch (retryError) {
                 console.error('Retry failed:', retryError);
               }
-              
+
               failedOrders.push(failedOrderSn);
             }
           }
@@ -108,18 +108,26 @@ export async function GET(req: NextRequest) {
         error: "no_documents",
         message: "Tidak ada dokumen yang berhasil diproses",
         failedOrders
-      }, { 
+      }, {
         status: 404,
         headers: { 'X-Failed-Orders': JSON.stringify(failedOrders) }
       });
     }
 
     // 9. Optimize PDF merging
-    const mergedPDF = pdfBlobs.length === 1 
-      ? pdfBlobs[0]
-      : await mergePDFs(pdfBlobs.map(buffer => new Blob([buffer], { type: 'application/pdf' })));
+    let responseBody: Blob;
 
-    return new NextResponse(mergedPDF, {
+    if (pdfBlobs.length === 1) {
+      responseBody = new Blob([new Uint8Array(pdfBlobs[0])], { type: 'application/pdf' });
+    } else {
+      // Convert Buffers to Blobs using Uint8Array (compatible with both Node and Browser)
+      const blobsForMerge = pdfBlobs.map(buffer =>
+        new Blob([new Uint8Array(buffer)], { type: 'application/pdf' })
+      );
+      responseBody = await mergePDFs(blobsForMerge);
+    }
+
+    return new NextResponse(responseBody, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

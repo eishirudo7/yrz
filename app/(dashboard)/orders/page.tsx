@@ -9,29 +9,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { 
-  Calendar as CalendarIcon, 
-  RefreshCw, 
-  AlertCircle, 
-  RotateCcw, 
-  MegaphoneIcon,
-  Wallet, 
-  AlertTriangle,
-  Clock, 
-  Truck, 
-  ShoppingBag,
-  Search, 
-  X, 
+import {
+  Calendar as CalendarIcon,
+  RefreshCw,
+  AlertCircle,
+  Search,
+  X,
   ChevronDown,
   Store,
   BarChart3,
   FileText,
-  DollarSign,
-  ClipboardList,
-  CheckSquare,
-  PackageCheck,
-  PackageX,
-  Ban
 } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
@@ -63,126 +50,25 @@ import { OrderHistory } from '../dashboard/OrderHistory'
 import { OrderTrendChart } from './components/OrderTrendChart'
 import { SKUSalesChart } from "./components/SKUSalesChart"
 import { ShopOrderChart } from "./components/ShopOrderChart"
+import { OrderStatusCard } from './components/OrderStatusCard'
 import { useTheme } from "next-themes"
 import ChatButton from '@/components/ChatButton'
 import ProfitCalculator from './components/ProfitCalculator'
 
-function formatDate(order: Order): string {
-  const timestamp = order.cod ? order.create_time : (order.pay_time || order.create_time);
-  return new Date(timestamp * 1000).toLocaleString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
+// Extracted components and utilities
+import { SummaryCards } from './components/SummaryCards'
+import { SkuSummaryCard, ShopSummaryCard } from './components/SkuSummaryCard'
+import {
+  formatDate,
+  isFakeOrder,
+  calculateOrderStats,
+  getShopsSummary,
+  getAllTopSkus,
+  type SkuSummary,
+  type ShopSummary,
+} from './utils/orderUtils'
 
-interface OrderStatusCardProps {
-  title: string
-  count: number
-  icon: 'pending' | 'process' | 'shipping' | 'cancel' | 'total' | 'failed' | 'completed' | 'confirm' | 'return' | 'fake'
-  onClick: () => void
-  isActive: boolean
-}
-
-function OrderStatusCard({ title, count, icon, onClick, isActive }: OrderStatusCardProps) {
-  const getIcon = () => {
-    switch (icon) {
-      case 'pending':
-        return <Clock className="w-5 h-5" />
-      case 'process':
-        return <PackageCheck className="w-5 h-5" />
-      case 'shipping':
-        return <Truck className="w-5 h-5" />
-      case 'cancel':
-        return <Ban className="w-5 h-5" />
-      case 'total':
-        return <ShoppingBag className="w-5 h-5" />
-      case 'failed':
-        return <PackageX className="w-5 h-5" />
-      case 'completed':
-        return <CheckSquare className="w-5 h-5" />
-      case 'confirm':
-        return <ClipboardList className="w-5 h-5" />
-      case 'return':
-        return <RotateCcw className="w-5 h-5" />
-      case 'fake':
-        return <AlertTriangle className="w-5 h-5" />
-      default:
-        return null
-    }
-  }
-
-  const getActiveColors = () => {
-    switch (icon) {
-      case 'pending':
-        return 'bg-amber-500 text-white'
-      case 'process':
-        return 'bg-blue-600 text-white'
-      case 'shipping':
-        return 'bg-teal-600 text-white'
-      case 'cancel':
-        return 'bg-rose-600 text-white'
-      case 'total':
-        return 'bg-indigo-600 text-white'
-      case 'failed':
-        return 'bg-orange-600 text-white'
-      case 'completed':
-        return 'bg-emerald-600 text-white'
-      case 'confirm':
-        return 'bg-sky-600 text-white'
-      case 'return':
-        return 'bg-violet-600 text-white'
-      case 'fake':
-        return 'bg-fuchsia-600 text-white'
-      default:
-        return 'bg-background'
-    }
-  }
-
-  return (
-    <Card 
-      className={`transition-all duration-300 cursor-pointer ${
-        isActive 
-          ? `${getActiveColors()} shadow-lg scale-[1.02]` 
-          : 'hover:bg-muted/50 hover:scale-[1.02]'
-      }`}
-      onClick={onClick}
-    >
-      <div className="p-2.5">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <p className={`text-xs font-medium ${isActive ? 'text-white/80' : 'text-muted-foreground'} line-clamp-1`}>
-              {title}
-            </p>
-            <p className={`text-lg sm:text-xl font-bold tracking-tight ${isActive ? 'text-white' : ''}`}>
-              {count}
-            </p>
-          </div>
-          <div className={`p-1.5 rounded-lg ${
-            isActive 
-              ? 'bg-white/20' 
-              : `bg-background ${
-                  icon === 'pending' ? 'text-amber-500' :
-                  icon === 'process' ? 'text-blue-600' :
-                  icon === 'shipping' ? 'text-teal-600' :
-                  icon === 'cancel' ? 'text-rose-600' :
-                  icon === 'total' ? 'text-indigo-600' :
-                  icon === 'failed' ? 'text-orange-600' :
-                  icon === 'confirm' ? 'text-sky-600' :
-                  icon === 'completed' ? 'text-emerald-600' :
-                  icon === 'return' ? 'text-violet-600' :
-                  'text-fuchsia-600'
-                }`
-          }`}>
-            {getIcon()}
-          </div>
-        </div>
-      </div>
-    </Card>
-  )
-}
-
+// TableRowSkeleton component for loading state
 function TableRowSkeleton() {
   return (
     <TableRow>
@@ -200,26 +86,6 @@ function TableRowSkeleton() {
   )
 }
 
-// Tambahkan interface untuk SKU
-interface SkuSummary {
-  sku_name: string
-  quantity: number
-  total_amount: number
-}
-
-// Tambahkan interface untuk ringkasan toko
-interface ShopSummary {
-  name: string
-  totalOrders: number
-  totalAmount: number
-  pendingOrders: number
-  processOrders: number
-  shippingOrders: number
-  cancelledOrders: number
-  failedOrders: number
-  topSkus: SkuSummary[]
-}
-
 export default function OrdersPage() {
   const [date, setDate] = useState<DateRange | undefined>({
     from: new Date(),
@@ -232,16 +98,16 @@ export default function OrdersPage() {
   const [isShopFilterOpen, setIsShopFilterOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchType, setSearchType] = useState("order_sn")
-  
+
   // Tambahkan state untuk timeout handling
   const [apiTimeout, setApiTimeout] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
   const [timeoutDuration, setTimeoutDuration] = useState(30) // dalam detik
 
-  const { 
-    orders, 
-    ordersWithoutEscrow, 
-    loading: ordersLoading, 
+  const {
+    orders,
+    ordersWithoutEscrow,
+    loading: ordersLoading,
     error: ordersError,
     syncMissingEscrowData,
     syncingEscrow,
@@ -255,9 +121,9 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const loadingRef = useRef<HTMLDivElement>(null)
-  const ITEMS_PER_PAGE = 20
+  const ITEMS_PER_PAGE = 50 // Increased from 20 for better performance
   const { searchOrders, searchResults, loading: searchLoading } = useOrderSearch()
-  
+
 
 
   // Tambahkan state untuk tracking toko yang sedang dibuka
@@ -274,7 +140,7 @@ export default function OrdersPage() {
 
   // Ubah state untuk menyimpan orderSn saja
   const [selectedOrderSn, setSelectedOrderSn] = useState<string | null>(null)
-  
+
   // Tambahkan state untuk mengontrol apakah modal detail terbuka
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
@@ -292,33 +158,36 @@ export default function OrdersPage() {
   // Tambahkan state untuk menampilkan/menyembunyikan detail iklan
   const [showAdsDetails, setShowAdsDetails] = useState(false);
 
-  // Tambahkan useEffect untuk mendeteksi timeout
+  // Tambahkan useEffect untuk mendeteksi timeout (FIXED: proper cleanup)
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    
-    if (ordersLoading && !apiTimeout) {
-      // Atur timer untuk mendeteksi timeout setelah timeoutDuration detik
-      timeoutId = setTimeout(() => {
-        setApiTimeout(true);
-      }, timeoutDuration * 1000);
-    }
-    
-    // Jika tidak lagi loading, batalkan timer dan reset apiTimeout
-    if (!ordersLoading && apiTimeout) {
+    if (!ordersLoading) {
+      // Reset timeout jika tidak loading
       setApiTimeout(false);
+      return;
     }
-    
+
+    if (apiTimeout) {
+      // Sudah timeout, jangan set timer lagi
+      return;
+    }
+
+    // Set timeout hanya jika loading dan belum timeout
+    const timeoutId = setTimeout(() => {
+      setApiTimeout(true);
+    }, timeoutDuration * 1000);
+
+    // Cleanup: timeoutId PASTI ada karena kode di atas
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
     };
   }, [ordersLoading, apiTimeout, timeoutDuration]);
-  
+
   // Fungsi untuk mencoba lagi dengan timeout yang lebih lama
   const handleRetryWithLongerTimeout = () => {
     setRetryCount(prev => prev + 1);
     setApiTimeout(false);
     setTimeoutDuration(prev => prev + 30); // Tambah 30 detik setiap retry
-    
+
     // Jika ada fungsi refetch di hook useOrders, panggil di sini
     if (typeof refetch === 'function') {
       refetch();
@@ -348,8 +217,8 @@ export default function OrdersPage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 mt-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setDate({
                   from: new Date(),
@@ -367,7 +236,7 @@ export default function OrdersPage() {
             >
               Pilih Hari Ini
             </Button>
-            <Button 
+            <Button
               onClick={handleRetryWithLongerTimeout}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
@@ -384,96 +253,7 @@ export default function OrdersPage() {
     </div>
   );
 
-  // Fungsi untuk memeriksa apakah suatu pesanan adalah "fake order" (total SKU > 20 dan escrow < 200000)
-  const isFakeOrder = (order: Order) => {
-    // Pesanan yang dibatalkan (CANCELLED) tidak dihitung sebagai fake order
-    if (order.order_status === 'CANCELLED') return false;
-    
-    if (!order.sku_qty) return false;
-    
-    const skuEntries = order.sku_qty.split(',').map(entry => entry.trim());
-    let totalQuantity = 0;
-    
-    skuEntries.forEach(entry => {
-      const match = entry.match(/(.*?)\s*\((\d+)\)/);
-      if (match) {
-        const [, , quantityStr] = match;
-        totalQuantity += parseInt(quantityStr);
-      }
-    });
-    
-    // Periksa jika kuantitas > 20 dan escrow final < 200000
-    return totalQuantity > 20 && 
-           order.escrow_amount_after_adjustment !== undefined && 
-           order.escrow_amount_after_adjustment !== null && 
-           order.escrow_amount_after_adjustment < 200000;
-  };
 
-  // Hitung jumlah pesanan berdasarkan status
-  const orderStats = orders.reduce((acc, order) => {
-    // Cek dulu apakah ini fake order
-    if (isFakeOrder(order)) {
-      acc.fake++;
-      return acc;
-    }
-    
-    if (order.cancel_reason === 'Failed Delivery') {
-      acc.failed++;
-    } else {
-      switch (order.order_status) {
-        case 'UNPAID':
-          acc.pending++;
-          break;
-        case 'READY_TO_SHIP':  // Tambahkan case untuk READY_TO_SHIP
-          acc.process++;
-          acc.total++;
-          break;
-        case 'PROCESSED':
-          acc.process++;
-          acc.total++;
-          break;
-        case 'SHIPPED':
-          acc.shipping++;
-          acc.total++;
-          break;
-        case 'COMPLETED':
-          if (order.escrow_amount_after_adjustment !== undefined && 
-              order.escrow_amount_after_adjustment !== null && 
-              order.escrow_amount_after_adjustment < 0) {
-            acc.return++;
-          } else {
-            acc.completed++;
-            acc.total++;
-          }
-          break;
-        case 'IN_CANCEL':
-          acc.total++;
-          break;
-        case 'TO_CONFIRM_RECEIVE':
-          acc.confirm++;
-          acc.total++;
-          break;
-        case 'TO_RETURN':
-          acc.return++;
-          break;
-        case 'CANCELLED':
-          acc.cancel++;
-          break;
-      }
-    }
-    return acc;
-  }, {
-    pending: 0,
-    process: 0,
-    shipping: 0,
-    cancel: 0,
-    total: 0,
-    failed: 0,
-    completed: 0,
-    confirm: 0,
-    return: 0,
-    fake: 0
-  });
 
   // Dapatkan daftar unik toko dari orders
   const uniqueShops = Array.from(new Set(orders.map(order => order.shop_name))).sort()
@@ -486,90 +266,30 @@ export default function OrdersPage() {
     })
   }, [orders, selectedShops])
 
-  // Hitung statistik berdasarkan pesanan yang sudah difilter berdasarkan toko
-  const filteredOrderStats = filteredOrdersByShop.reduce((acc, order) => {
-    // Cek dulu apakah ini fake order
-    if (isFakeOrder(order)) {
-      acc.fake++;
-      return acc;
-    }
-    
-    if (order.cancel_reason === 'Failed Delivery') {
-      acc.failed++;
-    } else {
-      switch (order.order_status) {
-        case 'UNPAID':
-          acc.pending++;
-          break;
-        case 'READY_TO_SHIP':  // Tambahkan case untuk READY_TO_SHIP
-          acc.process++;
-          acc.total++;
-          break;
-        case 'PROCESSED':
-          acc.process++;
-          acc.total++;
-          break;
-        case 'SHIPPED':
-          acc.shipping++;
-          acc.total++;
-          break;
-        case 'COMPLETED':
-          if (order.escrow_amount_after_adjustment !== undefined && 
-              order.escrow_amount_after_adjustment !== null && 
-              order.escrow_amount_after_adjustment < 0) {
-            acc.return++;
-          } else {
-            acc.completed++;
-            acc.total++;
-          }
-          break;
-        case 'IN_CANCEL':
-          acc.total++;
-          break;
-        case 'TO_CONFIRM_RECEIVE':
-          acc.confirm++;
-          acc.total++;
-          break;
-        case 'TO_RETURN':
-          acc.return++;
-          break;
-        case 'CANCELLED':
-          acc.cancel++;
-          break;
-      }
-    }
-    return acc;
-  }, {
-    pending: 0,
-    process: 0,
-    shipping: 0,
-    cancel: 0,
-    total: 0,
-    failed: 0,
-    completed: 0,
-    confirm: 0,
-    return: 0,
-    fake: 0
-  })
+  // Hitung statistik berdasarkan pesanan yang sudah difilter berdasarkan toko (OPTIMIZED: using memoized function)
+  const filteredOrderStats = useMemo(
+    () => calculateOrderStats(filteredOrdersByShop),
+    [filteredOrdersByShop]
+  )
 
   // Optimalkan filtered orders dengan useMemo
   const filteredOrders = useMemo(() => {
     if (searchResults.length > 0) return searchResults;
-    
+
     return filteredOrdersByShop.filter(order => {
       if (!activeFilter) return true;
-      
+
       if (activeFilter === 'fake') {
         return isFakeOrder(order);
       }
-      
+
       if (activeFilter === 'failed') {
         return order.cancel_reason === 'Failed Delivery';
       }
-      
+
       // Jika ini fake order, jangan tampilkan di filter lain
       if (isFakeOrder(order)) return false;
-      
+
       switch (activeFilter) {
         case 'pending':
           return order.order_status === 'UNPAID';
@@ -578,27 +298,27 @@ export default function OrdersPage() {
         case 'shipping':
           return order.order_status === 'SHIPPED';
         case 'completed':
-          return order.order_status === 'COMPLETED' && 
-            !(order.escrow_amount_after_adjustment !== undefined && 
-              order.escrow_amount_after_adjustment !== null && 
+          return order.order_status === 'COMPLETED' &&
+            !(order.escrow_amount_after_adjustment !== undefined &&
+              order.escrow_amount_after_adjustment !== null &&
               order.escrow_amount_after_adjustment < 0);
         case 'confirm':
           return order.order_status === 'TO_CONFIRM_RECEIVE';
         case 'return':
-          return order.order_status === 'TO_RETURN' || 
-            (order.order_status === 'COMPLETED' && 
-             order.escrow_amount_after_adjustment !== undefined && 
-             order.escrow_amount_after_adjustment !== null && 
-             order.escrow_amount_after_adjustment < 0);
+          return order.order_status === 'TO_RETURN' ||
+            (order.order_status === 'COMPLETED' &&
+              order.escrow_amount_after_adjustment !== undefined &&
+              order.escrow_amount_after_adjustment !== null &&
+              order.escrow_amount_after_adjustment < 0);
         case 'cancel':
           return order.order_status === 'CANCELLED';
         case 'total':
           if (order.cancel_reason === 'Failed Delivery') return false;
           if (order.order_status === 'TO_RETURN') return false;
-          if (order.order_status === 'COMPLETED' && 
-              order.escrow_amount_after_adjustment !== undefined && 
-              order.escrow_amount_after_adjustment !== null && 
-              order.escrow_amount_after_adjustment < 0) return false;
+          if (order.order_status === 'COMPLETED' &&
+            order.escrow_amount_after_adjustment !== undefined &&
+            order.escrow_amount_after_adjustment !== null &&
+            order.escrow_amount_after_adjustment < 0) return false;
           return !['CANCELLED', 'UNPAID'].includes(order.order_status);
         default:
           return true;
@@ -616,11 +336,10 @@ export default function OrdersPage() {
   useEffect(() => {
     if (isSearching && !searchLoading) {
       if (searchResults.length === 0) {
-        toast.error(`Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${
-          searchType === "order_sn" ? "nomor pesanan" :
+        toast.error(`Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${searchType === "order_sn" ? "nomor pesanan" :
           searchType === "tracking_number" ? "nomor resi" :
-          "username"
-        }`)
+            "username"
+          }`)
       }
       setIsSearching(false)
     }
@@ -629,24 +348,23 @@ export default function OrdersPage() {
   const handleSearch = async (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (searchQuery.length < 4) {
-        toast.error(`Minimal 4 karakter untuk melakukan pencarian ${
-          searchType === "order_sn" ? "nomor pesanan" :
+        toast.error(`Minimal 4 karakter untuk melakukan pencarian ${searchType === "order_sn" ? "nomor pesanan" :
           searchType === "tracking_number" ? "nomor resi" :
-          "username"
-        }`)
+            "username"
+          }`)
         return
       }
-      
+
       // Set loading state sebelum pencarian
       setIsSearchLoading(true)
       setActiveFilter(null)
       setSelectedShops([])
       setIsSearching(true)
-      
+
       const searchParams = {
         [searchType]: searchQuery
       }
-      
+
       try {
         await searchOrders(searchParams)
       } finally {
@@ -661,12 +379,12 @@ export default function OrdersPage() {
     const startIndex = (page - 1) * ITEMS_PER_PAGE
     const endIndex = startIndex + ITEMS_PER_PAGE
     const newOrders = filteredOrders.slice(startIndex, endIndex)
-    
+
     if (newOrders.length > 0) {
       setVisibleOrders(prev => [...prev, ...newOrders])
       setPage(prev => prev + 1)
     }
-    
+
     if (endIndex >= filteredOrders.length) {
       setHasMore(false)
     }
@@ -708,7 +426,7 @@ export default function OrdersPage() {
       from: date?.from,
       to: date?.to || date?.from // Gunakan date.from jika date.to tidak ada
     };
-    
+
     setSelectedDateRange(finalDateRange as DateRange);
     setIsCalendarOpen(false);
   }
@@ -733,10 +451,10 @@ export default function OrdersPage() {
       from = new Date(now)
       from.setDate(now.getDate() - days)
     }
-    
+
     from.setHours(0, 0, 0, 0)
     to.setHours(23, 59, 59, 999)
-    
+
     const newDateRange = { from, to }
     setDate(newDateRange)
     setSelectedDateRange(newDateRange)
@@ -765,13 +483,13 @@ export default function OrdersPage() {
       }
 
       const shop = acc[order.shop_name]
-      
+
       shop.totalOrders++
       shop.totalAmount += parseFloat(order.total_amount)
 
       if (order.sku_qty) {
         const skuEntries = order.sku_qty.split(',').map(entry => entry.trim())
-        
+
         skuEntries.forEach(entry => {
           const match = entry.match(/(.*?)\s*\((\d+)\)/)
           if (match) {
@@ -811,7 +529,7 @@ export default function OrdersPage() {
   // Tambahkan fungsi untuk menghitung total SKU dari semua toko
   const getAllTopSkus = useCallback(() => {
     const allSkus: { [key: string]: SkuSummary } = {}
-    
+
     getShopsSummary().forEach(shop => {
       shop.topSkus.forEach(sku => {
         if (allSkus[sku.sku_name]) {
@@ -832,7 +550,7 @@ export default function OrdersPage() {
       .slice(0, 10) // Ambil 10 SKU teratas
   }, [getShopsSummary])
 
- 
+
 
   const handleSkuClick = (skuName: string) => {
     setExpandedSku(expandedSku === skuName ? null : skuName);
@@ -863,7 +581,7 @@ export default function OrdersPage() {
       toast.error('User ID tidak valid');
       return;
     }
-    
+
     // Set user ID dan buka dialog riwayat pesanan
     setSelectedUserId(userId.toString());
     setIsOrderHistoryOpen(true);
@@ -873,14 +591,14 @@ export default function OrdersPage() {
   const getFilteredOmset = useMemo(() => {
     return filteredOrders.reduce((total, order) => {
       // Skip pesanan yang dibatalkan atau gagal COD
-      if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery') 
+      if (order.order_status === 'CANCELLED' || order.cancel_reason === 'Failed Delivery')
         return total
-        
+
       // Selalu gunakan recalculated_total_amount jika tersedia
-      const orderAmount = order.recalculated_total_amount !== undefined ? 
-        order.recalculated_total_amount : 
+      const orderAmount = order.recalculated_total_amount !== undefined ?
+        order.recalculated_total_amount :
         parseFloat(order.total_amount)
-      
+
       return total + orderAmount
     }, 0)
   }, [filteredOrders])
@@ -888,17 +606,17 @@ export default function OrdersPage() {
   // Hitung total escrow (selisih) berdasarkan orders yang sudah difilter
   const getFilteredEscrow = useMemo(() => {
     return filteredOrders.reduce((total, order) => {
-      if (!order.escrow_amount_after_adjustment || 
-          order.order_status === 'UNPAID' || 
-          order.order_status === 'CANCELLED' || 
-          order.cancel_reason === 'Failed Delivery') return total;
+      if (!order.escrow_amount_after_adjustment ||
+        order.order_status === 'UNPAID' ||
+        order.order_status === 'CANCELLED' ||
+        order.cancel_reason === 'Failed Delivery') return total;
       return total + order.escrow_amount_after_adjustment;
     }, 0);
   }, [filteredOrders]);
 
   // Komponen untuk Profit Calculator
   const profitCalculatorComponent = useMemo(() => (
-    <ProfitCalculator 
+    <ProfitCalculator
       orders={filteredOrders}
       escrowTotal={getFilteredEscrow}
       adsSpend={{
@@ -920,7 +638,7 @@ export default function OrdersPage() {
     if (apiTimeout) {
       return <TimeoutMessage />;
     }
-    
+
     // Tampilkan loading UI normal
     return (
       <div className="w-full p-4 sm:p-6 space-y-6">
@@ -981,7 +699,7 @@ export default function OrdersPage() {
       </div>
     )
   }
-  
+
   // Menampilkan pesan error dengan opsi untuk mencoba lagi
   if (ordersError) {
     return (
@@ -998,8 +716,8 @@ export default function OrdersPage() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 mt-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setDate({
                     from: new Date(),
@@ -1017,7 +735,7 @@ export default function OrdersPage() {
               >
                 Pilih Hari Ini
               </Button>
-              <Button 
+              <Button
                 onClick={handleRetryWithLongerTimeout}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
@@ -1033,97 +751,13 @@ export default function OrdersPage() {
   return (
     <div className="w-full p-4 sm:p-6 space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
-          <div className="p-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-green-800 dark:text-green-300">
-                Total Omset
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-xl font-bold text-green-700 dark:text-green-400 truncate pr-2">
-                  Rp {getFilteredOmset.toLocaleString('id-ID')}
-                </p>
-                <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-800/40 flex-shrink-0">
-                  <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-        
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-          <div className="p-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                Total Bersih (Escrow)
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-xl font-bold text-blue-700 dark:text-blue-400 truncate pr-2">
-                  Rp {getFilteredEscrow.toLocaleString('id-ID')}
-                </p>
-                <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-800/40 flex-shrink-0">
-                  <Wallet className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                </div>
-              </div>
-              <div className="text-xs text-blue-600 dark:text-blue-400">
-                {getFilteredOmset > 0 ? ((getFilteredOmset - getFilteredEscrow) / getFilteredOmset * 100).toFixed(1) : '0'}% biaya admin
-              </div>
-            </div>
-          </div>
-        </Card>
-        
-        <Card className="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
-          <div className="p-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-purple-800 dark:text-purple-300">
-                Total Iklan
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
-                  Rp {totalAdsSpend.toLocaleString('id-ID')}
-                </p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-700/60 transition-colors">
-                      <MegaphoneIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                    </div>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-60 p-0" align="end">
-                    <div className="flex items-center justify-between px-3 py-2 border-b">
-                      <h3 className="text-xs font-semibold">Detail Iklan</h3>
-                      <span className="text-[10px] text-muted-foreground">{selectedDateRange?.from && format(selectedDateRange.from, "dd MMM", { locale: id })} - {selectedDateRange?.to && format(selectedDateRange.to, "dd MMM", { locale: id })}</span>
-                    </div>
-                    <div className="max-h-[180px] overflow-y-auto">
-                      {adsData.length === 0 ? (
-                        <p className="text-muted-foreground text-center py-2 text-xs">Tidak ada data iklan</p>
-                      ) : (
-                        <div className="divide-y">
-                          {[...adsData]
-                            .sort((a, b) => b.totalSpend - a.totalSpend)
-                            .map((ad) => (
-                              <div key={ad.shopId} className="px-3 py-1.5 hover:bg-muted/50">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs">{ad.shopName.split(' ')[0]}</span>
-                                  <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">
-                                    Rp {ad.totalSpend.toLocaleString('id-ID')}
-                                  </span>
-                                </div>
-                              </div>
-                            ))
-                          }
-                        </div>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="text-xs text-purple-600 dark:text-purple-400">
-                {getFilteredEscrow > 0 ? (totalAdsSpend / getFilteredEscrow * 100).toFixed(1) : '0'}% dari escrow
-              </div>
-            </div>
-          </div>
-        </Card>
-        
+        <SummaryCards
+          omset={getFilteredOmset}
+          escrow={getFilteredEscrow}
+          totalAdsSpend={totalAdsSpend}
+          adsData={adsData}
+          selectedDateRange={selectedDateRange}
+        />
         {profitCalculatorComponent}
       </div>
 
@@ -1230,48 +864,48 @@ export default function OrdersPage() {
               <PopoverContent className="w-auto h-auto p-0" align="center">
                 <div className="space-y-3 p-3">
                   <div className="grid grid-cols-2 xs:grid-cols-3 sm:flex sm:flex-wrap gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(0)}
                       className="w-full sm:w-auto"
                     >
                       Hari Ini
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(1)}
                       className="w-full sm:w-auto"
                     >
                       Kemarin
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(7)}
                       className="w-full sm:w-auto"
                     >
                       1 Minggu
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(30)}
                       className="w-full sm:w-auto"
                     >
                       1 Bulan
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(-1)}
                       className="w-full sm:w-auto"
                     >
                       Bulan Ini
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => handlePresetDate(-2)}
                       className="w-full sm:w-auto"
@@ -1302,7 +936,7 @@ export default function OrdersPage() {
                     />
                   </div>
                   <div className="flex justify-end border-t pt-3">
-                    <Button 
+                    <Button
                       onClick={handleApplyDate}
                       disabled={!date?.from}
                     >
@@ -1335,8 +969,8 @@ export default function OrdersPage() {
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium">Filter Toko</p>
                     {selectedShops.length > 0 && (
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => setSelectedShops([])}
                         className="h-8 px-2 text-xs"
@@ -1350,7 +984,7 @@ export default function OrdersPage() {
                     <div className="space-y-2">
                       {uniqueShops.map((shop) => (
                         <div key={shop} className="flex items-center space-x-2">
-                          <Checkbox 
+                          <Checkbox
                             id={shop}
                             checked={selectedShops.includes(shop)}
                             onCheckedChange={(checked) => {
@@ -1361,8 +995,8 @@ export default function OrdersPage() {
                               }
                             }}
                           />
-                          <label 
-                            htmlFor={shop} 
+                          <label
+                            htmlFor={shop}
                             className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer w-full truncate"
                           >
                             {shop}
@@ -1390,15 +1024,15 @@ export default function OrdersPage() {
                 <SelectItem value="buyer_username">Username</SelectItem>
               </SelectContent>
             </Select>
-            
+
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 placeholder={
                   searchType === "order_sn" ? "Cari no pesanan (min. 4 karakter)..." :
-                  searchType === "tracking_number" ? "Cari no resi (min. 4 karakter)..." :
-                  "Cari username (min. 4 karakter)..."
+                    searchType === "tracking_number" ? "Cari no resi (min. 4 karakter)..." :
+                      "Cari username (min. 4 karakter)..."
                 }
                 value={searchQuery}
                 onChange={(e) => {
@@ -1434,17 +1068,16 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          
+
         </div>
       </Card>
-     
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div className="flex items-center gap-2">
-          <div className={`flex gap-1 border rounded-md p-1 ${
-            isDarkMode 
-              ? "border-gray-700 bg-[#1a1a1a]" 
-              : "border-gray-200 bg-gray-50"
-          }`}>
+          <div className={`flex gap-1 border rounded-md p-1 ${isDarkMode
+            ? "border-gray-700 bg-[#1a1a1a]"
+            : "border-gray-200 bg-gray-50"
+            }`}>
             <Button
               variant={viewMode === 'chart' ? "default" : "ghost"}
               size="sm"
@@ -1465,23 +1098,23 @@ export default function OrdersPage() {
             </Button>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2 mt-2 sm:mt-0">
-        {ordersWithoutEscrow.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
+          {ordersWithoutEscrow.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => syncMissingEscrowData()}
-            disabled={syncingEscrow}
+              disabled={syncingEscrow}
               className="flex items-center gap-2"
-          >
+            >
               <RefreshCw className={`h-4 w-4 ${syncType === 'missing' ? 'animate-spin' : ''}`} />
               {syncType === 'missing'
-                ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%` 
-              : `Sync Escrow (${ordersWithoutEscrow.length})`
-            }
-          </Button>
-        )}
+                ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%`
+                : `Sync Escrow (${ordersWithoutEscrow.length})`
+              }
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1491,13 +1124,13 @@ export default function OrdersPage() {
           >
             <RefreshCw className={`h-4 w-4 ${syncType === 'all' ? 'animate-spin' : ''}`} />
             {syncType === 'all'
-              ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%` 
+              ? `${Math.round((syncProgress.completed / syncProgress.total) * 100)}%`
               : `Sync All (${orders.filter(o => o.order_status !== 'CANCELLED' && o.order_status !== 'UNPAID').length})`
             }
           </Button>
         </div>
       </div>
-       
+
       {/* Tampilkan chart ATAU ringkasan teks berdasarkan mode yang dipilih */}
       {viewMode === 'chart' ? (
         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -1507,138 +1140,11 @@ export default function OrdersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* Top SKUs dengan desain yang dioptimalkan */}
-          <Card className={`overflow-hidden ${isDarkMode ? "bg-[#121212] border-gray-800" : "bg-white border-gray-200"}`}>
-            <CardHeader className={`py-2.5 px-4 flex flex-row items-center justify-between ${isDarkMode ? "text-white" : "text-gray-900"}`}>
-              <h3 className="text-sm font-semibold">10 SKU Terlaris</h3>
-              <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Total Penjualan</span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[360px]">
-                <div className={`divide-y ${isDarkMode ? "divide-gray-800" : "divide-gray-100"}`}>
-                  {getAllTopSkus().map((sku, index) => (
-                    <div key={sku.sku_name} className="group">
-                      <div 
-                        className={`py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors ${isDarkMode ? "hover:bg-gray-800/50" : "hover:bg-gray-100/50"}`}
-                        onClick={() => handleSkuClick(sku.sku_name)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                              <div className={`w-5 h-5 flex items-center justify-center text-xs font-semibold ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                                {index + 1}
-                              </div>
-                              <p className={`text-sm font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>{sku.sku_name}</p>
-                            </div>
-                            <div className="text-primary">
-                              <span className={`text-xs font-semibold ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>{sku.quantity} pcs</span>
-                            </div>
-                          </div>
-                          <div className="text-primary ml-4">
-                            <span className={`text-xs font-semibold ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
-                              Rp {sku.total_amount.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                          <ChevronDown 
-                            className={`w-4 h-4 transition-transform ml-3 ${
-                              expandedSku === sku.sku_name ? 'rotate-180' : ''
-                            } ${expandedSku === sku.sku_name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
-                              isDarkMode ? "text-gray-400" : "text-gray-500"
-                            }`}
-                          />
-                        </div>
-                      </div>
-                      
-                      {expandedSku === sku.sku_name && (
-                        <div className={`divide-y animate-in slide-in-from-top-1 duration-200 ${
-                          isDarkMode ? "bg-gray-800/30 divide-gray-700" : "bg-gray-100/30 divide-gray-200"
-                        }`}>
-                          {getSkuDetails(sku.sku_name).map(detail => detail && (
-                            <div key={detail.shopName} className="py-2 px-4 pl-12">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  <Store className={`w-3.5 h-3.5 flex-shrink-0 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`} />
-                                  <p className={`text-xs truncate ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>{detail.shopName}</p>
-                                </div>
-                                <div className="ml-2">
-                                  <span className={`text-xs font-medium ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>{detail.quantity} pcs</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
-          {/* Ringkasan Toko dengan desain yang dioptimalkan */}
-          <Card className={`overflow-hidden ${isDarkMode ? "bg-[#121212] border-gray-800" : "bg-white border-gray-200"}`}>
-            <CardHeader className={`py-2.5 px-4 flex flex-row items-center justify-between ${isDarkMode ? "text-white" : "text-gray-900"}`}>
-              <h3 className="text-sm font-semibold">Ringkasan per Toko</h3>
-              <span className={`text-xs ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>Total Pesanan</span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[360px]">
-                <div className={`divide-y ${isDarkMode ? "divide-gray-800" : "divide-gray-100"}`}>
-                  {getShopsSummary().map((shop) => (
-                    <div key={shop.name} className="group">
-                      <div 
-                        className={`py-2.5 px-4 hover:bg-muted/50 cursor-pointer transition-colors ${isDarkMode ? "hover:bg-gray-800/50" : "hover:bg-gray-100/50"}`}
-                        onClick={() => setExpandedShop(expandedShop === shop.name ? null : shop.name)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className={`text-sm font-medium truncate flex-1 ${isDarkMode ? "text-white" : "text-gray-900"}`}>{shop.name}</p>
-                              <span className={`text-xs font-semibold whitespace-nowrap ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
-                                {shop.totalOrders} pesanan
-                              </span>
-                            </div>
-                            <p className={`text-xs mt-0.5 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                              Omset: Rp {shop.totalAmount.toLocaleString('id-ID')}
-                            </p>
-                          </div>
-                          <ChevronDown 
-                            className={`w-4 h-4 transition-transform ml-3 ${
-                              expandedShop === shop.name ? 'rotate-180' : ''
-                            } ${expandedShop === shop.name ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} ${
-                              isDarkMode ? "text-gray-400" : "text-gray-500"
-                            }`}
-                          />
-                        </div>
-                      </div>
-                      
-                      {expandedShop === shop.name && (
-                        <div className={`divide-y animate-in slide-in-from-top-1 duration-200 ${
-                          isDarkMode ? "bg-gray-800/30 divide-gray-700" : "bg-gray-100/30 divide-gray-200"
-                        }`}>
-                          {shop.topSkus.map((sku, index) => (
-                            <div key={sku.sku_name} className="py-2 px-4 pl-8">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                  <div className={`w-5 h-5 flex items-center justify-center text-xs font-semibold ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
-                                    {index + 1}
-                                  </div>
-                                  <p className={`text-xs font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>{sku.sku_name}</p>
-                                </div>
-                                <span className={`text-xs font-semibold ml-2 whitespace-nowrap ${isDarkMode ? "text-blue-400" : "text-blue-600"}`}>
-                                  {sku.quantity} pcs
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <SkuSummaryCard
+            topSkus={getAllTopSkus()}
+            getSkuDetails={getSkuDetails}
+          />
+          <ShopSummaryCard shopsSummary={getShopsSummary()} />
         </div>
       )}
 
@@ -1668,12 +1174,11 @@ export default function OrdersPage() {
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-4">
                   <span className="text-sm text-muted-foreground">
-                    {searchQuery.length >= 4 
-                      ? `Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${
-                          searchType === "order_sn" ? "nomor pesanan" :
-                          searchType === "tracking_number" ? "nomor resi" :
+                    {searchQuery.length >= 4
+                      ? `Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${searchType === "order_sn" ? "nomor pesanan" :
+                        searchType === "tracking_number" ? "nomor resi" :
                           "username"
-                        }`
+                      }`
                       : "Tidak ada data pesanan"}
                   </span>
                 </TableCell>
@@ -1681,7 +1186,7 @@ export default function OrdersPage() {
             ) : (
               <>
                 {visibleOrders.map((order, index) => (
-                  <TableRow 
+                  <TableRow
                     key={order.order_sn}
                     className={index % 2 === 0 ? 'bg-muted dark:bg-gray-800/50' : 'bg-gray-100/20 dark:bg-gray-900'}
                   >
@@ -1692,7 +1197,7 @@ export default function OrdersPage() {
                       <div className="flex items-center gap-1.5">
                         <Popover>
                           <PopoverTrigger asChild>
-                            <span 
+                            <span
                               className="cursor-pointer hover:underline hover:text-primary"
                               onClick={() => handleOrderClick(order.order_sn)}
                             >
@@ -1701,10 +1206,10 @@ export default function OrdersPage() {
                           </PopoverTrigger>
                           <PopoverContent className="w-80 p-0" align="start">
                             {selectedOrderSn && selectedOrderSn === order.order_sn && (
-                              <OrderDetails 
-                                orderSn={selectedOrderSn} 
-                                isOpen={isDetailsOpen} 
-                                onClose={handleCloseDetails} 
+                              <OrderDetails
+                                orderSn={selectedOrderSn}
+                                isOpen={isDetailsOpen}
+                                onClose={handleCloseDetails}
                               />
                             )}
                           </PopoverContent>
@@ -1724,7 +1229,7 @@ export default function OrdersPage() {
                         >
                           {order.buyer_username}
                         </button>
-                        
+
                         <ChatButton
                           shopId={order.shop_id ?? 0}
                           toId={order.buyer_user_id ?? 0}
@@ -1739,7 +1244,7 @@ export default function OrdersPage() {
                       </div>
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      {order.recalculated_total_amount !== undefined ? 
+                      {order.recalculated_total_amount !== undefined ?
                         `Rp ${Math.round(order.recalculated_total_amount).toLocaleString('id-ID')}` :
                         `Rp ${parseInt(order.total_amount).toLocaleString('id-ID')}`
                       }
@@ -1754,15 +1259,14 @@ export default function OrdersPage() {
                       {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
                     </TableCell>
                     <TableCell className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        order.order_status === 'READY_TO_SHIP' ? 'bg-green-600 text-white' :
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${order.order_status === 'READY_TO_SHIP' ? 'bg-green-600 text-white' :
                         order.order_status === 'PROCESSED' ? 'bg-blue-600 text-white' :
-                        order.order_status === 'SHIPPED' ? 'bg-indigo-600 text-white' :
-                        order.order_status === 'CANCELLED' ? 'bg-red-600 text-white' :
-                        order.order_status === 'IN_CANCEL' ? 'bg-yellow-600 text-white' :
-                        order.order_status === 'TO_RETURN' ? 'bg-purple-600 text-white' :
-                        'bg-gray-600 text-white'
-                      }`}>
+                          order.order_status === 'SHIPPED' ? 'bg-indigo-600 text-white' :
+                            order.order_status === 'CANCELLED' ? 'bg-red-600 text-white' :
+                              order.order_status === 'IN_CANCEL' ? 'bg-yellow-600 text-white' :
+                                order.order_status === 'TO_RETURN' ? 'bg-purple-600 text-white' :
+                                  'bg-gray-600 text-white'
+                        }`}>
                         {order.order_status}
                       </span>
                     </TableCell>
@@ -1783,19 +1287,18 @@ export default function OrdersPage() {
       <div ref={loadingRef} className="flex justify-center items-center p-4">
         {visibleOrders.length === 0 && !(searchLoading || isSearchLoading) && (
           <span className="text-sm text-muted-foreground">
-            {searchQuery.length >= 4 
-              ? `Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${
-                  searchType === "order_sn" ? "nomor pesanan" :
-                  searchType === "tracking_number" ? "nomor resi" :
+            {searchQuery.length >= 4
+              ? `Tidak ditemukan hasil untuk pencarian "${searchQuery}" pada ${searchType === "order_sn" ? "nomor pesanan" :
+                searchType === "tracking_number" ? "nomor resi" :
                   "username"
-                }`
+              }`
               : "Tidak ada data pesanan"}
           </span>
         )}
       </div>
 
       {/* Tambahkan komponen OrderHistory */}
-      <OrderHistory 
+      <OrderHistory
         userId={selectedUserId}
         isOpen={isOrderHistoryOpen}
         onClose={() => setIsOrderHistoryOpen(false)}

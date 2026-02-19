@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yorozuya - Shopee Seller Dashboard
 
-## Getting Started
+Dashboard terintegrasi untuk mengelola toko Shopee dengan fitur multi-shop, order processing, booking management, dan lebih banyak lagi.
 
-First, run the development server:
+## 📚 Dokumentasi
+
+Untuk memahami codebase ini, silakan baca dokumentasi berikut:
+
+### Arsitektur
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Overview arsitektur keseluruhan, layer structure, dan diagram
+
+### Workflows
+Dokumentasi step-by-step untuk setiap proses bisnis:
+
+| Workflow | Deskripsi |
+|----------|-----------|
+| [Order Processing](docs/workflows/order-processing.md) | Alur pemrosesan pesanan hingga pengiriman |
+| [Booking Management](docs/workflows/booking-management.md) | Pengelolaan COD booking orders |
+| [Token Refresh](docs/workflows/token-refresh.md) | OAuth dan manajemen token Shopee |
+| [Data Sync](docs/workflows/data-sync.md) | Sinkronisasi data dari Shopee API |
+| [Shipping Document](docs/workflows/shipping-document.md) | Pembuatan dan cetak resi |
+| [Chat & Messaging](docs/workflows/chat-messaging.md) | Chat dengan pembeli |
+| [Discounts & Promotions](docs/workflows/discounts-promotions.md) | Manajemen diskon dan flash sale |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+
+- Supabase account
+- Redis instance (Upstash recommended)
+- Shopee Partner API credentials
+
+### Installation
 
 ```bash
+# Clone repository
+git clone <repo-url>
+cd yorozuya
+
+# Install dependencies
+npm install
+
+# Setup environment
+cp .env.example .env.local
+# Edit .env.local with your credentials
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Shopee
+SHOPEE_PARTNER_ID=123456
+SHOPEE_PARTNER_KEY=abc123...
 
-## Learn More
+# Redis (Upstash)
+REDIS_URL=redis://default:xxx@xxx.upstash.io:6379
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📁 Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+yorozuya/
+├── app/
+│   ├── (auth)/          # Auth pages
+│   ├── (dashboard)/     # Dashboard pages (16 pages)
+│   ├── api/             # API routes (39 endpoints)
+│   ├── hooks/           # Custom hooks (16 hooks)
+│   └── services/        # Business logic
+├── lib/shopee/          # Shopee API client
+├── components/          # UI components
+├── contexts/            # React contexts
+├── types/               # TypeScript types
+└── utils/               # Utilities
+```
 
-## Deploy on Vercel
+Untuk detail lengkap, lihat [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Database**: Supabase (PostgreSQL)
+- **Cache**: Redis (Upstash)
+- **Auth**: Supabase Auth + Shopee OAuth
+- **Styling**: Tailwind CSS
+- **UI Components**: shadcn/ui
+
+---
+
+## 📝 License
+
+Private project - All rights reserved.
