@@ -22,6 +22,9 @@ export interface Order {
   escrow_amount_after_adjustment?: number
   items?: {
     sku: string
+    model_name: string
+    tier1_variation: string
+    item_id?: number
     quantity: number
     price: number
     total_price: number
@@ -58,7 +61,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
   const [syncingEscrow, setSyncingEscrow] = useState(false)
   const [syncType, setSyncType] = useState<'missing' | 'all' | null>(null)
   const [syncProgress, setSyncProgress] = useState({ completed: 0, total: 0 })
-  
+
   // State untuk menyimpan parameter terakhir untuk refetch
   const [lastDateRange, setLastDateRange] = useState<DateRange | undefined>(dateRange)
 
@@ -66,11 +69,11 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
   const fetchOrders = useCallback(async (dateRangeToUse: DateRange | undefined = dateRange) => {
     if (!dateRangeToUse?.from) return
-    
+
     try {
       setLoading(true)
       setError(null)
-      
+
       // Simpan parameter ini untuk refetch nanti
       setLastDateRange(dateRangeToUse)
 
@@ -126,36 +129,36 @@ export function useOrders(dateRange?: DateRange | undefined) {
       // Ubah timestamp menjadi tanggal dalam format YYYY-MM-DD
       const startDate = new Date(startTimestamp * 1000);
       const endDate = new Date(endTimestamp * 1000);
-      
+
       // Format tanggal untuk API iklan (YYYY-MM-DD)
       const startDateStr = formatDateToYYYYMMDD(startDate);
       const endDateStr = formatDateToYYYYMMDD(endDate);
-      
+
       // Debug: log tanggal input
       console.log("Input ke fetchAdsData:", startDateStr, endDateStr);
-      
+
       // Konversi format tanggal dari YYYY-MM-DD menjadi DD-MM-YYYY
       const formattedStartDate = formatDateToDDMMYYYY(startDateStr);
       const formattedEndDate = formatDateToDDMMYYYY(endDateStr);
-      
+
       // Debug: log tanggal yang dikirim ke API
       console.log("Dikirim ke API ads:", formattedStartDate, formattedEndDate);
-      
+
       // Panggil API untuk mendapatkan data iklan
       const response = await fetch(`/api/ads?start_date=${formattedStartDate}&end_date=${formattedEndDate}&_timestamp=${Date.now()}`);
-      
+
       if (!response.ok) {
         throw new Error(`Gagal mengambil data iklan`);
       }
-      
+
       const adsResult = await response.json();
-      
+
       // Debug: log hasil respons API
       console.log("Respons dari API ads:", adsResult);
       console.log("Struktur ads_data:", adsResult.ads_data);
       console.log("Tipe ads_data:", Array.isArray(adsResult.ads_data) ? "Array" : typeof adsResult.ads_data);
       console.log("Jumlah item dalam ads_data:", adsResult.ads_data ? adsResult.ads_data.length : 0);
-      
+
       // Simpan data toko jika ada
       if (adsResult && adsResult.ads_data) {
         setAdsData(adsResult.ads_data.map((ad: any) => ({
@@ -164,7 +167,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
           totalSpend: ad.raw_cost,
           cost_formatted: ad.cost
         })));
-        
+
         // Debug: log hasil konversi ads_data
         console.log("AdsData setelah konversi:", adsResult.ads_data.map((ad: any) => ({
           shopId: ad.shop_id,
@@ -173,7 +176,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
           cost_formatted: ad.cost
         })));
       }
-      
+
       // Ambil total_cost langsung dari API response
       if (adsResult && adsResult.raw_total_cost) {
         // Gunakan raw_total_cost yang sudah dalam bentuk angka
@@ -189,20 +192,20 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
   // Tambahkan fungsi helper untuk memproses batch
   const processBatch = async (
-    batch: Order[], 
+    batch: Order[],
     shopId: number,
     updateProgress: (count: number) => void
   ) => {
     const orderSns = batch.map(order => order.order_sn);
-    
+
     const response = await fetch(`/api/escrow`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         shopId: parseInt(shopId.toString()),
-        orderSns 
+        orderSns
       }),
     });
 
@@ -211,7 +214,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
     }
 
     const result = await response.json();
-    
+
     if (!result.success) {
       throw new Error(result.message || 'Gagal menyinkronkan data escrow');
     }
@@ -240,13 +243,13 @@ export function useOrders(dateRange?: DateRange | undefined) {
     processor: (chunk: T[]) => Promise<R[]>
   ): Promise<R[]> => {
     const results: R[] = [];
-    
+
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, Math.min(i + chunkSize, items.length));
       const chunkResults = await Promise.all(chunk.map(item => processor([item]).then(r => r[0])));
       results.push(...chunkResults);
     }
-    
+
     return results;
   };
 
@@ -258,11 +261,11 @@ export function useOrders(dateRange?: DateRange | undefined) {
     setSyncType(syncAll ? 'all' : 'missing');
 
     // Tentukan pesanan yang akan di-sync
-    const ordersToSync = syncAll 
-      ? orders.filter(order => 
-          order.order_status !== 'CANCELLED' && 
-          order.order_status !== 'UNPAID'
-        )
+    const ordersToSync = syncAll
+      ? orders.filter(order =>
+        order.order_status !== 'CANCELLED' &&
+        order.order_status !== 'UNPAID'
+      )
       : ordersWithoutEscrow;
 
     if (ordersToSync.length === 0) {
@@ -281,7 +284,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
       // Kelompokkan order berdasarkan shop_id
       const ordersByShop = ordersToSync.reduce((acc, order) => {
         if (!order.shop_id) return acc;
-        
+
         if (!acc[order.shop_id]) {
           acc[order.shop_id] = [];
         }
@@ -309,7 +312,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
           batches,
           4,
           async (batchChunk) => {
-            const batchPromises = batchChunk.map(batch => 
+            const batchPromises = batchChunk.map(batch =>
               processBatch(batch, parseInt(shopId), updateProgressCount)
             );
             return Promise.all(batchPromises);
@@ -318,7 +321,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
 
         // Flatten results dan update orders
         const flattenedResults = results.flat().flat(); // Double flatten karena nested arrays
-        
+
         // Update orders dengan hasil yang valid
         updatedOrders = updatedOrders.map(order => {
           const result = flattenedResults.find(r => r.order_sn === order.order_sn);
@@ -331,19 +334,19 @@ export function useOrders(dateRange?: DateRange | undefined) {
           return order;
         });
       }
-      
+
       setOrders(updatedOrders);
-      
+
       // Filter kembali pesanan yang masih belum memiliki data escrow
       const stillWithoutEscrow = updatedOrders.filter(
-        order => (order.escrow_amount_after_adjustment === undefined || 
-                 order.escrow_amount_after_adjustment === null || 
-                 order.escrow_amount_after_adjustment === 0) &&
-                 order.order_status !== 'CANCELLED' &&
-                 order.order_status !== 'UNPAID'
+        order => (order.escrow_amount_after_adjustment === undefined ||
+          order.escrow_amount_after_adjustment === null ||
+          order.escrow_amount_after_adjustment === 0) &&
+          order.order_status !== 'CANCELLED' &&
+          order.order_status !== 'UNPAID'
       );
       setOrdersWithoutEscrow(stillWithoutEscrow);
-      
+
       toast.success(`Berhasil menyinkronkan ${completed} data escrow`);
     } catch (err) {
       console.error('Error syncing escrow data:', err);

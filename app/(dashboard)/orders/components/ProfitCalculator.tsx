@@ -40,10 +40,11 @@ interface ProfitCalculatorProps {
 // Interface untuk item rincian profit
 interface ProfitDetailItem {
   sku: string
+  tier1: string
   quantity: number
   pricePerItem: number
   method: 'modal' | 'margin'
-  value: number // modal price atau margin percentage
+  value: number
   profitPerItem: number
   totalProfit: number
   shopName?: string
@@ -54,13 +55,13 @@ interface ProfitDetailItem {
 // atau di luar jika Anda ingin menggunakannya di komponen lain
 const formatCompactNumber = (number: number): string => {
   if (number < 1000) return `Rp ${Math.round(number)}`;
-  if (number < 1000000) return `Rp ${(number/1000).toFixed(1)}rb`;
-  return `Rp ${(number/1000000).toFixed(1)}jt`;
+  if (number < 1000000) return `Rp ${(number / 1000).toFixed(1)}rb`;
+  return `Rp ${(number / 1000000).toFixed(1)}jt`;
 };
 
-export default function ProfitCalculator({ 
-  orders, 
-  escrowTotal, 
+export default function ProfitCalculator({
+  orders,
+  escrowTotal,
   adsSpend,
   dateRange
 }: ProfitCalculatorProps) {
@@ -70,27 +71,27 @@ export default function ProfitCalculator({
   const [defaultMargin] = useState<number>(0.15) // 25% default margin
   const [skuProfitData, setSkuProfitData] = useState<{
     [key: string]: {
-      cost_price: number | null,
-      margin_percentage: number | null,
-      is_using_cost: boolean
+      cost_price: number | null
     }
   }>({})
   // State untuk dialog rincian
   const [showProfitDetails, setShowProfitDetails] = useState(false)
   const [profitDetails, setProfitDetails] = useState<ProfitDetailItem[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [groupedDetails, setGroupedDetails] = useState<{[key: string]: ProfitDetailItem}>({})
+  const [groupedDetails, setGroupedDetails] = useState<{ [key: string]: ProfitDetailItem }>({})
   const [dataLoaded, setDataLoaded] = useState(false)
-  const [shopProfitData, setShopProfitData] = useState<{[key: number]: {
-    shopId: number,
-    shopName: string,
-    totalEscrow: number,
-    totalProfit: number,
-    adsSpend: number,
-    netProfit: number
-  }}>({})
+  const [shopProfitData, setShopProfitData] = useState<{
+    [key: number]: {
+      shopId: number,
+      shopName: string,
+      totalEscrow: number,
+      totalProfit: number,
+      adsSpend: number,
+      netProfit: number
+    }
+  }>({})
   const [autoCalculated, setAutoCalculated] = useState(false) // Tambahkan state untuk tracking kalkulasi otomatis
-  
+
   // Fungsi untuk mengecek apakah adsSpend valid/tersedia
   const isAdsSpendAvailable = useCallback(() => {
     if (typeof adsSpend === 'number' && adsSpend > 0) return true;
@@ -107,17 +108,17 @@ export default function ProfitCalculator({
     const prefetchSkuData = async () => {
       if (orders.length > 0 && !dataLoaded) {
         const ordersWithEscrow = orders.filter(
-          order => order.escrow_amount_after_adjustment !== null && 
-                   order.escrow_amount_after_adjustment !== undefined
+          order => order.escrow_amount_after_adjustment !== null &&
+            order.escrow_amount_after_adjustment !== undefined
         );
         await fetchAllSkuData(ordersWithEscrow);
         setDataLoaded(true);
       }
     };
-    
+
     prefetchSkuData();
   }, [orders, dataLoaded]);
-  
+
   // Tambahkan useEffect baru untuk kalkulasi otomatis
   useEffect(() => {
     // Cek apakah memenuhi kondisi untuk kalkulasi otomatis
@@ -134,138 +135,164 @@ export default function ProfitCalculator({
       setAutoCalculated(true); // Tandai sudah kalkulasi otomatis
     }
   }, [dataLoaded, orders, escrowTotal, adsSpend, isCalculating, autoCalculated, isAdsSpendAvailable]);
-  
+
   // Fungsi untuk mendapatkan nilai adsSpend yang valid
   const getValidAdsSpend = (): number => {
     // Jika adsSpend adalah object dengan raw_cost
     if (adsSpend && typeof adsSpend === 'object' && 'raw_cost' in adsSpend) {
       return typeof adsSpend.raw_cost === 'number' ? adsSpend.raw_cost : 0;
     }
-    
+
     // Jika adsSpend adalah string (format rupiah)
     if (typeof adsSpend === 'string') {
       // Hapus format Rp. dan titik ribuan
       const numericValue = parseFloat(adsSpend.replace(/[^\d,]/g, '').replace(',', '.'));
       return isNaN(numericValue) ? 0 : numericValue;
     }
-    
+
     // Jika adsSpend adalah angka langsung
     return typeof adsSpend === 'number' && !isNaN(adsSpend) ? adsSpend : 0;
   };
-  
-  // Fungsi untuk mengambil semua data SKU sekaligus
+
+  // Fungsi untuk mengambil semua data HPP sekaligus dari hpp_master
   const fetchAllSkuData = async (orders: Order[]) => {
     try {
-      // Dapatkan user_id dari sesi aktif
       const { data: { user } } = await createClient().auth.getUser()
-      
+
       if (!user) {
         toast.error('Anda harus login untuk mengakses fitur ini')
         return
       }
-      
-      // Query database dengan filter user_id
+
+      // Query hpp_master
       const { data, error } = await createClient()
-        .from('sku_cost_margins')
-        .select('item_sku, cost_price, margin_percentage, is_using_cost')
-        .eq('user_id', user.id);  // Filter berdasarkan user_id
-      
+        .from('hpp_master')
+        .select('item_sku, tier1_variation, cost_price')
+        .eq('user_id', user.id);
+
       if (error) {
-        console.error('Error fetching SKU data:', error);
+        console.error('Error fetching HPP data:', error);
         return;
       }
-      
-      // Simpan data dalam bentuk object untuk pencarian cepat
-      const skuMap: {[key: string]: any} = {};
-      
-      // Buat indeks SKU untuk pencocokan case-insensitive
-      const dataIndex: {[key: string]: any} = {};
+
+      // Build lookup map keyed by "SKU|TIER1"
+      const skuMap: { [key: string]: { cost_price: number | null } } = {};
       data?.forEach(item => {
-        const normalizedSku = item.item_sku.toUpperCase();
-        dataIndex[normalizedSku] = item;
+        const key = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+        skuMap[key] = { cost_price: item.cost_price };
       });
-      
-      // Petakan data ke setiap varian SKU
-      orders.forEach(order => {
-        if (order.items && order.items.length > 0) {
-          order.items.forEach(item => {
-            const normalizedSku = item.sku.toUpperCase();
-            if (!skuMap[normalizedSku]) {
-              skuMap[normalizedSku] = {
-                cost_price: null,
-                margin_percentage: defaultMargin,
-                is_using_cost: false
-              };
-            }
-            if (!dataIndex[normalizedSku]) {
-              dataIndex[normalizedSku] = {
-                cost_price: null,
-                margin_percentage: defaultMargin,
-                is_using_cost: false
-              };
-            }
-            skuMap[normalizedSku] = {
-              ...dataIndex[normalizedSku],
-              cost_price: dataIndex[normalizedSku].cost_price,
-              margin_percentage: dataIndex[normalizedSku].margin_percentage,
-              is_using_cost: dataIndex[normalizedSku].is_using_cost
-            };
-          });
-        }
-      });
-      
+
       setSkuProfitData(skuMap);
-      
+
+      // Detect missing SKUs/tier1s and trigger sync
+      await syncMissingSkus(orders, skuMap, user.id);
+
     } catch (error) {
       console.error('Error in fetchAllSkuData:', error);
     }
   };
-  
-  // Ubah getSkuProfitData untuk menggunakan data dari state dengan fallback yang lebih baik
-  const getSkuProfitData = (sku: string): { 
-    cost_price: number | null, 
-    margin_percentage: number | null, 
-    is_using_cost: boolean 
-  } => {
-    // Coba cari dengan case yang sama persis
-    if (skuProfitData[sku]) {
-      return skuProfitData[sku];
+
+  // Sync missing SKU variations from Shopee API
+  const syncMissingSkus = async (
+    orders: Order[],
+    currentMap: { [key: string]: any },
+    userId: string
+  ) => {
+    // Collect SKUs that are in orders but not in hpp_master
+    const missingSkus = new Map<string, { sku: string, shop_id: number, item_id: number }>();
+
+    for (const order of orders) {
+      if (!order.items || !order.shop_id) continue;
+      for (const item of order.items) {
+        const key = `${item.sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+        if (!currentMap[key] && item.item_id) {
+          // Use SKU as dedup key (only need to sync once per SKU)
+          const skuKey = item.sku.toUpperCase();
+          if (!missingSkus.has(skuKey)) {
+            missingSkus.set(skuKey, {
+              sku: item.sku,
+              shop_id: order.shop_id,
+              item_id: item.item_id
+            });
+          }
+        }
+      }
     }
-    
-    // Coba cari dengan case insensitive
-    const normalizedSku = sku.toUpperCase();
-    const matchingKey = Object.keys(skuProfitData).find(
-      key => key.toUpperCase() === normalizedSku
-    );
-    
-    if (matchingKey && skuProfitData[matchingKey]) {
-      return skuProfitData[matchingKey];
+
+    if (missingSkus.size === 0) return;
+
+    try {
+      const response = await fetch('/api/hpp/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skus: Array.from(missingSkus.values()) })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.inserted > 0) {
+          console.log(`Synced ${result.inserted} new SKU variations`);
+          // Refetch HPP data after sync
+          const { data: newData } = await createClient()
+            .from('hpp_master')
+            .select('item_sku, tier1_variation, cost_price')
+            .eq('user_id', userId);
+
+          if (newData) {
+            const newMap: { [key: string]: { cost_price: number | null } } = {};
+            newData.forEach(item => {
+              const k = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+              newMap[k] = { cost_price: item.cost_price };
+            });
+            setSkuProfitData(newMap);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error syncing missing SKUs:', err);
     }
-    
-    // Fallback ke default
-    return {
-      cost_price: null,
-      margin_percentage: defaultMargin,
-      is_using_cost: false
-    };
   };
-  
-  // Fungsi calculateOrderProfit yang dioptimasi
+
+  // Lookup HPP data with priority: exact SKU+tier1 → fallback SKU only → default
+  const getSkuProfitData = (sku: string, tier1: string = ''): {
+    cost_price: number | null
+  } => {
+    const normalizedSku = sku.toUpperCase();
+    const normalizedTier1 = tier1.toUpperCase().trim();
+
+    // 1. Exact match: SKU + tier1
+    const exactKey = `${normalizedSku}|${normalizedTier1}`;
+    if (skuProfitData[exactKey]?.cost_price !== undefined) {
+      return skuProfitData[exactKey];
+    }
+
+    // 2. Fallback: any entry for this SKU that has cost_price set
+    const fallbackEntry = Object.entries(skuProfitData).find(
+      ([key, val]) => key.startsWith(`${normalizedSku}|`) && val.cost_price !== null && val.cost_price > 0
+    );
+    if (fallbackEntry) {
+      return fallbackEntry[1];
+    }
+
+    // 3. Default
+    return { cost_price: null };
+  };
+
+  // Fungsi calculateOrderProfit — sekarang matching per tier1 variation
   const calculateOrderProfit = (order: Order): { profit: number, details: ProfitDetailItem[] } => {
-    // Validasi escrow amount
-    if (!order.escrow_amount_after_adjustment || 
-        order.escrow_amount_after_adjustment <= 0) {
+    if (!order.escrow_amount_after_adjustment ||
+      order.escrow_amount_after_adjustment <= 0) {
       return { profit: 0, details: [] };
     }
 
     const escrowAmount = order.escrow_amount_after_adjustment;
 
-    // Jika tidak ada items atau sku_qty, gunakan default margin
     if (!order.items || order.items.length === 0) {
-      return { 
-        profit: escrowAmount * defaultMargin, 
+      return {
+        profit: escrowAmount * defaultMargin,
         details: [{
           sku: 'Unknown',
+          tier1: '',
           quantity: 1,
           pricePerItem: escrowAmount,
           method: 'margin' as const,
@@ -278,45 +305,37 @@ export default function ProfitCalculator({
       };
     }
 
-    // Hitung total harga dari items untuk proporsi escrow
     const totalOrderPrice = order.items.reduce((sum, item) => sum + item.total_price, 0);
     let totalProfit = 0;
     const details: ProfitDetailItem[] = [];
 
-    // Proses setiap item
     for (const item of order.items) {
-      // Hitung proporsi escrow untuk item ini
       const itemEscrowProportion = item.total_price / totalOrderPrice;
       const itemEscrow = escrowAmount * itemEscrowProportion;
-      
-      // Ambil data profit untuk SKU ini
-      const { cost_price, margin_percentage, is_using_cost } = getSkuProfitData(item.sku);
-      
+
+      // Lookup HPP by SKU + tier1
+      const { cost_price } = getSkuProfitData(item.sku, item.tier1_variation || '');
+
       let profitPerItem = 0;
       let method: 'modal' | 'margin';
       let value = defaultMargin;
 
-      // Hitung profit berdasarkan metode
       if (cost_price !== null && cost_price > 0) {
-        // Metode Modal
         method = 'modal';
         value = cost_price;
         profitPerItem = Math.max(0, (itemEscrow / item.quantity) - cost_price);
       } else {
-        // Metode Margin (termasuk fallback)
         method = 'margin';
-        value = margin_percentage !== null && margin_percentage > 0 
-          ? margin_percentage 
-          : defaultMargin;
+        value = defaultMargin;
         profitPerItem = (itemEscrow / item.quantity) * value;
       }
 
       const itemTotalProfit = profitPerItem * item.quantity;
       totalProfit += itemTotalProfit;
 
-      // Tambahkan detail item
       details.push({
         sku: item.sku,
+        tier1: item.tier1_variation || '',
         quantity: item.quantity,
         pricePerItem: itemEscrow / item.quantity,
         method,
@@ -330,51 +349,52 @@ export default function ProfitCalculator({
 
     return { profit: totalProfit, details };
   };
-  
+
   // Fungsi calculateTotalProfit tetap sama, tapi sekarang menggunakan calculateOrderProfit yang dioptimasi
   const calculateTotalProfit = async () => {
     if (orders.length === 0) return;
-    
+
     setIsCalculating(true);
     setProfitDetails([]);
-    
+
     try {
       const { data: { user } } = await createClient().auth.getUser();
-      
+
       if (!user) {
         toast.error('Anda harus login untuk menghitung profit');
         setIsCalculating(false);
         return;
       }
-      
+
       await fetchAllSkuData(orders);
       setDataLoaded(true);
-      
+
       let profit = 0;
       let allDetails: ProfitDetailItem[] = [];
-      
+
       // Proses setiap order
       for (const order of orders) {
         const result = calculateOrderProfit(order);
         profit += result.profit;
         allDetails = [...allDetails, ...result.details];
       }
-      
+
       // Dapatkan nilai adsSpend yang valid
       const validAdsSpend = getValidAdsSpend();
       const profitAfterAds = profit - validAdsSpend;
-      
+
       setTotalProfit(profitAfterAds);
       setLastCalcTime(new Date());
       setProfitDetails(allDetails);
-      
-      // Buat data yang dikelompokkan berdasarkan SKU
-      const grouped: {[key: string]: ProfitDetailItem} = {};
+
+      // Buat data yang dikelompokkan berdasarkan SKU + tier1
+      const grouped: { [key: string]: ProfitDetailItem } = {};
       allDetails.forEach(detail => {
-        const key = detail.sku;
+        const key = `${detail.sku}|${detail.tier1 || ''}`;
         if (!grouped[key]) {
           grouped[key] = {
             sku: detail.sku,
+            tier1: detail.tier1 || '',
             quantity: detail.quantity,
             pricePerItem: detail.pricePerItem * detail.quantity,
             method: detail.method,
@@ -388,25 +408,27 @@ export default function ProfitCalculator({
           grouped[key].totalProfit += detail.totalProfit;
         }
       });
-      
+
       // Hitungkan rata-rata untuk harga per item
       Object.keys(grouped).forEach(key => {
         grouped[key].pricePerItem = grouped[key].pricePerItem / grouped[key].quantity;
         grouped[key].profitPerItem = grouped[key].totalProfit / grouped[key].quantity;
       });
-      
+
       setGroupedDetails(grouped);
-      
+
       // Hitung profit per toko
-      const shopProfits: {[key: number]: {
-        shopId: number,
-        shopName: string,
-        totalEscrow: number,
-        totalProfit: number,
-        adsSpend: number,
-        netProfit: number
-      }} = {};
-      
+      const shopProfits: {
+        [key: number]: {
+          shopId: number,
+          shopName: string,
+          totalEscrow: number,
+          totalProfit: number,
+          adsSpend: number,
+          netProfit: number
+        }
+      } = {};
+
       // Inisialisasi data toko dari props adsSpend
       if (typeof adsSpend === 'object') {
         // Jika data dalam bentuk Array
@@ -441,19 +463,19 @@ export default function ProfitCalculator({
           });
         }
       }
-      
+
       console.log("Data adsSpend yang diterima:", adsSpend);
       console.log("Struktur adsSpend:", typeof adsSpend, adsSpend);
-      
+
       console.log("Shop profit data setelah inisialisasi:", shopProfits);
-      
+
       // Kalkulasi profit dari orders per toko
       for (const order of orders) {
         if (!order.shop_id) continue;
-        
+
         const result = calculateOrderProfit(order);
         const escrowAmount = order.escrow_amount_after_adjustment || 0;
-        
+
         // Tambahkan atau perbarui data toko
         if (!shopProfits[order.shop_id]) {
           shopProfits[order.shop_id] = {
@@ -468,13 +490,13 @@ export default function ProfitCalculator({
           shopProfits[order.shop_id].totalEscrow += escrowAmount;
           shopProfits[order.shop_id].totalProfit += result.profit;
           // Hitung ulang net profit
-          shopProfits[order.shop_id].netProfit = 
+          shopProfits[order.shop_id].netProfit =
             shopProfits[order.shop_id].totalProfit - shopProfits[order.shop_id].adsSpend;
         }
       }
-      
+
       setShopProfitData(shopProfits);
-      
+
     } catch (error) {
       console.error('Error calculating profit:', error);
       toast.error('Gagal menghitung profit');
@@ -482,35 +504,41 @@ export default function ProfitCalculator({
       setIsCalculating(false);
     }
   };
-  
+
   // Hitung margin quick estimate dari escrow dan total profit
-  const estimatedMargin = totalProfit && escrowTotal 
-    ? (totalProfit / escrowTotal * 100).toFixed(1) 
+  const estimatedMargin = totalProfit && escrowTotal
+    ? (totalProfit / escrowTotal * 100).toFixed(1)
     : '-';
-  
+
   // Filter hasil rincian berdasarkan search term
-  const filteredDetails = profitDetails.filter(detail => 
+  const filteredDetails = profitDetails.filter(detail =>
     detail.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (detail.tier1 && detail.tier1.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (detail.shopName && detail.shopName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-  
+
   const filteredGroupedDetails = Object.entries(groupedDetails)
-    .filter(([sku]) => sku.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(([key, val]) => {
+      const searchLower = searchTerm.toLowerCase();
+      return key.toLowerCase().includes(searchLower) ||
+        val.sku.toLowerCase().includes(searchLower) ||
+        (val.tier1 && val.tier1.toLowerCase().includes(searchLower));
+    })
     .reduce((obj, [key, value]) => {
       obj[key] = value;
       return obj;
-    }, {} as {[key: string]: ProfitDetailItem});
-  
+    }, {} as { [key: string]: ProfitDetailItem });
+
   // Fungsi untuk mengurutkan data berdasarkan kolom
-  const sortByTotalProfit = (a: ProfitDetailItem, b: ProfitDetailItem) => 
+  const sortByTotalProfit = (a: ProfitDetailItem, b: ProfitDetailItem) =>
     b.totalProfit - a.totalProfit;
-  
+
   const windowWidth = window.innerWidth;
-  
+
   useEffect(() => {
     console.log("ProfitCalculator menerima adsSpend:", adsSpend);
   }, [adsSpend]);
-  
+
   return (
     <Card className="bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 h-full">
       <div className="p-3">
@@ -530,7 +558,7 @@ export default function ProfitCalculator({
                   calculateTotalProfit={calculateTotalProfit}
                   dateRange={dateRange}
                 />
-                
+
                 <Button
                   variant="outline"
                   size="icon"
@@ -545,7 +573,7 @@ export default function ProfitCalculator({
                     <RefreshCw className="h-3 w-3" />
                   )}
                 </Button>
-                
+
                 <Dialog open={showProfitDetails} onOpenChange={setShowProfitDetails}>
                   <DialogTrigger asChild>
                     <Button
@@ -558,21 +586,21 @@ export default function ProfitCalculator({
                       <List className="h-3 w-3" />
                     </Button>
                   </DialogTrigger>
-                  
+
                   <DialogContent className="sm:max-w-[900px] max-h-[80vh] flex flex-col w-[95vw] p-2 sm:p-4 overflow-hidden">
                     <DialogHeader className="pb-1 pr-2 mb-1">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <DialogTitle className="text-lg">Rincian Profit</DialogTitle>
                       </div>
                     </DialogHeader>
-                    
+
                     <Tabs defaultValue="sku" className="w-full overflow-hidden">
                       <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 mb-2">
                         <TabsList>
                           <TabsTrigger value="sku">Per SKU</TabsTrigger>
                           <TabsTrigger value="shop">Per Toko</TabsTrigger>
                         </TabsList>
-                        
+
                         <div className="flex items-center gap-2 w-full sm:w-auto">
                           <div className="relative flex-1">
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -594,7 +622,7 @@ export default function ProfitCalculator({
                           </Button>
                         </div>
                       </div>
-                      
+
                       <TabsContent value="sku">
                         {/* Konten tab SKU yang sudah ada */}
                         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -609,7 +637,7 @@ export default function ProfitCalculator({
                               )).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-green-800 dark:text-green-300">Laba Kotor</h3>
@@ -621,7 +649,7 @@ export default function ProfitCalculator({
                               )).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-red-800 dark:text-red-300">Biaya Iklan</h3>
@@ -631,7 +659,7 @@ export default function ProfitCalculator({
                               Rp {Math.round(getValidAdsSpend()).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-purple-800 dark:text-purple-300">Total Profit</h3>
@@ -644,7 +672,7 @@ export default function ProfitCalculator({
                             </p>
                           </div>
                         </div>
-                        
+
                         <ScrollArea className="flex-1 overflow-y-auto pr-0 sm:pr-4 min-h-[200px] max-h-[50vh] mb-4">
                           <div className="overflow-x-auto mb-4">
                             <Table className="w-full">
@@ -663,79 +691,82 @@ export default function ProfitCalculator({
                                   .sort(([, a], [, b]) => b.totalProfit - a.totalProfit)
                                   .slice(0, windowWidth < 768 ? 10 : undefined)
                                   .map(([sku, detail], index) => (
-                                  <TableRow key={sku} className={index % 2 === 0 ? 'bg-muted/30' : ''}>
-                                    <TableCell className="py-1 text-center font-medium px-1">{index + 1}</TableCell>
-                                    {/* SKU - Untuk mobile dan desktop */}
-                                    <TableCell className="py-1 font-mono text-xs px-1">
-                                      <div className="flex flex-col">
-                                        <span className="truncate max-w-[150px]">{detail.sku}</span>
-                                        {/* Harga per item hanya ditampilkan di mobile */}
-                                        <span className="sm:hidden text-xs text-muted-foreground mt-0.5">
+                                    <TableRow key={sku} className={index % 2 === 0 ? 'bg-muted/30' : ''}>
+                                      <TableCell className="py-1 text-center font-medium px-1">{index + 1}</TableCell>
+                                      {/* SKU - Untuk mobile dan desktop */}
+                                      <TableCell className="py-1 font-mono text-xs px-1">
+                                        <div className="flex flex-col">
+                                          <span className="truncate max-w-[150px]">{detail.sku}</span>
+                                          {detail.tier1 && (
+                                            <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">
+                                              {detail.tier1}
+                                            </span>
+                                          )}
+                                          {/* Harga per item hanya ditampilkan di mobile */}
+                                          <span className="sm:hidden text-xs text-muted-foreground mt-0.5">
+                                            Rp {Math.round(detail.pricePerItem).toLocaleString('id-ID')}
+                                          </span>
+                                        </div>
+                                      </TableCell>
+
+                                      {/* Quantity - Untuk mobile dan desktop */}
+                                      <TableCell className="py-1 text-center font-medium px-1">{detail.quantity}</TableCell>
+
+                                      {/* Metode - Hanya untuk desktop */}
+                                      <TableCell className="hidden sm:table-cell py-1 px-1">
+                                        <div className="flex items-center space-x-2">
+                                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${detail.method === 'modal'
+                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                            }`}>
+                                            {detail.method === 'modal' ? 'Modal' : 'Margin'}
+                                          </span>
+                                          <span className="text-sm">
+                                            {detail.method === 'modal'
+                                              ? `Rp ${detail.value?.toLocaleString('id-ID') || '-'}`
+                                              : `${(detail.value * 100).toFixed(1)}%`
+                                            }
+                                          </span>
+                                        </div>
+                                      </TableCell>
+
+                                      {/* Harga rata-rata per item - Hanya untuk desktop */}
+                                      <TableCell className="hidden sm:table-cell py-1 text-right px-1">
+                                        <span className="text-sm">
                                           Rp {Math.round(detail.pricePerItem).toLocaleString('id-ID')}
                                         </span>
-                                      </div>
-                                    </TableCell>
-                                    
-                                    {/* Quantity - Untuk mobile dan desktop */}
-                                    <TableCell className="py-1 text-center font-medium px-1">{detail.quantity}</TableCell>
-                                    
-                                    {/* Metode - Hanya untuk desktop */}
-                                    <TableCell className="hidden sm:table-cell py-1 px-1">
-                                      <div className="flex items-center space-x-2">
-                                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                                          detail.method === 'modal' 
-                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' 
+                                      </TableCell>
+
+                                      {/* Profit - Untuk mobile dan desktop */}
+                                      <TableCell className="py-0.5 sm:py-1 text-right px-0.5 sm:px-1">
+                                        <div className="flex flex-col items-end">
+                                          {/* Label metode dan nilainya hanya di mobile */}
+                                          <span className={`sm:hidden px-1 py-0.5 rounded-full text-[10px] font-medium ${detail.method === 'modal'
+                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                                             : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                                        }`}>
-                                          {detail.method === 'modal' ? 'Modal' : 'Margin'}
-                                        </span>
-                                        <span className="text-sm">
-                                          {detail.method === 'modal' 
-                                            ? `Rp ${detail.value?.toLocaleString('id-ID') || '-'}`
-                                            : `${(detail.value * 100).toFixed(1)}%`
-                                          }
-                                        </span>
-                                      </div>
-                                    </TableCell>
-                                    
-                                    {/* Harga rata-rata per item - Hanya untuk desktop */}
-                                    <TableCell className="hidden sm:table-cell py-1 text-right px-1">
-                                      <span className="text-sm">
-                                        Rp {Math.round(detail.pricePerItem).toLocaleString('id-ID')}
-                                      </span>
-                                    </TableCell>
-                                    
-                                    {/* Profit - Untuk mobile dan desktop */}
-                                    <TableCell className="py-0.5 sm:py-1 text-right px-0.5 sm:px-1">
-                                      <div className="flex flex-col items-end">
-                                        {/* Label metode dan nilainya hanya di mobile */}
-                                        <span className={`sm:hidden px-1 py-0.5 rounded-full text-[10px] font-medium ${
-                                          detail.method === 'modal' 
-                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' 
-                                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                                        }`}>
-                                          {detail.method === 'modal' ? 'Modal' : 'Margin'}
-                                        </span>
-                                        <span className="sm:hidden text-xs mt-0.5">
-                                          {detail.method === 'modal' 
-                                            ? `Rp ${detail.value?.toLocaleString('id-ID') || '-'}`
-                                            : `${(detail.value * 100).toFixed(1)}%`
-                                          }
-                                        </span>
-                                        {/* Nilai profit selalu ditampilkan */}
-                                        <span className={`text-sm font-medium mt-0.5 ${detail.totalProfit > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                                          Rp {Math.round(detail.totalProfit).toLocaleString('id-ID')}
-                                        </span>
-                                      </div>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                            }`}>
+                                            {detail.method === 'modal' ? 'Modal' : 'Margin'}
+                                          </span>
+                                          <span className="sm:hidden text-xs mt-0.5">
+                                            {detail.method === 'modal'
+                                              ? `Rp ${detail.value?.toLocaleString('id-ID') || '-'}`
+                                              : `${(detail.value * 100).toFixed(1)}%`
+                                            }
+                                          </span>
+                                          {/* Nilai profit selalu ditampilkan */}
+                                          <span className={`text-sm font-medium mt-0.5 ${detail.totalProfit > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                                            Rp {Math.round(detail.totalProfit).toLocaleString('id-ID')}
+                                          </span>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
                               </TableBody>
                             </Table>
                           </div>
                         </ScrollArea>
                       </TabsContent>
-                      
+
                       <TabsContent value="shop">
                         {/* Ringkasan statistik untuk tab toko */}
                         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -750,7 +781,7 @@ export default function ProfitCalculator({
                               )).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-green-800 dark:text-green-300">Laba Kotor</h3>
@@ -762,7 +793,7 @@ export default function ProfitCalculator({
                               )).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-red-800 dark:text-red-300">Biaya Iklan</h3>
@@ -774,7 +805,7 @@ export default function ProfitCalculator({
                               )).toLocaleString('id-ID')}
                             </p>
                           </div>
-                          
+
                           <div className="rounded-lg border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20 p-2 shadow-sm">
                             <div className="flex items-center justify-between mb-0.5">
                               <h3 className="text-xs font-medium text-purple-800 dark:text-purple-300">Total Profit</h3>
@@ -787,7 +818,7 @@ export default function ProfitCalculator({
                             </p>
                           </div>
                         </div>
-                        
+
                         <ScrollArea className="flex-1 overflow-y-auto pr-0 sm:pr-4 min-h-[200px] max-h-[50vh] mb-4">
                           <div className="overflow-x-auto mb-4">
                             {/* Versi desktop - tabel normal */}
@@ -807,67 +838,67 @@ export default function ProfitCalculator({
                                   {Object.entries(shopProfitData).length === 0 ? (
                                     <TableRow>
                                       <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-sm">
-                                        {searchTerm 
+                                        {searchTerm
                                           ? `Tidak ada toko yang cocok dengan pencarian "${searchTerm}"`
                                           : 'Belum ada data profit. Klik tombol "Hitung Profit" untuk mulai.'}
                                       </TableCell>
                                     </TableRow>
                                   ) : (
                                     Object.values(shopProfitData)
-                                      .filter(shop => 
+                                      .filter(shop =>
                                         shop.shopName.toLowerCase().includes(searchTerm.toLowerCase())
                                       )
                                       .sort((a, b) => b.netProfit - a.netProfit) // Urutkan berdasarkan netProfit
                                       .map((shop, index) => (
-                                      <TableRow key={shop.shopId} className={index % 2 === 0 ? 'bg-muted/30' : 'hover:bg-muted/20'}>
-                                        <TableCell className="py-1.5 text-center font-medium px-1">{index + 1}</TableCell>
-                                        <TableCell className="py-1.5 px-2">
-                                          <div className="flex flex-col">
-                                            <span className="truncate max-w-[250px] font-medium text-primary">
-                                              {shop.shopName}
+                                        <TableRow key={shop.shopId} className={index % 2 === 0 ? 'bg-muted/30' : 'hover:bg-muted/20'}>
+                                          <TableCell className="py-1.5 text-center font-medium px-1">{index + 1}</TableCell>
+                                          <TableCell className="py-1.5 px-2">
+                                            <div className="flex flex-col">
+                                              <span className="truncate max-w-[250px] font-medium text-primary">
+                                                {shop.shopName}
+                                              </span>
+                                              <span className="text-xs text-muted-foreground">ID: {shop.shopId}</span>
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="py-1.5 text-right px-2">
+                                            <span className="text-sm font-medium">
+                                              Rp {Math.round(shop.totalEscrow).toLocaleString('id-ID')}
                                             </span>
-                                            <span className="text-xs text-muted-foreground">ID: {shop.shopId}</span>
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="py-1.5 text-right px-2">
-                                          <span className="text-sm font-medium">
-                                            Rp {Math.round(shop.totalEscrow).toLocaleString('id-ID')}
-                                          </span>
-                                          <div className="text-xs text-muted-foreground">
-                                            {(shop.totalEscrow / escrowTotal * 100).toFixed(1)}% dari total
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="py-1.5 text-right px-2">
-                                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                                            Rp {Math.round(shop.totalProfit).toLocaleString('id-ID')}
-                                          </span>
-                                          <div className="text-xs text-muted-foreground">
-                                            {(shop.totalProfit / shop.totalEscrow * 100).toFixed(1)}% margin
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="py-1.5 text-right px-2">
-                                          <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                                            Rp {Math.round(shop.adsSpend).toLocaleString('id-ID')}
-                                          </span>
-                                          <div className="text-xs text-muted-foreground">
-                                            {shop.totalProfit > 0 ? (shop.adsSpend / shop.totalProfit * 100).toFixed(1) : '0'}% dari laba
-                                          </div>
-                                        </TableCell>
-                                        <TableCell className="py-1.5 text-right px-2">
-                                          <span className={`text-sm font-bold ${shop.netProfit >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                                            Rp {Math.round(shop.netProfit).toLocaleString('id-ID')}
-                                          </span>
-                                          <div className="text-xs text-muted-foreground">
-                                            {shop.totalEscrow > 0 ? (shop.netProfit / shop.totalEscrow * 100).toFixed(1) : '0'}% ROI
-                                          </div>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))
+                                            <div className="text-xs text-muted-foreground">
+                                              {(shop.totalEscrow / escrowTotal * 100).toFixed(1)}% dari total
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="py-1.5 text-right px-2">
+                                            <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                                              Rp {Math.round(shop.totalProfit).toLocaleString('id-ID')}
+                                            </span>
+                                            <div className="text-xs text-muted-foreground">
+                                              {(shop.totalProfit / shop.totalEscrow * 100).toFixed(1)}% margin
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="py-1.5 text-right px-2">
+                                            <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                                              Rp {Math.round(shop.adsSpend).toLocaleString('id-ID')}
+                                            </span>
+                                            <div className="text-xs text-muted-foreground">
+                                              {shop.totalProfit > 0 ? (shop.adsSpend / shop.totalProfit * 100).toFixed(1) : '0'}% dari laba
+                                            </div>
+                                          </TableCell>
+                                          <TableCell className="py-1.5 text-right px-2">
+                                            <span className={`text-sm font-bold ${shop.netProfit >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                                              Rp {Math.round(shop.netProfit).toLocaleString('id-ID')}
+                                            </span>
+                                            <div className="text-xs text-muted-foreground">
+                                              {shop.totalEscrow > 0 ? (shop.netProfit / shop.totalEscrow * 100).toFixed(1) : '0'}% ROI
+                                            </div>
+                                          </TableCell>
+                                        </TableRow>
+                                      ))
                                   )}
                                 </TableBody>
                               </Table>
                             </div>
-                            
+
                             {/* Versi mobile - tampilan kartu */}
                             <div className="sm:hidden mb-11">
                               {Object.values(shopProfitData)
@@ -902,7 +933,7 @@ export default function ProfitCalculator({
                         </ScrollArea>
                       </TabsContent>
                     </Tabs>
-                    
+
                     <DialogFooter className="pt-1 border-t mt-1">
                       <div className="w-full flex items-center justify-between">
                         <div className="flex items-center text-xs text-muted-foreground gap-1">
@@ -923,8 +954,8 @@ export default function ProfitCalculator({
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-                
-                <ProfitabilitySettingsDialog 
+
+                <ProfitabilitySettingsDialog
                   onChange={() => { /* do not immediately trigger calculation - user can click refresh button */ }}
                 />
               </div>
@@ -932,10 +963,10 @@ export default function ProfitCalculator({
           </div>
           <div className="flex items-center justify-between">
             <p className="text-xl font-bold text-teal-700 dark:text-teal-400 truncate pr-2">
-              Rp {isCalculating 
-                  ? "Menghitung..." 
-                  : Math.max(0, totalProfit).toLocaleString('id-ID')
-                }
+              Rp {isCalculating
+                ? "Menghitung..."
+                : Math.max(0, totalProfit).toLocaleString('id-ID')
+              }
             </p>
             <div className="p-1.5 rounded-lg bg-teal-100 dark:bg-teal-800/40 flex-shrink-0">
               <Wallet className="w-4 h-4 text-teal-600 dark:text-teal-400" />

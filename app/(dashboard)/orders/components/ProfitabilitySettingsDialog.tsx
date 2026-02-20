@@ -1,12 +1,11 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RefreshCw, Search, Save, X } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RefreshCw, Search, Check, X, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,12 +13,20 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose,
   DialogFooter
 } from "@/components/ui/dialog"
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Calculator } from 'lucide-react'
-import { Card, CardContent, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+
+interface HppItem {
+  id: number
+  item_sku: string
+  tier1_variation: string
+  cost_price: number | null
+  created_at: string
+  updated_at: string
+}
 
 interface ProfitabilitySettingsDialogProps {
   defaultOpen?: boolean
@@ -28,527 +35,552 @@ interface ProfitabilitySettingsDialogProps {
   onChange?: () => void
 }
 
-export default function ProfitabilitySettingsDialog({ 
+export default function ProfitabilitySettingsDialog({
   defaultOpen = false,
   onSettingsChange,
   onOpenChange
 }: ProfitabilitySettingsDialogProps) {
   const [open, setOpen] = useState(defaultOpen)
-  const [skus, setSkus] = useState<any[]>([])
-  const [allSkus, setAllSkus] = useState<any[]>([]) // Menyimpan semua data SKU
+  const [hppData, setHppData] = useState<HppItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [activeTab, setActiveTab] = useState('all')
-  
-  // Tambahkan state untuk kalkulator margin
+
+  // Checkbox & bulk
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkCostPrice, setBulkCostPrice] = useState<string>('')
+  const [dirtyIds, setDirtyIds] = useState<Set<number>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  // Expanded SKU groups (default = all collapsed)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  // Kalkulator
   const [receivedAmount, setReceivedAmount] = useState<string>('')
   const [costAmount, setCostAmount] = useState<string>('')
   const [adminFee, setAdminFee] = useState<string>('12')
   const [escrowFee, setEscrowFee] = useState<string>('')
   const [calculatedMargin, setCalculatedMargin] = useState<string>('')
   const [netProfit, setNetProfit] = useState<string>('')
-  
-  // Fungsi untuk menghitung margin dan laba bersih
+
   const calculateMargin = () => {
     if (!receivedAmount || !costAmount) return
-    
     const received = parseFloat(receivedAmount)
     const cost = parseFloat(costAmount)
     const escrow = parseFloat(escrowFee) || 0
-    
     if (cost <= 0 || received <= 0) return
-    
-    // Hitung laba bersih
-    const profit = escrow - cost
-    setNetProfit(profit.toFixed(0))
-    
-    // Margin dihitung dari escrow dan modal
-    // Rumus: (escrow - modal) / escrow * 100
+    setNetProfit((escrow - cost).toFixed(0))
     const margin = ((escrow - cost) / escrow) * 100
-    
-    if (margin < 0) {
-      setCalculatedMargin('0.00') // Hindari margin negatif
-      return
-    }
-    
-    setCalculatedMargin(margin.toFixed(2))
+    setCalculatedMargin(margin < 0 ? '0.00' : margin.toFixed(2))
   }
-  
-  // Fungsi untuk menghitung escrow berdasarkan biaya admin
+
   const calculateEscrow = (price: string, adminPercent: string) => {
-    if (!price || !adminPercent) {
-      setEscrowFee('')
-      return
-    }
-    const priceValue = parseFloat(price)
-    const adminPercentValue = parseFloat(adminPercent)
-    
-    if (isNaN(priceValue) || isNaN(adminPercentValue) || priceValue <= 0 || adminPercentValue <= 0) {
-      setEscrowFee('')
-      return
-    }
-    
-    // Hitung biaya admin dalam rupiah
-    const adminFeeValue = priceValue * (adminPercentValue / 100)
-    // Escrow adalah harga jual dikurangi biaya admin
-    const escrowFeeValue = priceValue - adminFeeValue
-    
-    setEscrowFee(escrowFeeValue.toFixed(0))
+    if (!price || !adminPercent) { setEscrowFee(''); return }
+    const p = parseFloat(price), a = parseFloat(adminPercent)
+    if (isNaN(p) || isNaN(a) || p <= 0 || a <= 0) { setEscrowFee(''); return }
+    setEscrowFee((p - p * (a / 100)).toFixed(0))
   }
-  
-  // Gunakan useEffect dengan debounce untuk perhitungan margin yang lebih konsisten
+
   useEffect(() => {
-    const debounceTimeout = setTimeout(() => {
-      calculateMargin()
-    }, 300) // Tunggu 300ms setelah perubahan terakhir
-    
-    return () => {
-      clearTimeout(debounceTimeout)
-    }
+    const t = setTimeout(calculateMargin, 300)
+    return () => clearTimeout(t)
   }, [receivedAmount, costAmount, escrowFee])
-  
-  // Effect untuk menghitung escrow saat harga jual atau biaya admin berubah
-  useEffect(() => {
-    calculateEscrow(receivedAmount, adminFee)
-  }, [receivedAmount, adminFee])
-  
-  // Fungsi untuk mengambil data dari database
-  const fetchSkus = async () => {
+
+  useEffect(() => { calculateEscrow(receivedAmount, adminFee) }, [receivedAmount, adminFee])
+
+  // === Data Fetching ===
+  const fetchHppData = async () => {
     setLoading(true)
     try {
-      // Dapatkan user_id dari sesi aktif
       const { data: { user } } = await createClient().auth.getUser()
-      
-      if (!user) {
-        toast.error('Anda harus login untuk mengakses fitur ini')
-        return
-      }
-      
+      if (!user) { toast.error('Anda harus login'); return }
+
       let query = createClient()
-        .from('sku_cost_margins')
+        .from('hpp_master')
         .select('*')
-        .eq('user_id', user.id) // Filter berdasarkan user_id
+        .eq('user_id', user.id)
         .order('item_sku', { ascending: true })
-      
+        .order('tier1_variation', { ascending: true })
+
       if (searchTerm) {
-        query = query.ilike('item_sku', `%${searchTerm}%`)
+        query = query.or(`item_sku.ilike.%${searchTerm}%,tier1_variation.ilike.%${searchTerm}%`)
       }
-      
-      const { data, error } = await query.limit(100)
-      
+
+      const { data, error } = await query.limit(500)
       if (error) throw error
-      
-      setAllSkus(data || [])
-      filterSkusByActiveTab(data || [])
+
+      setHppData(data || [])
+      setSelectedIds(new Set())
+      setDirtyIds(new Set())
     } catch (error) {
-      console.error('Error fetching SKUs:', error)
-      toast.error('Gagal mengambil data SKU')
+      console.error('Error fetching HPP data:', error)
+      toast.error('Gagal mengambil data HPP')
     } finally {
       setLoading(false)
     }
   }
-  
-  // Fungsi untuk filter data berdasarkan tab aktif
-  const filterSkusByActiveTab = (data: any[] = allSkus) => {
-    if (!data || data.length === 0) {
-      setSkus([])
-      return
-    }
-    
-    let filteredData = [...data]
-    
-    if (activeTab === 'with-cost') {
-      filteredData = filteredData.filter(sku => sku.cost_price !== null)
-    } else if (activeTab === 'with-margin') {
-      filteredData = filteredData.filter(sku => sku.margin_percentage !== null)
-    } else if (activeTab === 'incomplete') {
-      filteredData = filteredData.filter(sku => sku.cost_price === null && sku.margin_percentage === null)
-    }
-    
-    setSkus(filteredData)
-  }
-  
-  // Effect untuk menjalankan filter saat tab berubah
-  useEffect(() => {
-    filterSkusByActiveTab()
-  }, [activeTab])
-  
+
+  // === Computed Data ===
+  const filteredData = useMemo(() => {
+    let data = hppData
+    if (activeTab === 'filled') data = data.filter(h => h.cost_price !== null && h.cost_price > 0)
+    else if (activeTab === 'empty') data = data.filter(h => h.cost_price === null || h.cost_price === 0)
+    return data
+  }, [hppData, activeTab])
+
+  const groupedData = useMemo(() => {
+    const groups: { [sku: string]: HppItem[] } = {}
+    filteredData.forEach(item => {
+      const sku = item.item_sku.toUpperCase()
+      if (!groups[sku]) groups[sku] = []
+      groups[sku].push(item)
+    })
+    return groups
+  }, [filteredData])
+
+  const stats = useMemo(() => ({
+    total: hppData.length,
+    filled: hppData.filter(h => h.cost_price !== null && h.cost_price > 0).length,
+    empty: hppData.filter(h => h.cost_price === null || h.cost_price === 0).length,
+  }), [hppData])
+
+  // === Sync ===
   const syncSkus = async () => {
     setSyncing(true)
     try {
-      // Dapatkan user_id dari sesi aktif
       const { data: { user } } = await createClient().auth.getUser()
-      
-      if (!user) {
-        toast.error('Anda harus login untuk mengakses fitur ini')
-        return
-      }
-      
-      // Panggil fungsi RPC dengan parameter user_id
-      const { data, error } = await createClient().rpc('populate_sku_cost_margins', {
-        p_user_id: user.id
-      })
-      
-      if (error) {
-        if (error.message.includes('function') || error.message.includes('does not exist')) {
-          await createSkuMarginsTable()
-        } else {
-          throw error
+      if (!user) { toast.error('Anda harus login'); return }
+
+      const { data: orderItems, error: oiError } = await createClient()
+        .from('order_items')
+        .select('item_sku, model_sku, model_name, item_id, order_sn')
+        .limit(1000)
+
+      if (oiError || !orderItems) { toast.error('Gagal mengambil data pesanan'); setSyncing(false); return }
+
+      const orderSns = Array.from(new Set(orderItems.map(oi => oi.order_sn)))
+      const { data: orders } = await createClient()
+        .from('orders')
+        .select('order_sn, shop_id')
+        .in('order_sn', orderSns.slice(0, 500))
+
+      const orderShopMap: { [k: string]: number } = {}
+      orders?.forEach(o => { orderShopMap[o.order_sn] = o.shop_id })
+
+      const skuMap = new Map<string, { sku: string, shop_id: number, item_id: number }>()
+      orderItems.forEach(oi => {
+        const sku = (oi.item_sku && oi.item_sku.trim() !== '' && oi.item_sku !== 'EMPTY') ? oi.item_sku : oi.model_sku
+        if (!sku || !oi.item_id) return
+        const shopId = orderShopMap[oi.order_sn]
+        if (!shopId) return
+        if (!skuMap.has(sku.toUpperCase())) {
+          skuMap.set(sku.toUpperCase(), { sku, shop_id: shopId, item_id: oi.item_id })
         }
+      })
+
+      if (skuMap.size === 0) { toast.info('Tidak ada SKU baru'); setSyncing(false); return }
+
+      const allSkus = Array.from(skuMap.values())
+      let totalInserted = 0
+
+      for (let i = 0; i < allSkus.length; i += 10) {
+        const batch = allSkus.slice(i, i + 10)
+        const res = await fetch('/api/hpp/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skus: batch })
+        })
+        if (res.ok) { const r = await res.json(); totalInserted += r.inserted || 0 }
       }
-      
-      toast.success(`SKUs berhasil disinkronkan`)
-      fetchSkus()
+
+      toast.success(`${totalInserted} variasi disinkronkan`)
+      fetchHppData()
     } catch (error) {
-      console.error('Error syncing SKUs:', error)
-      toast.error('Gagal sinkronisasi SKU')
+      console.error('Error syncing:', error)
+      toast.error('Gagal sinkronisasi')
     } finally {
       setSyncing(false)
     }
   }
-  
-  // Fungsi untuk membuat tabel jika belum ada
-  const createSkuMarginsTable = async () => {
+
+  // Save all dirty items to DB
+  const saveAllChanges = async () => {
+    if (dirtyIds.size === 0) return
+    setSaving(true)
     try {
-      // Buat tabel sku_cost_margins
-      await createClient().rpc('create_sku_margins_table')
-      return true
-    } catch (error) {
-      console.error('Error creating table:', error)
-      // Jika RPC tidak ada, solusi alternatif
-      toast.error('Tabel database belum ada. Silakan hubungi administrator untuk setup database.')
-      
-      // Alternatif: menggunakan rpc khusus untuk membuat tabel
-      try {
-        const { error: rpcError } = await createClient().rpc('setup_sku_margins_schema')
-        if (rpcError) throw rpcError
-        return true
-      } catch (setupError) {
-        console.error('Error setting up schema:', setupError)
-        return false
-      }
-    }
-  }
-  
-  const updateSkuData = async (id: number, updates: any) => {
-    try {
-      // Opsional: verifikasi user_id untuk keamanan
       const { data: { user } } = await createClient().auth.getUser()
-      
-      if (!user) {
-        toast.error('Anda harus login untuk mengakses fitur ini')
-        return
+      if (!user) return
+
+      const dirtyItems = hppData.filter(h => dirtyIds.has(h.id))
+      let successCount = 0
+
+      for (const item of dirtyItems) {
+        const { error } = await createClient()
+          .from('hpp_master')
+          .update({ cost_price: item.cost_price, updated_at: new Date().toISOString() })
+          .eq('id', item.id).eq('user_id', user.id)
+        if (!error) successCount++
       }
-      
-      const { error } = await createClient()
-        .from('sku_cost_margins')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .eq('user_id', user.id) // Pastikan user hanya bisa update data miliknya
-      
-      if (error) throw error
-      
-      toast.success('Data berhasil diperbarui')
-      
-      // Update local state
-      setSkus(prev => 
-        prev.map(sku => 
-          sku.id === id ? { ...sku, ...updates } : sku
-        )
-      )
-      
-      if (onSettingsChange) {
-        onSettingsChange()
-      }
+
+      toast.success(`${successCount} HPP berhasil disimpan`)
+      setDirtyIds(new Set())
+      onSettingsChange?.()
     } catch (error) {
-      console.error('Error updating SKU data:', error)
-      toast.error('Gagal memperbarui data')
+      console.error('Error saving:', error)
+      toast.error('Gagal menyimpan')
+    } finally {
+      setSaving(false)
     }
   }
-  
+
+  const bulkUpdateCostPrice = async () => {
+    if (selectedIds.size === 0 || !bulkCostPrice) return
+    try {
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) return
+      const costPrice = parseFloat(bulkCostPrice)
+      if (isNaN(costPrice) || costPrice < 0) { toast.error('Masukkan harga yang valid'); return }
+
+      const ids = Array.from(selectedIds)
+      const { error } = await createClient()
+        .from('hpp_master')
+        .update({ cost_price: costPrice, updated_at: new Date().toISOString() })
+        .in('id', ids).eq('user_id', user.id)
+      if (error) throw error
+
+      toast.success(`${ids.length} variasi diperbarui`)
+      setHppData(prev => prev.map(h => selectedIds.has(h.id) ? { ...h, cost_price: costPrice } : h))
+      setSelectedIds(new Set())
+      setBulkCostPrice('')
+      onSettingsChange?.()
+    } catch (error) {
+      console.error('Error bulk updating:', error)
+      toast.error('Gagal memperbarui')
+    }
+  }
+
+  // === Selection ===
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds(selectedIds.size === filteredData.length ? new Set() : new Set(filteredData.map(h => h.id)))
+  }
+
+  const selectSkuGroup = (sku: string) => {
+    const items = filteredData.filter(h => h.item_sku.toUpperCase() === sku)
+    const allSelected = items.every(h => selectedIds.has(h.id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      items.forEach(h => { allSelected ? next.delete(h.id) : next.add(h.id) })
+      return next
+    })
+  }
+
+  const toggleCollapse = (sku: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      next.has(sku) ? next.delete(sku) : next.add(sku)
+      return next
+    })
+  }
+
   const handleOpenChange = (isOpen: boolean) => {
-    setOpen(isOpen);
-    if (onOpenChange) {
-      onOpenChange(isOpen);
-    }
-    
-    // Jika dialog ditutup, panggil callback untuk pembaruan
-    if (!isOpen && onSettingsChange) {
-      // Beri waktu sedikit setelah dialog ditutup
-      setTimeout(() => {
-        onSettingsChange();
-      }, 300);
-    }
-  };
-  
-  // Fetch data when dialog opens or search changes
-  useEffect(() => {
-    if (open) {
-      fetchSkus()
-    }
-  }, [open, searchTerm])
-  
+    setOpen(isOpen)
+    onOpenChange?.(isOpen)
+    if (!isOpen && onSettingsChange) setTimeout(() => onSettingsChange(), 300)
+  }
+
+  useEffect(() => { if (open) fetchHppData() }, [open, searchTerm])
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
-          size="icon" 
+        <Button variant="outline" size="icon"
           className="h-6 w-6 bg-teal-100/50 dark:bg-teal-900/50 border-teal-200 dark:border-teal-800"
-          title="Pengaturan Profit"
-        >
+          title="Pengaturan HPP">
           <Calculator className="h-3 w-3" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[900px] max-h-[85vh] overflow-hidden flex flex-col w-[95vw] p-2 sm:p-6">
-        <DialogHeader className="pb-1">
-          <DialogTitle className="text-center text-xl">Pengaturan Profitabilitas Produk</DialogTitle>
-          <DialogDescription className="text-center text-sm">
-            Gunakan halaman ini untuk mengatur harga modal atau margin setiap produk untuk perhitungan profit yang lebih akurat.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="flex flex-col items-start justify-between gap-2 py-1">
-          <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full grid grid-cols-4 h-9">
-              <TabsTrigger value="all" className="text-xs py-1 px-0">Semua</TabsTrigger>
-              <TabsTrigger value="with-cost" className="text-xs py-1 px-0">Modal</TabsTrigger>
-              <TabsTrigger value="with-margin" className="text-xs py-1 px-0">Margin</TabsTrigger>
-              <TabsTrigger value="incomplete" className="text-xs py-1 px-0">Belum</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          
-          {/* Kalkulator Margin - Compact */}
-          <div className="w-full mb-2">
-            <Card className="p-1 border-dashed border-muted">
-              <div className="flex items-center gap-1 px-1 py-1">
-                <Calculator className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium mr-1">Kalkulator Margin:</span>
-                <div className="flex items-center gap-1 flex-1">
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      placeholder="Harga Jual (Rp)"
-                      value={receivedAmount}
-                      onChange={(e) => {
-                        setReceivedAmount(e.target.value)
-                      }}
-                      className="h-7 text-xs w-full"
-                      min="0"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      placeholder="Modal (Rp)"
-                      value={costAmount}
-                      onChange={(e) => {
-                        setCostAmount(e.target.value)
-                      }}
-                      className="h-7 text-xs w-full"
-                      min="0"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      placeholder="Biaya Admin (%)"
-                      value={adminFee}
-                      onChange={(e) => {
-                        const value = e.target.value
-                        // Validasi input antara 0-100
-                        if (value === '' || (parseFloat(value) >= 0 && parseFloat(value) <= 100)) {
-                          setAdminFee(value)
-                        }
-                      }}
-                      className="h-7 text-xs w-full"
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Input
-                      type="text"
-                      placeholder="Escrow"
-                      value={escrowFee}
-                      readOnly
-                      className="h-7 text-xs w-full bg-muted"
-                    />
-                  </div>
-                  <div className="w-[70px]">
-                    <Input
-                      readOnly
-                      value={calculatedMargin ? `${calculatedMargin}%` : ''}
-                      placeholder="Margin"
-                      className="h-7 text-xs bg-muted text-right font-medium"
-                    />
-                  </div>
-                  <div className="w-[100px]">
-                    <Input
-                      readOnly
-                      value={netProfit ? `Rp ${netProfit}` : ''}
-                      placeholder="Laba Bersih"
-                      className="h-7 text-xs bg-muted text-right font-medium"
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
+      <DialogContent className="sm:max-w-[850px] max-h-[90vh] overflow-hidden flex flex-col w-[95vw] p-0">
+        {/* Header */}
+        <div className="px-4 sm:px-6 pt-5 pb-3 border-b bg-gradient-to-r from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">HPP Master</DialogTitle>
+            <DialogDescription className="text-xs">
+              Kelola harga pokok penjualan per variasi produk
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Stats Bar */}
+          <div className="flex items-center gap-3 mt-3">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-slate-400" />
+              <span className="text-xs text-muted-foreground">{stats.total} total</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="text-xs text-muted-foreground">{stats.filled} terisi</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-xs text-muted-foreground">{stats.empty} kosong</span>
+            </div>
           </div>
-          
-          <div className="flex gap-2 w-full">
+
+          {/* Tabs + Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+              <TabsList className="h-8 p-0.5">
+                <TabsTrigger value="all" className="text-xs h-7 px-3">Semua</TabsTrigger>
+                <TabsTrigger value="filled" className="text-xs h-7 px-3">Terisi</TabsTrigger>
+                <TabsTrigger value="empty" className="text-xs h-7 px-3">Kosong</TabsTrigger>
+              </TabsList>
+            </Tabs>
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Cari SKU..."
+                placeholder="Cari SKU atau variasi..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchSkus()}
-                className="pl-9 w-full h-9"
+                className="pl-8 h-8 text-xs"
               />
             </div>
-            <Button onClick={fetchSkus} size="icon" variant="outline" className="h-9 w-9">
-              <Search className="h-4 w-4" />
-            </Button>
           </div>
         </div>
-        
-        <div className="flex-1 overflow-x-hidden overflow-y-auto min-h-[200px] max-h-[calc(85vh-200px)]">
+
+        {/* Kalkulator - Collapsible */}
+        <div className="px-4 sm:px-6 py-2 border-b bg-muted/30">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Calculator className="h-3 w-3 text-muted-foreground shrink-0" />
+            <span className="text-[10px] font-medium text-muted-foreground shrink-0">Kalkulator:</span>
+            <Input type="number" placeholder="Harga Jual" value={receivedAmount}
+              onChange={(e) => setReceivedAmount(e.target.value)} className="h-6 text-[11px] w-20 sm:w-24" min="0" />
+            <Input type="number" placeholder="Modal" value={costAmount}
+              onChange={(e) => setCostAmount(e.target.value)} className="h-6 text-[11px] w-20 sm:w-24" min="0" />
+            <Input type="number" placeholder="Admin%" value={adminFee}
+              onChange={(e) => { const v = e.target.value; if (!v || (parseFloat(v) >= 0 && parseFloat(v) <= 100)) setAdminFee(v) }}
+              className="h-6 text-[11px] w-14" min="0" max="100" />
+            <span className="text-[10px] text-muted-foreground">→</span>
+            <Badge variant="outline" className="text-[10px] font-mono h-5">
+              {escrowFee ? `Escrow: Rp ${parseInt(escrowFee).toLocaleString('id-ID')}` : 'Escrow: -'}
+            </Badge>
+            <Badge variant={calculatedMargin && parseFloat(calculatedMargin) > 0 ? "default" : "secondary"} className="text-[10px] font-mono h-5">
+              {calculatedMargin ? `${calculatedMargin}%` : 'Margin: -'}
+            </Badge>
+            <Badge variant={netProfit && parseInt(netProfit) > 0 ? "default" : "destructive"} className="text-[10px] font-mono h-5">
+              {netProfit ? `Rp ${parseInt(netProfit).toLocaleString('id-ID')}` : 'Laba: -'}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Bulk Action Bar */}
+        {selectedIds.size > 0 && (
+          <div className="px-4 sm:px-6 py-2 bg-blue-50 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800 flex items-center gap-2 animate-in slide-in-from-top-1">
+            <Badge variant="secondary" className="text-xs font-medium shrink-0">
+              {selectedIds.size} dipilih
+            </Badge>
+            <div className="flex items-center gap-1.5 flex-1">
+              <span className="text-xs text-muted-foreground shrink-0">HPP:</span>
+              <Input
+                type="number" placeholder="Masukkan harga modal..."
+                value={bulkCostPrice} onChange={(e) => setBulkCostPrice(e.target.value)}
+                className="h-7 text-xs w-36" min="0"
+                onKeyDown={(e) => e.key === 'Enter' && bulkUpdateCostPrice()}
+              />
+              <Button size="sm" className="h-7 text-xs gap-1" onClick={bulkUpdateCostPrice} disabled={!bulkCostPrice}>
+                <Check className="h-3 w-3" /> Terapkan
+              </Button>
+            </div>
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
+              onClick={() => { setSelectedIds(new Set()); setBulkCostPrice('') }}>
+              <X className="h-3 w-3" /> Batal
+            </Button>
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto min-h-[250px] max-h-[calc(90vh-320px)]">
           {loading ? (
-            <div className="text-center py-4">
-              <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-              <p className="mt-1 text-xs text-muted-foreground">Memuat data...</p>
+            <div className="flex flex-col items-center justify-center py-12">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+              <p className="mt-2 text-xs text-muted-foreground">Memuat data...</p>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Search className="h-8 w-8 mb-2 opacity-30" />
+              <p className="text-sm font-medium">
+                {searchTerm ? `Tidak ada hasil untuk "${searchTerm}"` : 'Belum ada data HPP'}
+              </p>
+              <p className="text-xs mt-1">
+                {searchTerm ? 'Coba kata kunci lain' : 'Klik "Sinkronkan SKU" untuk memulai'}
+              </p>
             </div>
           ) : (
-            <div className="border rounded-md overflow-hidden">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow>
-                    <TableHead className="w-10 px-2 py-2">#</TableHead>
-                    <TableHead className="px-2 py-2">SKU</TableHead>
-                    <TableHead className="w-28 px-2 py-2">Modal (Rp)</TableHead>
-                    <TableHead className="w-28 px-2 py-2">Margin (%)</TableHead>
-                    <TableHead className="w-14 px-2 py-2 text-center">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {skus.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-4 px-2 text-sm">
-                        {searchTerm 
-                          ? `Tidak ada SKU yang cocok dengan pencarian "${searchTerm}"`
-                          : 'Tidak ada data SKU. Klik tombol "Sinkronkan SKU" untuk mulai.'}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    skus.map((sku, index) => (
-                      <TableRow key={sku.id}>
-                        <TableCell className="px-2 py-1 text-center">{index + 1}</TableCell>
-                        <TableCell className="font-mono text-xs px-2 py-1 truncate max-w-[100px]">{sku.item_sku}</TableCell>
-                        <TableCell className="px-2 py-1">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="100"
-                            value={sku.cost_price || ''}
-                            onChange={(e) => {
-                              // Update local state immediately for responsive UI
-                              const newSkus = [...skus]
-                              newSkus[index].cost_price = e.target.value === '' ? null : parseFloat(e.target.value)
-                              setSkus(newSkus)
-                            }}
-                            onBlur={(e) => {
-                              const value = e.target.value === '' ? null : parseFloat(e.target.value)
-                              updateSkuData(sku.id, { cost_price: value })
-                            }}
-                            className="w-full h-8 text-xs px-1 text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="px-2 py-1">
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={sku.margin_percentage !== null && sku.margin_percentage !== undefined 
-                              ? (typeof sku.tempMargin === 'string' ? sku.tempMargin : (sku.margin_percentage * 100).toFixed(2)) 
-                              : ''}
-                            onChange={(e) => {
-                              // Update local state tanpa memformat
-                              const newSkus = [...skus];
-                              newSkus[index] = {
-                                ...newSkus[index],
-                                tempMargin: e.target.value, // Simpan nilai input mentah
-                                margin_percentage: e.target.value === '' ? null : (parseFloat(e.target.value) / 100)
-                              };
-                              setSkus(newSkus);
-                            }}
-                            onBlur={(e) => {
-                              // Format nilai saat field kehilangan fokus
-                              const value = e.target.value === '' ? null : (parseFloat(e.target.value) / 100);
-                              
-                              // Update database
-                              updateSkuData(sku.id, { margin_percentage: value });
-                              
-                              // Update tampilan dengan nilai yang diformat
-                              const newSkus = [...skus];
-                              if (value !== null) {
-                                newSkus[index] = {
-                                  ...newSkus[index],
-                                  tempMargin: undefined, // Hapus nilai temporary
-                                  margin_percentage: value
-                                };
-                              } else {
-                                newSkus[index] = {
-                                  ...newSkus[index],
-                                  tempMargin: undefined,
-                                  margin_percentage: null
-                                };
-                              }
-                              setSkus(newSkus);
-                            }}
-                            className="w-full h-8 text-xs px-1 text-right"
-                          />
-                        </TableCell>
-                        <TableCell className="text-xs text-center text-muted-foreground px-0 py-1">
-                          {sku.is_using_cost 
-                            ? (sku.cost_price ? 'Modal' : 'Perlu') 
-                            : (sku.margin_percentage ? `${(sku.margin_percentage * 100).toFixed(1)}%` : 'Perlu')}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+            <div className="p-2 sm:p-3 space-y-2">
+              {Object.entries(groupedData).map(([skuGroup, items]) => {
+                const isCollapsed = !expandedGroups.has(skuGroup)
+                const allGroupSelected = items.every(h => selectedIds.has(h.id))
+                const someGroupSelected = items.some(h => selectedIds.has(h.id))
+                const filledCount = items.filter(h => h.cost_price !== null && h.cost_price > 0).length
+                const isComplete = filledCount === items.length
+                const progressPct = Math.round((filledCount / items.length) * 100)
+
+                return (
+                  <div key={skuGroup} className="rounded-lg border bg-card overflow-hidden shadow-sm">
+                    {/* SKU Card Header */}
+                    <div
+                      className="flex items-center gap-3 px-3 sm:px-4 py-2.5 cursor-pointer select-none transition-colors bg-slate-50/80 dark:bg-slate-800/30 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                    >
+                      <Checkbox
+                        checked={allGroupSelected}
+                        onCheckedChange={() => selectSkuGroup(skuGroup)}
+                        className="shrink-0"
+                        {...(someGroupSelected && !allGroupSelected ? { 'data-state': 'indeterminate' as any } : {})}
+                      />
+
+                      <button
+                        onClick={() => toggleCollapse(skuGroup)}
+                        className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                      >
+                        {isCollapsed
+                          ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                        }
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-sm truncate">{items[0].item_sku}</span>
+                          <span className="text-[10px] text-muted-foreground">{items.length} variasi</span>
+                        </div>
+                      </button>
+
+                      {/* Right side: Status Badge + Progress */}
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <Badge
+                          variant={isComplete ? "default" : "outline"}
+                          className={`text-[10px] px-2 py-0 h-5 ${isComplete
+                            ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-800 hover:bg-emerald-100'
+                            : filledCount > 0
+                              ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                            }`}
+                        >
+                          {isComplete ? '✓ Lengkap' : `${filledCount}/${items.length}`}
+                        </Badge>
+
+                        {/* Mini progress ring */}
+                        <div className="relative w-7 h-7 shrink-0">
+                          <svg className="w-7 h-7 -rotate-90" viewBox="0 0 28 28">
+                            <circle cx="14" cy="14" r="11" fill="none" strokeWidth="2.5"
+                              className="stroke-slate-200 dark:stroke-slate-700" />
+                            <circle cx="14" cy="14" r="11" fill="none" strokeWidth="2.5"
+                              strokeLinecap="round"
+                              className={isComplete ? 'stroke-emerald-500' : filledCount > 0 ? 'stroke-amber-500' : 'stroke-slate-300 dark:stroke-slate-600'}
+                              strokeDasharray={`${progressPct * 0.691} 69.1`} />
+                          </svg>
+                          <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-muted-foreground">
+                            {progressPct}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Variation Rows */}
+                    {!isCollapsed && (
+                      <div className="divide-y divide-border/50">
+                        {items.map((hpp, idx) => (
+                          <div
+                            key={hpp.id}
+                            className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 transition-colors ${selectedIds.has(hpp.id)
+                              ? 'bg-blue-50/70 dark:bg-blue-950/20'
+                              : idx % 2 === 0
+                                ? 'bg-white dark:bg-background'
+                                : 'bg-muted/20'
+                              } hover:bg-muted/40`}
+                          >
+                            <Checkbox
+                              checked={selectedIds.has(hpp.id)}
+                              onCheckedChange={() => toggleSelect(hpp.id)}
+                              className="shrink-0 ml-1"
+                            />
+
+                            {/* Variation name */}
+                            <div className="flex-1 min-w-0 flex items-center gap-2">
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hpp.cost_price !== null && hpp.cost_price > 0 ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                                }`} />
+                              <span className={`text-xs truncate ${hpp.cost_price !== null && hpp.cost_price > 0
+                                ? 'text-foreground'
+                                : 'text-muted-foreground'
+                                }`}>
+                                {hpp.tier1_variation}
+                              </span>
+                            </div>
+
+                            {/* Cost Input */}
+                            <div className="w-28 sm:w-36 shrink-0">
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">Rp</span>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="1000"
+                                  value={hpp.cost_price ?? ''}
+                                  onChange={(e) => {
+                                    const newData = [...hppData]
+                                    const i = newData.findIndex(h => h.id === hpp.id)
+                                    if (i !== -1) {
+                                      newData[i] = { ...newData[i], cost_price: e.target.value === '' ? null : parseFloat(e.target.value) }
+                                      setHppData(newData)
+                                      setDirtyIds(prev => new Set(prev).add(hpp.id))
+                                    }
+                                  }}
+                                  className={`h-7 text-xs pl-7 pr-2 text-right font-mono border ${dirtyIds.has(hpp.id)
+                                    ? 'border-blue-400 dark:border-blue-600 ring-1 ring-blue-200 dark:ring-blue-800'
+                                    : ''
+                                    }`}
+                                  placeholder="0"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
-        
-        <DialogFooter className="flex justify-center items-center pt-2 border-t mt-2">
-          <Button
-            onClick={syncSkus}
-            disabled={syncing}
-            variant="outline"
-            className="text-sm h-9"
-          >
-            {syncing ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                Memproses...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sinkronkan SKU
-              </>
+
+        {/* Footer */}
+        <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-muted/20 flex-row justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={selectedIds.size > 0 && selectedIds.size === filteredData.length}
+              onCheckedChange={toggleSelectAll}
+            />
+            <span className="text-xs text-muted-foreground">Pilih semua</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={syncSkus} disabled={syncing} variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Memproses...' : 'Sinkronkan SKU'}
+            </Button>
+            {dirtyIds.size > 0 && (
+              <Button onClick={saveAllChanges} disabled={saving} size="sm" className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+                {saving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Simpan ({dirtyIds.size})
+              </Button>
             )}
-          </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
-} 
+}
