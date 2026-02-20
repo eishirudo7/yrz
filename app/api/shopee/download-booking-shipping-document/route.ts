@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { downloadBookingShippingDocument } from '@/app/services/shopeeService';
+import { PDFDocument } from 'pdf-lib';
 import { createClient } from '@/utils/supabase/server';
 
 export async function POST(request: NextRequest) {
@@ -7,14 +8,14 @@ export async function POST(request: NextRequest) {
     // Autentikasi user
     const supabase = await createClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (userError || !user) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'UNAUTHORIZED', 
-          message: 'User tidak terautentikasi' 
-        }, 
+        {
+          success: false,
+          error: 'UNAUTHORIZED',
+          message: 'User tidak terautentikasi'
+        },
         { status: 401 }
       );
     }
@@ -26,47 +27,38 @@ export async function POST(request: NextRequest) {
     // Validasi parameter wajib
     if (!shopId) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'MISSING_SHOP_ID', 
-          message: 'shopId diperlukan' 
-        }, 
+        {
+          success: false,
+          error: 'MISSING_SHOP_ID',
+          message: 'shopId diperlukan'
+        },
         { status: 400 }
       );
     }
 
     if (!bookingList || !Array.isArray(bookingList) || bookingList.length === 0) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'MISSING_BOOKING_LIST', 
-          message: 'bookingList tidak boleh kosong dan harus berupa array' 
-        }, 
+        {
+          success: false,
+          error: 'MISSING_BOOKING_LIST',
+          message: 'bookingList tidak boleh kosong dan harus berupa array'
+        },
         { status: 400 }
       );
     }
 
-    if (bookingList.length > 50) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'TOO_MANY_BOOKINGS', 
-          message: 'bookingList tidak boleh lebih dari 50 item' 
-        }, 
-        { status: 400 }
-      );
-    }
+    // Limit removed. Backend chunking handles array > 50 natively.
 
     // Validasi setiap booking dalam list
     for (let i = 0; i < bookingList.length; i++) {
       const booking = bookingList[i];
       if (!booking.booking_sn || typeof booking.booking_sn !== 'string' || booking.booking_sn.trim().length === 0) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'INVALID_BOOKING_SN', 
-            message: `booking_sn tidak boleh kosong pada index ${i}` 
-          }, 
+          {
+            success: false,
+            error: 'INVALID_BOOKING_SN',
+            message: `booking_sn tidak boleh kosong pada index ${i}`
+          },
           { status: 400 }
         );
       }
@@ -74,35 +66,60 @@ export async function POST(request: NextRequest) {
 
     console.log(`User ${user.email} mengunduh dokumen pengiriman booking untuk toko ${shopId} dengan ${bookingList.length} booking`);
 
-    // Panggil service untuk mengunduh dokumen
-    const result = await downloadBookingShippingDocument(shopId, bookingList);
+    // Panggil service untuk mengunduh dokumen secara bergelombang dan dicombine
+    const CHUNK_SIZE = 50;
+    const mergedPdf = await PDFDocument.create();
+    let hasValidPdf = false;
+    let lastError = null;
 
-    // Jika hasil adalah Buffer (file PDF)
-    if (result instanceof Buffer) {
+    for (let i = 0; i < bookingList.length; i += CHUNK_SIZE) {
+      const chunk = bookingList.slice(i, i + CHUNK_SIZE);
+      const result = await downloadBookingShippingDocument(shopId, chunk);
+
+      if (result instanceof Buffer) {
+        try {
+          const pdfDoc = await PDFDocument.load(result);
+          const copiedPages = await mergedPdf.copyPages(pdfDoc, pdfDoc.getPageIndices());
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+          hasValidPdf = true;
+        } catch (pdfError) {
+          console.error(`Gagal memparsing PDF untuk chunk ${i / CHUNK_SIZE + 1}:`, pdfError);
+        }
+      } else if (result.error) {
+        console.warn(`Gagal mengunduh chunk ${i / CHUNK_SIZE + 1}:`, result.message);
+        lastError = result; // Simpan error terakhir apabila semua chunk gagal
+      }
+    }
+
+    // Jika setidaknya ada 1 halaman PDF yang berhasil digabungkan
+    if (hasValidPdf) {
+      const mergedPdfBytes = await mergedPdf.save();
+      const mergedBuffer = Buffer.from(mergedPdfBytes);
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `booking-shipping-document-${shopId}-${timestamp}.pdf`;
-      
-      console.log(`Berhasil mengunduh dokumen pengiriman booking untuk toko ${shopId}, ukuran file: ${result.length} bytes`);
-      
-      return new NextResponse(result, {
+
+      console.log(`Berhasil mengunduh dokumen pengiriman booking untuk toko ${shopId}, ukuran file gabungan: ${mergedBuffer.length} bytes`);
+
+      return new NextResponse(mergedBuffer, {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename="${filename}"`,
-          'Content-Length': result.length.toString(),
+          'Content-Length': mergedBuffer.length.toString(),
         },
       });
     }
 
-    // Jika hasil adalah error response
-    if (result.error) {
-      const statusCode = result.error === 'invalid_parameters' ? 400 : 500;
+    // Jika hasil adalah error response dan tidak ada 1 file pun yg berhasil diunduh
+    if (lastError && !hasValidPdf) {
+      const statusCode = lastError.error === 'invalid_parameters' ? 400 : 500;
       return NextResponse.json(
         {
           success: false,
-          error: result.error,
-          message: result.message,
-          request_id: result.request_id
+          error: lastError.error,
+          message: lastError.message,
+          request_id: lastError.request_id
         },
         { status: statusCode }
       );
@@ -120,7 +137,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error saat mengunduh dokumen pengiriman booking:', error);
-    
+
     return NextResponse.json(
       {
         success: false,

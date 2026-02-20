@@ -9,15 +9,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { 
-  Calendar as CalendarIcon, 
-  RefreshCw, 
+import {
+  Calendar as CalendarIcon,
+  RefreshCw,
   AlertCircle,
-  Clock, 
-  Truck, 
+  Clock,
+  Truck,
   ShoppingBag,
-  Search, 
-  X, 
+  Search,
+  X,
   ChevronDown,
   Store,
   BarChart3,
@@ -76,20 +76,20 @@ import { Input } from "@/components/ui/input"
 function formatDate(booking: Booking): string {
   try {
     const timestamp = booking.create_time;
-    
+
     // Validasi timestamp
     if (!timestamp || timestamp <= 0) {
       return '-';
     }
-    
+
     // Konversi timestamp ke Date object
     const date = new Date(timestamp * 1000);
-    
+
     // Validasi apakah Date object valid
     if (isNaN(date.getTime())) {
       return '-';
     }
-    
+
     return date.toLocaleString('id-ID', {
       day: 'numeric',
       month: 'short',
@@ -116,11 +116,11 @@ function getBuyerName(booking: Booking): string {
   if (booking.recipient_address?.name) {
     return booking.recipient_address.name;
   }
-  
+
   if (booking.buyer_username) {
     return booking.buyer_username;
   }
-  
+
   return '-';
 }
 
@@ -129,14 +129,14 @@ function getTotalAmount(booking: Booking): string {
   if (booking.total_amount) {
     return formatCurrency(booking.total_amount);
   }
-  
+
   // Coba hitung dari item_list jika ada
   if (booking.item_list && booking.item_list.length > 0) {
     // Untuk booking order, biasanya tidak ada harga di item_list
     // Karena ini data dari database lokal
     return '-';
   }
-  
+
   return '-';
 }
 
@@ -144,7 +144,7 @@ function getPaymentMethod(booking: Booking): string {
   if (booking.payment_method) {
     return booking.payment_method;
   }
-  
+
   // Default untuk booking orders
   return 'COD/Transfer';
 }
@@ -197,12 +197,11 @@ function BookingStatusCard({ title, count, icon, onClick, isActive }: BookingSta
   }
 
   return (
-    <Card 
-      className={`transition-all duration-300 cursor-pointer ${
-        isActive 
-          ? `${getActiveColors()} shadow-lg scale-[1.02]` 
-          : 'hover:bg-muted/50 hover:scale-[1.02]'
-      }`}
+    <Card
+      className={`transition-all duration-300 cursor-pointer ${isActive
+        ? `${getActiveColors()} shadow-lg scale-[1.02]`
+        : 'hover:bg-muted/50 hover:scale-[1.02]'
+        }`}
       onClick={onClick}
     >
       <div className="p-2.5">
@@ -215,18 +214,16 @@ function BookingStatusCard({ title, count, icon, onClick, isActive }: BookingSta
               {count}
             </p>
           </div>
-          <div className={`p-1.5 rounded-lg ${
-            isActive 
-              ? 'bg-white/20' 
-              : `bg-background ${
-                  icon === 'pending' ? 'text-amber-500' :
-                  icon === 'confirmed' ? 'text-blue-600' :
-                  icon === 'cancelled' ? 'text-rose-600' :
+          <div className={`p-1.5 rounded-lg ${isActive
+            ? 'bg-white/20'
+            : `bg-background ${icon === 'pending' ? 'text-amber-500' :
+              icon === 'confirmed' ? 'text-blue-600' :
+                icon === 'cancelled' ? 'text-rose-600' :
                   icon === 'completed' ? 'text-emerald-600' :
-                  icon === 'ready_to_ship' ? 'text-purple-600' :
-                  'text-indigo-600'
-                }`
-          }`}>
+                    icon === 'ready_to_ship' ? 'text-purple-600' :
+                      'text-indigo-600'
+            }`
+            }`}>
             {getIcon()}
           </div>
         </div>
@@ -257,7 +254,8 @@ export default function BookingPage() {
     from: new Date(new Date().setDate(new Date().getDate() - 7)),
     to: new Date(),
   })
-  
+
+  const [selectedShop, setSelectedShop] = useState<string>('ALL')
   const [selectedBookingStatus, setSelectedBookingStatus] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'READY_TO_SHIP' | 'SHIPPED' | 'PROCESSED'>('ALL')
   const [selectedMatchStatus, setSelectedMatchStatus] = useState<'ALL' | 'MATCH_PENDING' | 'MATCH_SUCCESSFUL' | 'MATCH_FAILED'>('ALL')
   const [selectedDocumentStatus, setSelectedDocumentStatus] = useState<'ALL' | 'PENDING' | 'READY' | 'PRINTED' | 'ERROR'>('ALL')
@@ -273,6 +271,7 @@ export default function BookingPage() {
 
   const {
     bookings,
+    shops,
     summary,
     loading,
     error,
@@ -285,17 +284,22 @@ export default function BookingPage() {
   // Filter bookings berdasarkan status dan search term
   const filteredBookings = useMemo(() => {
     let filtered = bookings;
-    
+
+    // Filter berdasarkan shop
+    if (selectedShop !== 'ALL') {
+      filtered = filtered.filter(booking => booking.shop_id.toString() === selectedShop);
+    }
+
     // Filter berdasarkan booking status
     if (selectedBookingStatus !== 'ALL') {
       filtered = filtered.filter(booking => booking.booking_status === selectedBookingStatus);
     }
-    
+
     // Filter berdasarkan match status
     if (selectedMatchStatus !== 'ALL') {
       filtered = filtered.filter(booking => booking.match_status === selectedMatchStatus);
     }
-    
+
     // Filter berdasarkan document status
     if (selectedDocumentStatus !== 'ALL') {
       if (selectedDocumentStatus === 'PRINTED') {
@@ -306,25 +310,25 @@ export default function BookingPage() {
         filtered = filtered.filter(booking => booking.document_status === selectedDocumentStatus);
       }
     }
-    
+
     // Filter berdasarkan search term
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(booking => 
+      filtered = filtered.filter(booking =>
         booking.booking_sn.toLowerCase().includes(term) ||
         booking.buyer_username?.toLowerCase().includes(term) ||
         booking.shop_name?.toLowerCase().includes(term) ||
         booking.tracking_number?.toLowerCase().includes(term)
       );
     }
-    
+
     return filtered;
-  }, [bookings, selectedBookingStatus, selectedMatchStatus, selectedDocumentStatus, searchTerm]);
+  }, [bookings, selectedShop, selectedBookingStatus, selectedMatchStatus, selectedDocumentStatus, searchTerm]);
 
   // Derived data untuk print
   const printableBookings = useMemo(() => {
-    return filteredBookings.filter(booking => 
-      booking.document_status === 'READY' && !booking.is_printed
+    return filteredBookings.filter(booking =>
+      booking.document_status === 'READY' || booking.document_status === 'PRINTED'
     );
   }, [filteredBookings]);
 
@@ -338,8 +342,8 @@ export default function BookingPage() {
 
   // Handle checkbox selection
   const handleBookingSelect = (bookingSn: string) => {
-    setSelectedBookings(prev => 
-      prev.includes(bookingSn) 
+    setSelectedBookings(prev =>
+      prev.includes(bookingSn)
         ? prev.filter(sn => sn !== bookingSn)
         : [...prev, bookingSn]
     );
@@ -366,7 +370,7 @@ export default function BookingPage() {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - days);
-    
+
     setDate({
       from: startDate,
       to: endDate
@@ -384,7 +388,7 @@ export default function BookingPage() {
   const handleViewDetail = async (booking: Booking) => {
     setLoadingDetail(true);
     setIsDetailDialogOpen(true);
-    
+
     try {
       const detail = await getBookingDetail(booking.booking_sn);
       setSelectedBookingDetail({ ...booking, ...detail });
@@ -411,18 +415,18 @@ export default function BookingPage() {
   // Handle print documents
   const handlePrintDocuments = async (bookingList?: Booking[]) => {
     const bookingsToPrint = bookingList || (
-      selectedBookings.length > 0 
+      selectedBookings.length > 0
         ? filteredBookings.filter(booking => selectedBookings.includes(booking.booking_sn))
         : printableBookings
     );
 
-    // Filter only bookings with READY document status
-    const readyBookings = bookingsToPrint.filter(booking => 
-      booking.document_status === 'READY' && !booking.is_printed
+    // Filter only bookings with READY or PRINTED document status
+    const readyBookings = bookingsToPrint.filter(booking =>
+      booking.document_status === 'READY' || booking.document_status === 'PRINTED'
     );
 
     if (readyBookings.length === 0) {
-      toast.info('Tidak ada dokumen yang siap dicetak. Pastikan status dokumen adalah "READY"');
+      toast.info('Tidak ada dokumen yang siap dicetak. Pastikan status dokumen adalah "READY" atau "PRINTED"');
       return;
     }
 
@@ -446,12 +450,12 @@ export default function BookingPage() {
       }, {});
 
       for (const [shopId, shopBookings] of Object.entries(bookingsByShop)) {
-        const bookingList = shopBookings.map(booking => ({
+        const fullBookingList = shopBookings.map(booking => ({
           booking_sn: booking.booking_sn,
           shipping_document_type: 'THERMAL_AIR_WAYBILL'
         }));
 
-        // Download document
+        // Download document (Backend API will handle chunking internally)
         const response = await fetch('/api/shopee/download-booking-shipping-document', {
           method: 'POST',
           headers: {
@@ -459,7 +463,7 @@ export default function BookingPage() {
           },
           body: JSON.stringify({
             shopId: parseInt(shopId),
-            bookingList
+            bookingList: fullBookingList
           })
         });
 
@@ -468,7 +472,9 @@ export default function BookingPage() {
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
+
           a.download = `booking-documents-${shopId}-${new Date().toISOString().split('T')[0]}.pdf`;
+
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
@@ -487,7 +493,7 @@ export default function BookingPage() {
             })
           });
 
-          toast.success(`Dokumen berhasil diunduh untuk ${shopBookings.length} booking`);
+          toast.success(`Dokumen berhasil diunduh untuk ${fullBookingList.length} booking`);
         } else {
           const errorData = await response.json();
           toast.error(`Gagal mengunduh dokumen: ${errorData.message}`);
@@ -535,7 +541,7 @@ export default function BookingPage() {
   // Get match status badge
   const getMatchStatusBadge = (matchStatus: string | undefined) => {
     if (!matchStatus) return <Badge variant="outline" className="text-xs">-</Badge>;
-    
+
     switch (matchStatus) {
       case 'MATCH_PENDING':
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">Pending</Badge>;
@@ -598,7 +604,7 @@ export default function BookingPage() {
 
     // Step 1: Find PROCESSED bookings without tracking numbers
     const processedWithoutTracking = bookings.filter(booking => {
-      return booking.booking_status === 'PROCESSED' && 
+      return booking.booking_status === 'PROCESSED' &&
         (!booking.tracking_number || booking.tracking_number.trim() === '') &&
         !failedTrackingFetch.includes(booking.booking_sn); // Skip previously failed bookings
     });
@@ -614,12 +620,12 @@ export default function BookingPage() {
       for (const booking of processedWithoutTracking) {
         try {
           console.log(`📞 Fetching tracking number for booking ${booking.booking_sn}...`);
-          
+
           const trackingResult = await getTrackingNumber(booking.booking_sn);
-          
+
           if (trackingResult.success && trackingResult.data?.tracking_number) {
             console.log(`✅ Got tracking number for ${booking.booking_sn}: ${trackingResult.data.tracking_number}`);
-            
+
             // Update database with tracking number
             try {
               const updateResponse = await fetch('/api/bookings', {
@@ -636,7 +642,7 @@ export default function BookingPage() {
               });
 
               const updateResult = await updateResponse.json();
-              
+
               if (updateResponse.ok && updateResult.success) {
                 console.log(`💾 Database updated for ${booking.booking_sn} with tracking: ${trackingResult.data.tracking_number}`);
                 // Update local booking data
@@ -672,7 +678,7 @@ export default function BookingPage() {
         console.log('📞 Tracking number fetch completed, waiting before refresh...');
         // Longer wait to ensure database updates are committed
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
+
         console.log('🔄 Refreshing booking data to get updated tracking numbers...');
         // Refresh bookings data to get updated tracking numbers
         refetch();
@@ -689,7 +695,7 @@ export default function BookingPage() {
         !creatingDocuments.includes(booking.booking_sn) && // Not currently being processed
         booking.tracking_number && // Must have tracking number
         booking.tracking_number.trim() !== ''; // Tracking number must not be empty
-      
+
       if (booking.booking_status === 'PROCESSED') {
         console.log(`🔍 Booking ${booking.booking_sn}:`, {
           status: booking.booking_status,
@@ -700,7 +706,7 @@ export default function BookingPage() {
           needs_document: needsDocument
         });
       }
-      
+
       return needsDocument;
     });
 
@@ -740,20 +746,20 @@ export default function BookingPage() {
     // Process each shop - ONE TIME ONLY, no retry
     for (const [shopId, shopBookings] of Object.entries(bookingsByShop)) {
       console.log(`🔄 Processing shop ${shopId} with ${shopBookings.length} bookings...`);
-      
+
       try {
         const requestPayload = {
           shopId: parseInt(shopId),
-          bookingList: shopBookings.map(booking => ({ 
+          bookingList: shopBookings.map(booking => ({
             booking_sn: booking.booking_sn,
             tracking_number: booking.tracking_number,
             shipping_document_type: 'THERMAL_AIR_WAYBILL'
           })),
           documentType: 'THERMAL_AIR_WAYBILL'
         };
-        
+
         console.log('📤 API Request payload:', requestPayload);
-        
+
         const response = await fetch('/api/shopee/create-booking-shipping-document', {
           method: 'POST',
           headers: {
@@ -764,7 +770,7 @@ export default function BookingPage() {
 
         const result = await response.json();
         console.log('📥 API Response:', result);
-        
+
         if (result.success) {
           console.log(`✅ SUCCESS: Documents created for ${shopBookings.length} bookings in shop ${shopId}`);
           toast.success(`Dokumen auto-created untuk ${shopBookings.length} booking`);
@@ -775,29 +781,29 @@ export default function BookingPage() {
           }, 1000);
         } else {
           console.log(`❌ FAILED: Shop ${shopId} document creation failed:`, result.message);
-          
+
           // Handle specific errors but NO RETRY - no spam logging
           if (result.response?.result_list) {
             const failedItems = result.response.result_list.filter((item: any) => item.fail_error);
-            
+
             console.log('📊 Failed items breakdown:', failedItems.map((item: any) => ({
               booking_sn: item.booking_sn,
               error: item.fail_error,
               message: item.fail_message
             })));
-            
+
             const cannotPrintCount = result.response.result_list.filter(
               (item: any) => item.fail_error === 'logistics.booking_can_not_print'
             ).length;
-            
+
             const invalidTrackingCount = result.response.result_list.filter(
               (item: any) => item.fail_error === 'logistics.tracking_number_invalid'
             ).length;
-            
+
             if (cannotPrintCount > 0) {
               console.log(`⏰ ${cannotPrintCount} booking sudah terlambat untuk create document (logistics.booking_can_not_print)`);
             }
-            
+
             if (invalidTrackingCount > 0) {
               console.log(`📋 ${invalidTrackingCount} booking dengan tracking number invalid (logistics.tracking_number_invalid)`);
             }
@@ -872,7 +878,7 @@ export default function BookingPage() {
                 </Button>
               </div>
             )}
-            
+
             <Button
               onClick={() => refetch()}
               disabled={loading}
@@ -936,7 +942,28 @@ export default function BookingPage() {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {/* Toko Filter */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Toko</h4>
+              <Select
+                value={selectedShop}
+                onValueChange={setSelectedShop}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih toko" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Semua Toko</SelectItem>
+                  {shops.map(shop => (
+                    <SelectItem key={shop.shop_id} value={shop.shop_id.toString()}>
+                      {shop.shop_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date Filter */}
             <div className="space-y-2">
               <h4 className="font-medium text-sm">Rentang Tanggal</h4>
@@ -1197,7 +1224,7 @@ export default function BookingPage() {
                           >
                             <Eye className="w-3 h-3" />
                           </Button>
-                          
+
                           {/* Ship Button */}
                           {(booking.booking_status === 'CONFIRMED' || booking.booking_status === 'READY_TO_SHIP') && (
                             <Button
@@ -1215,32 +1242,22 @@ export default function BookingPage() {
                             </Button>
                           )}
 
-                          {/* Print Button - Only show if document status is READY */}
-                          {booking.document_status === 'READY' && !booking.is_printed && (
+                          {/* Print Button - Show if document status is READY or PRINTED */}
+                          {(booking.document_status === 'READY' || booking.document_status === 'PRINTED') && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => handlePrintDocuments([booking])}
                               disabled={printingBookings.includes(booking.booking_sn)}
-                              title="Print Dokumen"
+                              title={booking.is_printed ? "Cetak Ulang Dokumen" : "Print Dokumen"}
                             >
                               {printingBookings.includes(booking.booking_sn) ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : booking.is_printed ? (
+                                <CheckCircle className="w-3 h-3 text-green-600" />
                               ) : (
                                 <Printer className="w-3 h-3" />
                               )}
-                            </Button>
-                          )}
-
-                          {/* Printed Status */}
-                          {booking.is_printed && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled
-                              title="Sudah Dicetak"
-                            >
-                              <CheckCircle className="w-3 h-3 text-green-600" />
                             </Button>
                           )}
                         </div>
@@ -1263,7 +1280,7 @@ export default function BookingPage() {
               Informasi lengkap booking order
             </DialogDescription>
           </DialogHeader>
-          
+
           {loadingDetail ? (
             <div className="space-y-4">
               <Skeleton className="h-4 w-full" />
@@ -1324,7 +1341,7 @@ export default function BookingPage() {
                     <div><strong>Metode Bayar:</strong> {selectedBookingDetail.payment_method || 'COD/Transfer'}</div>
                   </div>
                 </div>
-                
+
                 <div>
                   <h4 className="font-medium mb-2">Informasi Pengiriman</h4>
                   <div className="space-y-2 text-sm">
@@ -1347,31 +1364,31 @@ export default function BookingPage() {
             >
               Tutup
             </Button>
-            
+
             {/* Ship booking button */}
-            {selectedBookingDetail && (selectedBookingDetail.booking_status === 'CONFIRMED' || 
+            {selectedBookingDetail && (selectedBookingDetail.booking_status === 'CONFIRMED' ||
               selectedBookingDetail.booking_status === 'READY_TO_SHIP') && (
-              <Button
-                onClick={() => handleShipBooking(selectedBookingDetail.booking_sn)}
-                disabled={shippingBooking === selectedBookingDetail.booking_sn}
-                className="min-w-[120px]"
-              >
-                {shippingBooking === selectedBookingDetail.booking_sn ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Mengirim...
-                  </>
-                ) : (
-                  <>
-                    <Truck className="w-4 h-4 mr-2" />
-                    Kirim Booking
-                  </>
-                )}
-              </Button>
-            )}
+                <Button
+                  onClick={() => handleShipBooking(selectedBookingDetail.booking_sn)}
+                  disabled={shippingBooking === selectedBookingDetail.booking_sn}
+                  className="min-w-[120px]"
+                >
+                  {shippingBooking === selectedBookingDetail.booking_sn ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Mengirim...
+                    </>
+                  ) : (
+                    <>
+                      <Truck className="w-4 h-4 mr-2" />
+                      Kirim Booking
+                    </>
+                  )}
+                </Button>
+              )}
 
             {/* Print button */}
-            {selectedBookingDetail && selectedBookingDetail.document_status === 'READY' && !selectedBookingDetail.is_printed && (
+            {selectedBookingDetail && (selectedBookingDetail.document_status === 'READY' || selectedBookingDetail.document_status === 'PRINTED') && (
               <Button
                 onClick={() => handlePrintDocuments([selectedBookingDetail])}
                 disabled={printingBookings.includes(selectedBookingDetail.booking_sn)}
@@ -1381,6 +1398,11 @@ export default function BookingPage() {
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Mencetak...
+                  </>
+                ) : selectedBookingDetail.is_printed ? (
+                  <>
+                    <Printer className="w-4 h-4 mr-2" />
+                    Cetak Ulang Dokumen
                   </>
                 ) : (
                   <>

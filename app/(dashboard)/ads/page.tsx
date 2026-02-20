@@ -5,7 +5,7 @@ import { DatePickerWithRange } from '@/components/ui/date-picker-with-range'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from "@/components/ui/skeleton"
 
-import {Store, DollarSign } from "lucide-react"
+import { Store, DollarSign } from "lucide-react"
 
 interface AdData {
   shop_id: number
@@ -70,7 +70,7 @@ export default function AdsPage() {
   return (
     <div className="container mx-auto p-4 space-y-8">
       <h1 className="text-3xl font-bold text-center mb-6">Kinerja Iklan per Toko</h1>
-      
+
       <Card className="w-full max-w-md mx-auto">
         <CardHeader>
           <CardTitle>Pilih Rentang Tanggal</CardTitle>
@@ -86,7 +86,7 @@ export default function AdsPage() {
         <>
           <TotalCostCard totalCost={adsData.total_cost} />
           <AdCards adsData={adsData.ads_data} />
-          
+
         </>
       ) : null}
     </div>

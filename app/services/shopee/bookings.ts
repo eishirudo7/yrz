@@ -196,7 +196,8 @@ export async function shipBooking(
             }
         }
 
-        const response = await shopeeApi.shipBooking(shopId, accessToken, bookingSn.trim(), pickupData, dropoffData);
+        const shippingDataParam = shippingMethod === 'pickup' ? pickupData : dropoffData;
+        const response = await shopeeApi.shipBooking(shopId, accessToken, bookingSn.trim(), shippingMethod, shippingDataParam);
         return response;
     } catch (error: unknown) {
         console.error('Gagal melakukan ship booking:', error);

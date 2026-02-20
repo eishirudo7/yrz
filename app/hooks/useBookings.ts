@@ -90,7 +90,7 @@ export function useBookings(dateRange?: DateRange | undefined) {
       if (!response.ok) {
         throw new Error('Gagal mengambil daftar toko')
       }
-      
+
       const result = await response.json()
       if (result.success) {
         setShops(result.data || [])
@@ -107,11 +107,11 @@ export function useBookings(dateRange?: DateRange | undefined) {
 
   const fetchBookings = useCallback(async (dateRangeToUse: DateRange | undefined = dateRange) => {
     if (!dateRangeToUse?.from) return
-    
+
     try {
       setLoading(true)
       setError(null)
-      
+
       // Simpan parameter ini untuk refetch nanti
       setLastDateRange(dateRangeToUse)
 
@@ -134,7 +134,7 @@ export function useBookings(dateRange?: DateRange | undefined) {
       });
 
       const response = await fetch(`/api/booking-orders?${params.toString()}`)
-      
+
       if (!response.ok) {
         if (response.status === 504) {
           throw new Error('Request timeout. Silahkan coba kurangi rentang tanggal atau coba lagi nanti.');
@@ -157,7 +157,7 @@ export function useBookings(dateRange?: DateRange | undefined) {
       } else {
         throw new Error(result.message || 'Terjadi kesalahan saat mengambil data booking')
       }
-      
+
     } catch (err) {
       console.error('Error fetching bookings:', err)
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data booking')
@@ -190,7 +190,7 @@ export function useBookings(dateRange?: DateRange | undefined) {
 
   // Fungsi untuk ship booking - menggunakan API Shopee
   const shipBooking = useCallback(async (
-    bookingSn: string, 
+    bookingSn: string,
     shippingMethod: 'pickup' | 'dropoff' = 'dropoff'
   ) => {
     try {
@@ -211,13 +211,13 @@ export function useBookings(dateRange?: DateRange | undefined) {
           shippingMethod
         })
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-      
+
       const result = await response.json()
-      
+
       if (result.success) {
         toast.success(`Booking ${bookingSn} berhasil dikirim`)
         // Refresh data setelah berhasil ship
@@ -257,21 +257,21 @@ export function useBookings(dateRange?: DateRange | undefined) {
       }
 
       // Jika belum ada, ambil dari API Shopee
-      const url = packageNumber 
+      const url = packageNumber
         ? `/api/shopee/booking-tracking-number?shopId=${booking.shop_id}&bookingSn=${bookingSn}&packageNumber=${packageNumber}`
         : `/api/shopee/booking-tracking-number?shopId=${booking.shop_id}&bookingSn=${bookingSn}`
-        
+
       const response = await fetch(url)
-      
+
       if (!response.ok) {
         return {
           success: false,
           message: `HTTP error! status: ${response.status}`
         }
       }
-      
+
       const result = await response.json()
-      
+
       if (result.success) {
         return {
           success: true,
@@ -305,6 +305,7 @@ export function useBookings(dateRange?: DateRange | undefined) {
 
   return {
     bookings,
+    shops,
     summary,
     loading,
     error,

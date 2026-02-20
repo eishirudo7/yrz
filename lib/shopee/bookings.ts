@@ -106,13 +106,14 @@ export async function shipBooking(
         booking_sn: bookingSn
     };
 
-    if (shippingMethod === 'pickup' && shippingData) {
-        body.pickup = shippingData;
+    if (shippingMethod === 'pickup') {
+        body.pickup = shippingData || {};
     } else if (shippingMethod === 'dropoff') {
         body.dropoff = shippingData || {};
     }
 
     console.info(`Shipping booking: ${bookingSn} via ${shippingMethod}`);
+    console.log(`[DEBUG] shipBooking Request Payload:`, JSON.stringify(body, null, 2));
 
     try {
         const response = await client.post('/api/v2/logistics/ship_booking', body, accessToken, shopId);
