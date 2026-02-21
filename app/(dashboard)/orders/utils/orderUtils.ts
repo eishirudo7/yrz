@@ -232,3 +232,90 @@ export function getAllTopSkus(orders: Order[]): SkuSummary[] {
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10);
 }
+
+// Tier1 Summary interface
+export interface Tier1Summary {
+    tier1_name: string;
+    sku_name: string;
+    quantity: number;
+    total_amount: number;
+}
+
+/**
+ * Get all top Tier 1 variations across all orders
+ * Uses order.items which contains tier1_variation data
+ */
+export function getAllTopTier1(orders: Order[]): Tier1Summary[] {
+    const tier1Map: { [key: string]: Tier1Summary } = {};
+
+    for (const order of orders) {
+        if (!['PROCESSED', 'SHIPPED', 'COMPLETED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE', 'TO_RETURN'].includes(order.order_status)) {
+            continue;
+        }
+
+        if (!order.items) continue;
+
+        for (const item of order.items) {
+            const tier1 = (item.tier1_variation || '').trim();
+            if (!tier1) continue;
+
+            const key = `${item.sku.toLowerCase()}|${tier1.toLowerCase()}`;
+
+            if (tier1Map[key]) {
+                tier1Map[key].quantity += item.quantity;
+                tier1Map[key].total_amount += item.total_price;
+            } else {
+                tier1Map[key] = {
+                    tier1_name: tier1,
+                    sku_name: item.sku,
+                    quantity: item.quantity,
+                    total_amount: item.total_price,
+                };
+            }
+        }
+    }
+
+    return Object.values(tier1Map)
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 20);
+}
+
+/**
+ * Get tier1 variations for a specific SKU, sorted by quantity
+ */
+export function getTier1ForSku(orders: Order[], skuName: string): Tier1Summary[] {
+    const tier1Map: { [key: string]: Tier1Summary } = {};
+    const normalizedTarget = skuName.toLowerCase();
+
+    for (const order of orders) {
+        if (!['PROCESSED', 'SHIPPED', 'COMPLETED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE', 'TO_RETURN'].includes(order.order_status)) {
+            continue;
+        }
+
+        if (!order.items) continue;
+
+        for (const item of order.items) {
+            if (item.sku.toLowerCase() !== normalizedTarget) continue;
+
+            const tier1 = (item.tier1_variation || '').trim();
+            if (!tier1) continue;
+
+            const key = tier1.toLowerCase();
+
+            if (tier1Map[key]) {
+                tier1Map[key].quantity += item.quantity;
+                tier1Map[key].total_amount += item.total_price;
+            } else {
+                tier1Map[key] = {
+                    tier1_name: tier1,
+                    sku_name: item.sku,
+                    quantity: item.quantity,
+                    total_amount: item.total_price,
+                };
+            }
+        }
+    }
+
+    return Object.values(tier1Map)
+        .sort((a, b) => b.quantity - a.quantity);
+}

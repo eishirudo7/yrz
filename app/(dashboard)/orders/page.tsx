@@ -477,7 +477,7 @@ export default function OrdersPage() {
 
   // Tambahkan fungsi untuk menghitung ringkasan toko
   const getShopsSummary = useCallback((): ShopSummary[] => {
-    const summary = orders.reduce((acc: { [key: string]: ShopSummary }, order) => {
+    const summary = filteredOrders.reduce((acc: { [key: string]: ShopSummary }, order) => {
       if (!['PROCESSED', 'SHIPPED', 'COMPLETED', 'IN_CANCEL', 'TO_CONFIRM_RECEIVE', 'TO_RETURN'].includes(order.order_status)) {
         return acc
       }
@@ -538,7 +538,7 @@ export default function OrdersPage() {
 
     // Urutkan berdasarkan totalOrders
     return Object.values(summary).sort((a, b) => b.totalOrders - a.totalOrders)
-  }, [orders])
+  }, [filteredOrders])
 
   // Tambahkan fungsi untuk menghitung total SKU dari semua toko
   const getAllTopSkus = useCallback(() => {
@@ -1172,6 +1172,7 @@ export default function OrdersPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <SkuSummaryCard
             topSkus={getAllTopSkus()}
+            orders={filteredOrders}
             getSkuDetails={getSkuDetails}
           />
           <ShopSummaryCard shopsSummary={getShopsSummary()} />
