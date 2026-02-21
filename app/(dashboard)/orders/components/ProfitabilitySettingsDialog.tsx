@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { RefreshCw, Search, Check, X, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
+import { RefreshCw, Search, Check, X, Calculator, ChevronDown, ChevronRight, Merge, Unlink } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ interface HppItem {
   item_sku: string
   tier1_variation: string
   cost_price: number | null
+  canonical_sku: string | null
   created_at: string
   updated_at: string
 }
@@ -57,6 +58,10 @@ export default function ProfitabilitySettingsDialog({
 
   // Expanded SKU groups (default = all collapsed)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+
+  // SKU Merge
+  const [showMergeDialog, setShowMergeDialog] = useState(false)
+  const [mergeCanonical, setMergeCanonical] = useState<string | null>(null)
 
   // Kalkulator
   const [receivedAmount, setReceivedAmount] = useState<string>('')
@@ -100,7 +105,7 @@ export default function ProfitabilitySettingsDialog({
 
       let query = createClient()
         .from('hpp_master')
-        .select('*')
+        .select('id, user_id, item_sku, tier1_variation, cost_price, canonical_sku, created_at, updated_at')
         .eq('user_id', user.id)
         .order('item_sku', { ascending: true })
         .order('tier1_variation', { ascending: true })
@@ -144,9 +149,34 @@ export default function ProfitabilitySettingsDialog({
   const groupedData = useMemo(() => {
     const groups: { [sku: string]: HppItem[] } = {}
     filteredData.forEach(item => {
-      const sku = item.item_sku.toUpperCase()
-      if (!groups[sku]) groups[sku] = []
-      groups[sku].push(item)
+      // Group by effective SKU: if merged, group under canonical
+      const effectiveSku = (item.canonical_sku || item.item_sku).toUpperCase()
+      if (!groups[effectiveSku]) groups[effectiveSku] = []
+      groups[effectiveSku].push(item)
+    })
+    // Deduplicate tier1 within each group: prefer canonical (non-alias) entry
+    Object.keys(groups).forEach(sku => {
+      const items = groups[sku]
+      const seen = new Map<string, HppItem>()
+      items.forEach(item => {
+        const tier1Key = item.tier1_variation.toUpperCase()
+        const existing = seen.get(tier1Key)
+        if (!existing) {
+          seen.set(tier1Key, item)
+        } else {
+          // Priority 1: prefer the one that already has cost_price
+          if (item.cost_price !== null && existing.cost_price === null) {
+            seen.set(tier1Key, item)
+          }
+          // Priority 2: if both have or both lack cost_price, prefer canonical (non-alias)
+          else if (item.cost_price === existing.cost_price || (item.cost_price !== null && existing.cost_price !== null)) {
+            if (item.canonical_sku === null && existing.canonical_sku !== null) {
+              seen.set(tier1Key, item)
+            }
+          }
+        }
+      })
+      groups[sku] = Array.from(seen.values())
     })
     return groups
   }, [filteredData])
@@ -326,6 +356,75 @@ export default function ProfitabilitySettingsDialog({
     })
   }
 
+  // === SKU Merge ===
+  const getSelectedSkuGroups = (): string[] => {
+    const groups = new Set<string>()
+    hppData.forEach(h => {
+      if (selectedIds.has(h.id)) groups.add(h.item_sku.toUpperCase())
+    })
+    return Array.from(groups)
+  }
+
+  const mergeSkus = async (canonicalSku: string) => {
+    try {
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) return
+
+      const selectedGroups = getSelectedSkuGroups()
+      const aliasGroups = selectedGroups.filter(g => g !== canonicalSku.toUpperCase())
+
+      // Find the original casing of canonicalSku from hppData
+      const canonicalItem = hppData.find(h => h.item_sku.toUpperCase() === canonicalSku.toUpperCase())
+      const canonicalName = canonicalItem?.item_sku || canonicalSku
+
+      // Update all alias SKU rows to point to canonical
+      for (const aliasGroup of aliasGroups) {
+        const aliasItems = hppData.filter(h => h.item_sku.toUpperCase() === aliasGroup)
+        for (const item of aliasItems) {
+          await createClient()
+            .from('hpp_master')
+            .update({ canonical_sku: canonicalName, updated_at: new Date().toISOString() })
+            .eq('id', item.id)
+            .eq('user_id', user.id)
+        }
+      }
+
+      toast.success(`${aliasGroups.length} SKU digabungkan ke ${canonicalName}`)
+      setShowMergeDialog(false)
+      setMergeCanonical(null)
+      setSelectedIds(new Set())
+      fetchHppData()
+      onSettingsChange?.()
+    } catch (error) {
+      console.error('Error merging SKUs:', error)
+      toast.error('Gagal menggabungkan SKU')
+    }
+  }
+
+  const unmergeSku = async (canonicalGroup: string) => {
+    try {
+      const { data: { user } } = await createClient().auth.getUser()
+      if (!user) return
+
+      // Find all alias items that point to this canonical group
+      const aliasItems = hppData.filter(h => h.canonical_sku?.toUpperCase() === canonicalGroup)
+      for (const item of aliasItems) {
+        await createClient()
+          .from('hpp_master')
+          .update({ canonical_sku: null, updated_at: new Date().toISOString() })
+          .eq('id', item.id)
+          .eq('user_id', user.id)
+      }
+
+      toast.success(`${aliasItems.length} SKU berhasil dipisahkan`)
+      fetchHppData()
+      onSettingsChange?.()
+    } catch (error) {
+      console.error('Error unmerging SKU:', error)
+      toast.error('Gagal memisahkan SKU')
+    }
+  }
+
   const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen)
     onOpenChange?.(isOpen)
@@ -489,13 +588,42 @@ export default function ProfitabilitySettingsDialog({
                           : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
                         }
                         <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-sm truncate">{items[0].item_sku}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm truncate">{(() => {
+                              // Show canonical SKU name (find the one without canonical_sku set)
+                              const canonicalItem = items.find(h => !h.canonical_sku) || items[0]
+                              return canonicalItem.item_sku
+                            })()}</span>
+                            {(() => {
+                              // Find alias SKUs merged into this group
+                              const aliasSkus = Array.from(new Set(
+                                filteredData
+                                  .filter(h => h.canonical_sku?.toUpperCase() === skuGroup)
+                                  .map(h => h.item_sku)
+                              ))
+                              return aliasSkus.map(alias => (
+                                <Badge key={alias} variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-900/20 dark:text-violet-400 dark:border-violet-800 shrink-0">
+                                  + {alias}
+                                </Badge>
+                              ))
+                            })()}
+                          </div>
                           <span className="text-[10px] text-muted-foreground">{items.length} variasi</span>
                         </div>
                       </button>
 
-                      {/* Right side: Status Badge + Progress */}
-                      <div className="flex items-center gap-2.5 shrink-0">
+                      {/* Right side: Unmerge + Status Badge + Progress */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {filteredData.some(h => h.canonical_sku?.toUpperCase() === skuGroup) && (
+                          <Button
+                            variant="ghost" size="sm"
+                            className="h-6 px-1.5 text-[10px] gap-1 text-violet-600 dark:text-violet-400 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                            onClick={(e) => { e.stopPropagation(); unmergeSku(skuGroup) }}
+                            title="Pisahkan SKU"
+                          >
+                            <Unlink className="h-3 w-3" />
+                          </Button>
+                        )}
                         <Badge
                           variant={isComplete ? "default" : "outline"}
                           className={`text-[10px] px-2 py-0 h-5 ${isComplete
@@ -603,6 +731,16 @@ export default function ProfitabilitySettingsDialog({
             <span className="text-xs text-muted-foreground">Pilih semua</span>
           </div>
           <div className="flex items-center gap-2">
+            {getSelectedSkuGroups().length >= 2 && (
+              <Button
+                variant="outline" size="sm"
+                className="h-8 text-xs gap-1.5 border-violet-300 text-violet-600 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/20"
+                onClick={() => setShowMergeDialog(true)}
+              >
+                <Merge className="h-3.5 w-3.5" />
+                Gabungkan ({getSelectedSkuGroups().length} SKU)
+              </Button>
+            )}
             <Button onClick={syncSkus} disabled={syncing} variant="outline" size="sm" className="h-8 text-xs gap-1.5">
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Memproses...' : 'Sinkronkan SKU'}
@@ -615,6 +753,68 @@ export default function ProfitabilitySettingsDialog({
             )}
           </div>
         </DialogFooter>
+
+        {/* Merge SKU Dialog */}
+        <Dialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+                <Merge className="w-4 h-4" />
+                Gabungkan SKU
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Pilih SKU utama. SKU lainnya akan menjadi alias dan menggunakan HPP dari SKU utama.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 py-2">
+              {getSelectedSkuGroups().map(group => {
+                const items = hppData.filter(h => h.item_sku.toUpperCase() === group)
+                const isSelected = mergeCanonical === group
+                return (
+                  <button
+                    key={group}
+                    onClick={() => setMergeCanonical(group)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${isSelected
+                      ? 'border-violet-400 bg-violet-50 dark:bg-violet-900/20 dark:border-violet-600'
+                      : 'border-border hover:bg-muted/50'
+                      }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium">{items[0]?.item_sku || group}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{items.length} variasi</span>
+                      </div>
+                      {isSelected && (
+                        <Badge className="text-[10px] bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/40 dark:text-violet-400 dark:border-violet-800">
+                          SKU Utama
+                        </Badge>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <p className="text-[11px] text-violet-600 dark:text-violet-400 mt-1">
+                        SKU lain akan menggunakan HPP dari SKU ini
+                      </p>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => { setShowMergeDialog(false); setMergeCanonical(null) }}>
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                disabled={!mergeCanonical}
+                className="bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                onClick={() => mergeCanonical && mergeSkus(mergeCanonical)}
+              >
+                <Merge className="h-3.5 w-3.5" />
+                Gabungkan
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

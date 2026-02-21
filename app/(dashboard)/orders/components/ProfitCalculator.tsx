@@ -111,6 +111,9 @@ export default function ProfitCalculator({
   // Missing HPP tracking
   const [missingHppItems, setMissingHppItems] = useState<MissingHppItem[]>([])
 
+  // SKU alias map: alias_sku(UPPER) → canonical_sku(UPPER)
+  const [skuAliasMap, setSkuAliasMap] = useState<{ [alias: string]: string }>({})
+
   // Fungsi untuk mengecek apakah adsSpend valid/tersedia
   const isAdsSpendAvailable = useCallback(() => {
     if (typeof adsSpend === 'number' && adsSpend > 0) return true;
@@ -189,10 +192,10 @@ export default function ProfitCalculator({
         return
       }
 
-      // Query hpp_master
+      // Query hpp_master (include canonical_sku for alias resolution)
       const { data, error } = await createClient()
         .from('hpp_master')
-        .select('item_sku, tier1_variation, cost_price')
+        .select('item_sku, tier1_variation, cost_price, canonical_sku')
         .eq('user_id', user.id);
 
       if (error) {
@@ -200,17 +203,40 @@ export default function ProfitCalculator({
         return;
       }
 
+      // Build alias map: alias SKU → canonical SKU
+      const aliasMap: { [alias: string]: string } = {};
+      data?.forEach(item => {
+        if (item.canonical_sku) {
+          aliasMap[item.item_sku.toUpperCase()] = item.canonical_sku.toUpperCase();
+        }
+      });
+      setSkuAliasMap(aliasMap);
+
       // Build lookup map keyed by "SKU|TIER1"
       const skuMap: { [key: string]: { cost_price: number | null } } = {};
+
+      // First pass: add all direct entries
       data?.forEach(item => {
         const key = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
         skuMap[key] = { cost_price: item.cost_price };
       });
 
+      // Second pass: resolve aliases (canonical_sku points to another SKU's HPP)
+      data?.forEach(item => {
+        if (item.canonical_sku) {
+          const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+          const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+          // Use canonical SKU's cost_price if available
+          if (skuMap[canonicalKey]?.cost_price !== null && skuMap[canonicalKey]?.cost_price !== undefined) {
+            skuMap[aliasKey] = { cost_price: skuMap[canonicalKey].cost_price };
+          }
+        }
+      });
+
       setSkuProfitData(skuMap);
 
       // Detect missing SKUs/tier1s and trigger sync
-      await syncMissingSkus(orders, skuMap, user.id);
+      await syncMissingSkus(orders, skuMap, user.id, aliasMap);
 
     } catch (error) {
       console.error('Error in fetchAllSkuData:', error);
@@ -221,7 +247,8 @@ export default function ProfitCalculator({
   const syncMissingSkus = async (
     orders: Order[],
     currentMap: { [key: string]: any },
-    userId: string
+    userId: string,
+    aliasMap: { [alias: string]: string } = {}
   ) => {
     // Collect SKUs that are in orders but not in hpp_master
     const missingSkus = new Map<string, { sku: string, shop_id: number, item_id: number }>();
@@ -229,10 +256,23 @@ export default function ProfitCalculator({
     for (const order of orders) {
       if (!order.items || !order.shop_id) continue;
       for (const item of order.items) {
-        const key = `${item.sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
-        if (!currentMap[key] && item.item_id) {
-          // Use SKU as dedup key (only need to sync once per SKU)
-          const skuKey = item.sku.toUpperCase();
+        const normalizedSku = item.sku.toUpperCase();
+        const tier1Key = (item.tier1_variation || '').toUpperCase();
+        const key = `${normalizedSku}|${tier1Key}`;
+
+        // Check direct match
+        if (currentMap[key]) continue;
+
+        // Check via alias → canonical
+        const canonicalSku = aliasMap[normalizedSku];
+        if (canonicalSku) {
+          const canonicalKey = `${canonicalSku}|${tier1Key}`;
+          if (currentMap[canonicalKey]) continue;
+        }
+
+        // Truly missing
+        if (item.item_id) {
+          const skuKey = normalizedSku;
           if (!missingSkus.has(skuKey)) {
             missingSkus.set(skuKey, {
               sku: item.sku,
@@ -257,17 +297,28 @@ export default function ProfitCalculator({
         const result = await response.json();
         if (result.inserted > 0) {
           console.log(`Synced ${result.inserted} new SKU variations`);
-          // Refetch HPP data after sync
+          // Refetch HPP data after sync (with canonical_sku)
           const { data: newData } = await createClient()
             .from('hpp_master')
-            .select('item_sku, tier1_variation, cost_price')
+            .select('item_sku, tier1_variation, cost_price, canonical_sku')
             .eq('user_id', userId);
 
           if (newData) {
             const newMap: { [key: string]: { cost_price: number | null } } = {};
+            // First pass
             newData.forEach(item => {
               const k = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
               newMap[k] = { cost_price: item.cost_price };
+            });
+            // Resolve aliases
+            newData.forEach(item => {
+              if (item.canonical_sku) {
+                const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+                const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
+                if (newMap[canonicalKey]?.cost_price !== null && newMap[canonicalKey]?.cost_price !== undefined) {
+                  newMap[aliasKey] = { cost_price: newMap[canonicalKey].cost_price };
+                }
+              }
             });
             setSkuProfitData(newMap);
           }
@@ -278,7 +329,7 @@ export default function ProfitCalculator({
     }
   };
 
-  // Lookup HPP data with priority: exact SKU+tier1 → fallback SKU only → default
+  // Lookup HPP data with priority: exact SKU+tier1 → alias+tier1 → fallback SKU only → default
   const getSkuProfitData = (sku: string, tier1: string = ''): {
     cost_price: number | null
   } => {
@@ -287,11 +338,25 @@ export default function ProfitCalculator({
 
     // 1. Exact match: SKU + tier1
     const exactKey = `${normalizedSku}|${normalizedTier1}`;
-    if (skuProfitData[exactKey]?.cost_price !== undefined) {
+    if (skuProfitData[exactKey]?.cost_price !== undefined && skuProfitData[exactKey]?.cost_price !== null) {
       return skuProfitData[exactKey];
     }
 
-    // 2. Fallback: any entry for this SKU that has cost_price set
+    // 2. Alias resolution: check if this SKU is an alias → use canonical's HPP
+    const canonicalSku = skuAliasMap[normalizedSku];
+    if (canonicalSku) {
+      const canonicalKey = `${canonicalSku}|${normalizedTier1}`;
+      if (skuProfitData[canonicalKey]?.cost_price !== undefined && skuProfitData[canonicalKey]?.cost_price !== null) {
+        return skuProfitData[canonicalKey];
+      }
+      // Also try fallback: any canonical entry with cost_price
+      const canonicalFallback = Object.entries(skuProfitData).find(
+        ([key, val]) => key.startsWith(`${canonicalSku}|`) && val.cost_price !== null && val.cost_price > 0
+      );
+      if (canonicalFallback) return canonicalFallback[1];
+    }
+
+    // 3. Fallback: any entry for this SKU that has cost_price set
     const fallbackEntry = Object.entries(skuProfitData).find(
       ([key, val]) => key.startsWith(`${normalizedSku}|`) && val.cost_price !== null && val.cost_price > 0
     );
@@ -299,7 +364,7 @@ export default function ProfitCalculator({
       return fallbackEntry[1];
     }
 
-    // 3. Default
+    // 4. Default
     return { cost_price: null };
   };
 
