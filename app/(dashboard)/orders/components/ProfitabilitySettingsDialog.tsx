@@ -52,6 +52,8 @@ export default function ProfitabilitySettingsDialog({
   const [bulkCostPrice, setBulkCostPrice] = useState<string>('')
   const [dirtyIds, setDirtyIds] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
+  // Track original cost_price at fetch time for stable tab filtering
+  const [originalPrices, setOriginalPrices] = useState<{ [id: number]: number | null }>({})
 
   // Expanded SKU groups (default = all collapsed)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -111,6 +113,10 @@ export default function ProfitabilitySettingsDialog({
       if (error) throw error
 
       setHppData(data || [])
+      // Snapshot original prices for stable tab filtering
+      const priceMap: { [id: number]: number | null } = {}
+        ; (data || []).forEach(d => { priceMap[d.id] = d.cost_price })
+      setOriginalPrices(priceMap)
       setSelectedIds(new Set())
       setDirtyIds(new Set())
     } catch (error) {
@@ -124,10 +130,16 @@ export default function ProfitabilitySettingsDialog({
   // === Computed Data ===
   const filteredData = useMemo(() => {
     let data = hppData
-    if (activeTab === 'filled') data = data.filter(h => h.cost_price !== null && h.cost_price > 0)
-    else if (activeTab === 'empty') data = data.filter(h => h.cost_price === null || h.cost_price === 0)
+    if (activeTab === 'filled') data = data.filter(h => {
+      const orig = originalPrices[h.id]
+      return orig !== null && orig !== undefined && orig > 0
+    })
+    else if (activeTab === 'empty') data = data.filter(h => {
+      const orig = originalPrices[h.id]
+      return orig === null || orig === undefined || orig === 0
+    })
     return data
-  }, [hppData, activeTab])
+  }, [hppData, activeTab, originalPrices])
 
   const groupedData = useMemo(() => {
     const groups: { [sku: string]: HppItem[] } = {}
@@ -152,21 +164,44 @@ export default function ProfitabilitySettingsDialog({
       const { data: { user } } = await createClient().auth.getUser()
       if (!user) { toast.error('Anda harus login'); return }
 
+      // Get user's shop IDs first
+      const { data: userShops, error: shopError } = await createClient()
+        .from('shopee_tokens')
+        .select('shop_id')
+        .eq('user_id', user.id)
+
+      if (shopError || !userShops || userShops.length === 0) {
+        toast.error('Tidak ada toko terhubung')
+        setSyncing(false)
+        return
+      }
+
+      const userShopIds = userShops.map(s => s.shop_id)
+
+      // Get orders only from user's shops
+      const { data: userOrders, error: ordError } = await createClient()
+        .from('orders')
+        .select('order_sn, shop_id')
+        .in('shop_id', userShopIds)
+        .limit(2000)
+
+      if (ordError || !userOrders || userOrders.length === 0) {
+        toast.info('Tidak ada pesanan ditemukan')
+        setSyncing(false)
+        return
+      }
+
+      const userOrderSns = userOrders.map(o => o.order_sn)
+      const orderShopMap: { [k: string]: number } = {}
+      userOrders.forEach(o => { orderShopMap[o.order_sn] = o.shop_id })
+
+      // Get order_items only from user's orders
       const { data: orderItems, error: oiError } = await createClient()
         .from('order_items')
         .select('item_sku, model_sku, model_name, item_id, order_sn')
-        .limit(1000)
+        .in('order_sn', userOrderSns.slice(0, 1000))
 
       if (oiError || !orderItems) { toast.error('Gagal mengambil data pesanan'); setSyncing(false); return }
-
-      const orderSns = Array.from(new Set(orderItems.map(oi => oi.order_sn)))
-      const { data: orders } = await createClient()
-        .from('orders')
-        .select('order_sn, shop_id')
-        .in('order_sn', orderSns.slice(0, 500))
-
-      const orderShopMap: { [k: string]: number } = {}
-      orders?.forEach(o => { orderShopMap[o.order_sn] = o.shop_id })
 
       const skuMap = new Map<string, { sku: string, shop_id: number, item_id: number }>()
       orderItems.forEach(oi => {

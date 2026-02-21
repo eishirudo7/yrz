@@ -57,6 +57,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
   const [adsData, setAdsData] = useState<AdsData[]>([])
   const [totalAdsSpend, setTotalAdsSpend] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [adsLoading, setAdsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [syncingEscrow, setSyncingEscrow] = useState(false)
   const [syncType, setSyncType] = useState<'missing' | 'all' | null>(null)
@@ -109,8 +110,8 @@ export function useOrders(dateRange?: DateRange | undefined) {
         throw new Error(result.message || 'Terjadi kesalahan saat mengambil data pesanan')
       }
 
-      // Ambil data iklan untuk rentang tanggal yang dipilih
-      await fetchAdsData(startTimestamp, endTimestamp)
+      // Ambil data iklan secara non-blocking (tidak menghambat loading utama)
+      fetchAdsDataNonBlocking(startTimestamp, endTimestamp)
     } catch (err) {
       console.error('Error fetching orders:', err)
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data pesanan')
@@ -123,6 +124,11 @@ export function useOrders(dateRange?: DateRange | undefined) {
   const refetch = useCallback(() => {
     return fetchOrders(lastDateRange);
   }, [fetchOrders, lastDateRange]);
+
+  const fetchAdsDataNonBlocking = (startTimestamp: number, endTimestamp: number) => {
+    setAdsLoading(true)
+    fetchAdsData(startTimestamp, endTimestamp).finally(() => setAdsLoading(false))
+  }
 
   const fetchAdsData = async (startTimestamp: number, endTimestamp: number) => {
     try {
@@ -374,6 +380,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
     syncProgress,
     adsData,
     totalAdsSpend,
+    adsLoading,
     refetch // Ekspor fungsi refetch
   }
 } 

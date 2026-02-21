@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Wallet, RefreshCw, List, Search, CreditCard, DollarSign, Eye, BarChart3, CalendarIcon, ListIcon, Tag, FileSpreadsheet } from 'lucide-react'
+import { Wallet, RefreshCw, List, Search, CreditCard, DollarSign, Eye, BarChart3, CalendarIcon, ListIcon, Tag, FileSpreadsheet, AlertTriangle, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { type Order } from '@/app/hooks/useOrders'
 import ProfitabilitySettingsDialog from './ProfitabilitySettingsDialog'
@@ -29,12 +29,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 
 interface ProfitCalculatorProps {
   orders: Order[]
   escrowTotal: number
   adsSpend: number | string | { ads_data: any[], total_cost: string, raw_cost: number }
   dateRange?: { from: Date | undefined, to?: Date | undefined } | undefined
+  onMissingHppChange?: (items: MissingHppItem[]) => void
+  adsLoading?: boolean
 }
 
 // Interface untuk item rincian profit
@@ -51,6 +54,17 @@ interface ProfitDetailItem {
   orderSn?: string
 }
 
+interface MissingHppItem {
+  sku: string
+  tier1: string
+  orderSn: string
+  shopName: string
+  item_id?: number
+  shop_id?: number
+}
+
+export type { MissingHppItem }
+
 // Tambahkan fungsi formatCompactNumber di dalam komponen ProfitCalculator
 // atau di luar jika Anda ingin menggunakannya di komponen lain
 const formatCompactNumber = (number: number): string => {
@@ -63,7 +77,9 @@ export default function ProfitCalculator({
   orders,
   escrowTotal,
   adsSpend,
-  dateRange
+  dateRange,
+  onMissingHppChange,
+  adsLoading = false
 }: ProfitCalculatorProps) {
   const [totalProfit, setTotalProfit] = useState<number>(0)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
@@ -90,7 +106,10 @@ export default function ProfitCalculator({
       netProfit: number
     }
   }>({})
-  const [autoCalculated, setAutoCalculated] = useState(false) // Tambahkan state untuk tracking kalkulasi otomatis
+  const [autoCalculated, setAutoCalculated] = useState(false)
+
+  // Missing HPP tracking
+  const [missingHppItems, setMissingHppItems] = useState<MissingHppItem[]>([])
 
   // Fungsi untuk mengecek apakah adsSpend valid/tersedia
   const isAdsSpendAvailable = useCallback(() => {
@@ -127,14 +146,20 @@ export default function ProfitCalculator({
       dataLoaded && // Data SKU sudah dimuat
       orders.length > 0 && // Ada order 
       escrowTotal > 0 && // Ada escrow
-      isAdsSpendAvailable() && // Ada data iklan
       !isCalculating // Tidak sedang menghitung
     ) {
-      // Jalankan kalkulasi otomatis
+      // Jalankan kalkulasi otomatis (tanpa menunggu ads data)
       calculateTotalProfit();
       setAutoCalculated(true); // Tandai sudah kalkulasi otomatis
     }
-  }, [dataLoaded, orders, escrowTotal, adsSpend, isCalculating, autoCalculated, isAdsSpendAvailable]);
+  }, [dataLoaded, orders, escrowTotal, isCalculating, autoCalculated]);
+
+  // Recalculate ketika ads data selesai loading
+  useEffect(() => {
+    if (!adsLoading && autoCalculated && dataLoaded && orders.length > 0) {
+      calculateTotalProfit();
+    }
+  }, [adsLoading]);
 
   // Fungsi untuk mendapatkan nilai adsSpend yang valid
   const getValidAdsSpend = (): number => {
@@ -416,6 +441,30 @@ export default function ProfitCalculator({
       });
 
       setGroupedDetails(grouped);
+
+      // Collect missing HPP items per order (not per unique SKU)
+      const missing: MissingHppItem[] = [];
+      const seenPerOrder = new Set<string>();
+      allDetails.forEach(detail => {
+        if (detail.method === 'margin' && detail.sku !== 'Unknown') {
+          const dedupKey = `${detail.orderSn}|${detail.sku}|${detail.tier1}`;
+          if (!seenPerOrder.has(dedupKey)) {
+            seenPerOrder.add(dedupKey);
+            const srcOrder = orders.find(o => o.order_sn === detail.orderSn);
+            const srcItem = srcOrder?.items?.find(i => i.sku === detail.sku);
+            missing.push({
+              sku: detail.sku,
+              tier1: detail.tier1 || '',
+              orderSn: detail.orderSn || '',
+              shopName: detail.shopName || '',
+              item_id: srcItem?.item_id,
+              shop_id: srcOrder?.shop_id,
+            });
+          }
+        }
+      });
+      setMissingHppItems(missing);
+      if (onMissingHppChange) onMissingHppChange(missing);
 
       // Hitung profit per toko
       const shopProfits: {
@@ -980,6 +1029,7 @@ export default function ProfitCalculator({
               </span>
             )}
           </div>
+
         </div>
       </div>
     </Card>

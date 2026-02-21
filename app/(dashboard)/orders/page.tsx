@@ -13,12 +13,14 @@ import {
   Calendar as CalendarIcon,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
   Search,
   X,
   ChevronDown,
   Store,
   BarChart3,
   FileText,
+  Check,
 } from "lucide-react"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
@@ -54,6 +56,11 @@ import { OrderStatusCard } from './components/OrderStatusCard'
 import { useTheme } from "next-themes"
 import ChatButton from '@/components/ChatButton'
 import ProfitCalculator from './components/ProfitCalculator'
+import type { MissingHppItem } from './components/ProfitCalculator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { createClient } from '@/utils/supabase/client'
 
 // Extracted components and utilities
 import { SummaryCards } from './components/SummaryCards'
@@ -115,6 +122,7 @@ export default function OrdersPage() {
     syncProgress,
     adsData,
     totalAdsSpend,
+    adsLoading,
     refetch // Tambahkan fungsi refetch dari useOrders jika tersedia, atau implementasikan di hook
   } = useOrders(selectedDateRange)
   const [visibleOrders, setVisibleOrders] = useState<Order[]>([])
@@ -134,6 +142,12 @@ export default function OrdersPage() {
 
   // Tambahkan state untuk tracking apakah pencarian baru saja dilakukan
   const [isSearching, setIsSearching] = useState(false)
+
+  // Missing HPP tracking (lifted from ProfitCalculator)
+  const [missingHppItems, setMissingHppItems] = useState<MissingHppItem[]>([])
+  const [showMissingHppDialog, setShowMissingHppDialog] = useState(false)
+  const [missingHppInputs, setMissingHppInputs] = useState<{ [key: string]: string }>({})
+  const [savingMissingHpp, setSavingMissingHpp] = useState(false)
 
   // Tambahkan state untuk loading pencarian
   const [isSearchLoading, setIsSearchLoading] = useState(false)
@@ -625,8 +639,10 @@ export default function OrdersPage() {
         raw_cost: totalAdsSpend
       }}
       dateRange={selectedDateRange}
+      onMissingHppChange={setMissingHppItems}
+      adsLoading={adsLoading}
     />
-  ), [filteredOrders, getFilteredEscrow, totalAdsSpend, selectedDateRange])
+  ), [filteredOrders, getFilteredEscrow, totalAdsSpend, selectedDateRange, adsLoading])
 
   // Fungsi untuk menampilkan/menyembunyikan detail iklan
   const toggleAdsDetails = () => {
@@ -757,6 +773,7 @@ export default function OrdersPage() {
           totalAdsSpend={totalAdsSpend}
           adsData={adsData}
           selectedDateRange={selectedDateRange}
+          adsLoading={adsLoading}
         />
         {profitCalculatorComponent}
       </div>
@@ -1100,6 +1117,19 @@ export default function OrdersPage() {
         </div>
 
         <div className="flex items-center gap-2 mt-2 sm:mt-0">
+          {/* Missing HPP Alert */}
+          {missingHppItems.length > 0 && (
+            <button
+              onClick={() => setShowMissingHppDialog(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors text-left group"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+              <span className="text-xs text-amber-700 dark:text-amber-400">
+                <strong>{Array.from(new Set(missingHppItems.map(i => i.orderSn))).length}</strong> pesanan belum ada HPP
+              </span>
+            </button>
+          )}
+
           {ordersWithoutEscrow.length > 0 && (
             <Button
               variant="outline"
@@ -1303,6 +1333,133 @@ export default function OrdersPage() {
         isOpen={isOrderHistoryOpen}
         onClose={() => setIsOrderHistoryOpen(false)}
       />
+
+      {/* Missing HPP Dialog */}
+      <Dialog open={showMissingHppDialog} onOpenChange={setShowMissingHppDialog}>
+        <DialogContent className="sm:max-w-[650px] max-h-[85vh] overflow-hidden flex flex-col w-[95vw] p-0">
+          <div className="px-4 sm:px-6 pt-5 pb-3 border-b bg-gradient-to-r from-amber-50 to-white dark:from-amber-950/20 dark:to-slate-900">
+            <DialogHeader>
+              <DialogTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Pesanan Belum Ada HPP
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                {Array.from(new Set(missingHppItems.map(i => i.orderSn))).length} pesanan dengan {missingHppItems.length} item belum memiliki HPP. Isi lalu klik Simpan.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="flex-1 overflow-y-auto max-h-[calc(85vh-180px)]">
+            <div className="p-3 space-y-1.5">
+              {(() => {
+                const byOrder: { [orderSn: string]: MissingHppItem[] } = {};
+                missingHppItems.forEach(item => {
+                  if (!byOrder[item.orderSn]) byOrder[item.orderSn] = [];
+                  byOrder[item.orderSn].push(item);
+                });
+
+                return Object.entries(byOrder).map(([orderSn, items]) => (
+                  <div key={orderSn} className="space-y-1">
+                    <div className="flex items-center gap-2 px-1 pt-2 pb-1">
+                      <span className="text-[10px] font-mono text-muted-foreground">{orderSn}</span>
+                      {items[0].shopName && (
+                        <span className="text-[10px] text-muted-foreground">• {items[0].shopName}</span>
+                      )}
+                    </div>
+                    {items.map((item) => {
+                      const key = `${item.sku}|${item.tier1}`;
+                      return (
+                        <div
+                          key={`${orderSn}-${key}`}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${missingHppInputs[key]
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/10 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-white dark:bg-background border-border hover:bg-muted/30'
+                            }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-semibold truncate block">{item.sku}</span>
+                            {item.tier1 && (
+                              <span className="text-[11px] text-muted-foreground truncate block">{item.tier1}</span>
+                            )}
+                          </div>
+                          <div className="w-32 shrink-0">
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">Rp</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="1000"
+                                placeholder="Harga modal"
+                                value={missingHppInputs[key] || ''}
+                                onChange={(e) => setMissingHppInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="h-8 text-xs pl-7 pr-2 text-right font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${missingHppInputs[key] ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+
+          <DialogFooter className="px-4 sm:px-6 py-3 border-t bg-muted/20 flex-row justify-between items-center">
+            <span className="text-xs text-muted-foreground">
+              {Object.keys(missingHppInputs).filter(k => missingHppInputs[k]).length}/{missingHppItems.length} diisi
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShowMissingHppDialog(false)}>
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+                disabled={savingMissingHpp || Object.keys(missingHppInputs).filter(k => missingHppInputs[k]).length === 0}
+                onClick={async () => {
+                  setSavingMissingHpp(true);
+                  try {
+                    const { data: { user } } = await createClient().auth.getUser();
+                    if (!user) { toast.error('Login terlebih dahulu'); return; }
+
+                    const entries = Object.entries(missingHppInputs).filter(([, v]) => v && parseFloat(v) > 0);
+                    let saved = 0;
+
+                    for (const [key, val] of entries) {
+                      const [sku, tier1] = key.split('|');
+                      const costPrice = parseFloat(val);
+                      const { error } = await createClient()
+                        .from('hpp_master')
+                        .upsert({
+                          user_id: user.id,
+                          item_sku: sku,
+                          tier1_variation: tier1 || '',
+                          cost_price: costPrice,
+                          updated_at: new Date().toISOString()
+                        }, { onConflict: 'user_id,item_sku,tier1_variation' });
+                      if (!error) saved++;
+                    }
+
+                    toast.success(`${saved} HPP berhasil disimpan`);
+                    setShowMissingHppDialog(false);
+                    setMissingHppInputs({});
+                  } catch (err) {
+                    console.error('Error saving HPP:', err);
+                    toast.error('Gagal menyimpan HPP');
+                  } finally {
+                    setSavingMissingHpp(false);
+                  }
+                }}
+              >
+                {savingMissingHpp ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Simpan
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

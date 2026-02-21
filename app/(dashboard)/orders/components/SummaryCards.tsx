@@ -1,8 +1,9 @@
 'use client'
 
-import { DollarSign, Wallet, MegaphoneIcon } from "lucide-react"
+import { DollarSign, Wallet, MegaphoneIcon, Loader2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { DateRange } from "react-day-picker"
@@ -19,6 +20,7 @@ interface SummaryCardsProps {
     totalAdsSpend: number;
     adsData: AdsData[];
     selectedDateRange?: DateRange;
+    adsLoading?: boolean;
 }
 
 export function SummaryCards({
@@ -26,7 +28,8 @@ export function SummaryCards({
     escrow,
     totalAdsSpend,
     adsData,
-    selectedDateRange
+    selectedDateRange,
+    adsLoading = false
 }: SummaryCardsProps) {
     const adminFeePercent = omset > 0 ? ((omset - escrow) / omset * 100).toFixed(1) : '0';
     const adsPercentOfEscrow = escrow > 0 ? (totalAdsSpend / escrow * 100).toFixed(1) : '0';
@@ -79,9 +82,16 @@ export function SummaryCards({
                             Total Iklan
                         </p>
                         <div className="flex items-center justify-between">
-                            <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
-                                Rp {totalAdsSpend.toLocaleString('id-ID')}
-                            </p>
+                            {adsLoading ? (
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />
+                                    <Skeleton className="h-7 w-28 bg-purple-200/50 dark:bg-purple-700/30" />
+                                </div>
+                            ) : (
+                                <p className="text-xl font-bold text-purple-700 dark:text-purple-400 truncate pr-2">
+                                    Rp {totalAdsSpend.toLocaleString('id-ID')}
+                                </p>
+                            )}
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-700/60 transition-colors">
@@ -96,7 +106,13 @@ export function SummaryCards({
                                         </span>
                                     </div>
                                     <div className="max-h-[180px] overflow-y-auto">
-                                        {adsData.length === 0 ? (
+                                        {adsLoading ? (
+                                            <div className="p-3 space-y-2">
+                                                {[...Array(3)].map((_, i) => (
+                                                    <Skeleton key={i} className="h-4 w-full" />
+                                                ))}
+                                            </div>
+                                        ) : adsData.length === 0 ? (
                                             <p className="text-muted-foreground text-center py-2 text-xs">Tidak ada data iklan</p>
                                         ) : (
                                             <div className="divide-y">
@@ -118,9 +134,13 @@ export function SummaryCards({
                                 </PopoverContent>
                             </Popover>
                         </div>
-                        <div className="text-xs text-purple-600 dark:text-purple-400">
-                            {adsPercentOfEscrow}% dari escrow
-                        </div>
+                        {adsLoading ? (
+                            <Skeleton className="h-3.5 w-24 bg-purple-200/50 dark:bg-purple-700/30" />
+                        ) : (
+                            <div className="text-xs text-purple-600 dark:text-purple-400">
+                                {adsPercentOfEscrow}% dari escrow
+                            </div>
+                        )}
                     </div>
                 </div>
             </Card>
