@@ -2269,7 +2269,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       <SkuListDialog
         isOpen={isSkuListOpen}
         onClose={() => setIsSkuListOpen(false)}
-        orders={filteredOrders}
+        orders={orders}
       />
     </div>
   );

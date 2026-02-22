@@ -101,13 +101,13 @@ export const SkuListDialog: React.FC<SkuListDialogProps> = ({ isOpen, onClose, o
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="w-[calc(100vw-32px)] sm:w-full max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden rounded-xl mx-auto my-4 sm:my-0">
+            <DialogContent className="w-[calc(100vw-32px)] sm:w-full max-w-2xl max-h-[75vh] sm:max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden rounded-xl mx-auto my-4 sm:my-0">
                 <DialogHeader className="p-4 sm:p-5 border-b bg-background">
                     <DialogTitle className="flex items-center gap-2 text-base sm:text-lg font-semibold tracking-tight">
                         <Package className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
                         Ringkasan SKU
                     </DialogTitle>
-                    <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5">
+                    <p className="hidden sm:block text-xs text-muted-foreground mt-0.5">
                         Data diambil dari pesanan Diproses, Siap Kirim, dan Permintaan Batal.
                     </p>
                 </DialogHeader>
