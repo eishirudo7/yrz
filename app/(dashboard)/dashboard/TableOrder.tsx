@@ -40,6 +40,7 @@ import {
 
 // Import OrderTable
 import { OrderTable } from './components/Table';
+import { SkuListDialog } from './components/SkuListDialog';
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -1359,6 +1360,9 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     action: 'ACCEPT' | 'REJECT';
   }>({ orderSn: '', action: 'ACCEPT' });
 
+  // Add SKU list dialog state
+  const [isSkuListOpen, setIsSkuListOpen] = useState(false);
+
 
   // Update fungsi handleMobileCategoryChange
   const handleMobileCategoryChange = useCallback((value: string) => {
@@ -1803,11 +1807,24 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         <Card className="px-2 py-2 shadow-none rounded-lg">
           {/* Mobile Layout */}
           <div className="flex flex-col gap-2 sm:hidden">
-            <MobileSelect
-              activeCategory={tableState.activeCategory}
-              categories={derivedData.updatedCategories}
-              onCategoryChange={handleMobileCategoryChange}
-            />
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <MobileSelect
+                  activeCategory={tableState.activeCategory}
+                  categories={derivedData.updatedCategories}
+                  onCategoryChange={handleMobileCategoryChange}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSkuListOpen(true)}
+                className="h-8 px-3 flex items-center gap-1.5 shrink-0 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Package size={14} />
+                <span className="text-xs font-medium">SKU</span>
+              </Button>
+            </div>
             {/* Baris Pencarian dengan Filter Toko dan Checkbox */}
             <div className="flex items-center gap-2">
               {/* Tombol Toggle Checkbox untuk Mobile */}
@@ -1887,14 +1904,14 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
             </Button>
 
             {/* Kategori - Tengah */}
-            <div className="flex gap-2 flex-1">
+            <div className="flex gap-2 flex-1 overflow-x-auto pb-1 items-center">
               {derivedData.updatedCategories.map((category) => (
                 <Button
                   key={category.name}
                   onClick={() => handleCategoryChange(category.name)}
                   variant={tableState.activeCategory === category.name ? "default" : "outline"}
                   size="sm"
-                  className={`h-8 px-3 text-xs whitespace-nowrap
+                  className={`h-8 px-3 text-xs whitespace-nowrap shrink-0
                     ${tableState.activeCategory === category.name
                       ? 'bg-primary hover:bg-primary/90 text-white dark:bg-primary-foreground'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -1903,6 +1920,16 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                   {category.name} ({category.count})
                 </Button>
               ))}
+              <div className="h-4 w-px bg-border mx-1 shrink-0" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSkuListOpen(true)}
+                className="h-8 px-3 text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium"
+              >
+                <Package size={14} />
+                Daftar SKU
+              </Button>
             </div>
 
             {/* Pencarian dan Filter - Kanan */}
@@ -2237,6 +2264,12 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         userId={selectedUserId}
         isOpen={isOrderHistoryOpen}
         onClose={() => setIsOrderHistoryOpen(false)}
+      />
+
+      <SkuListDialog
+        isOpen={isSkuListOpen}
+        onClose={() => setIsSkuListOpen(false)}
+        orders={filteredOrders}
       />
     </div>
   );
