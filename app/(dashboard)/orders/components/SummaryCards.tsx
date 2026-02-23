@@ -1,17 +1,19 @@
 'use client'
 
-import { DollarSign, Wallet, MegaphoneIcon, Loader2 } from "lucide-react"
+import { DollarSign, Wallet, MegaphoneIcon, Loader2, AlertTriangle, RefreshCw } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { id } from 'date-fns/locale'
 import { DateRange } from "react-day-picker"
+import { cn } from "@/lib/utils"
 
 interface AdsData {
     shopId: number;
     shopName: string;
     totalSpend: number;
+    error?: string;
 }
 
 interface SummaryCardsProps {
@@ -21,6 +23,8 @@ interface SummaryCardsProps {
     adsData: AdsData[];
     selectedDateRange?: DateRange;
     adsLoading?: boolean;
+    retryingAds?: Record<number, boolean>;
+    retryAdsFetch?: (shopId: number) => Promise<void>;
 }
 
 export function SummaryCards({
@@ -29,10 +33,13 @@ export function SummaryCards({
     totalAdsSpend,
     adsData,
     selectedDateRange,
-    adsLoading = false
+    adsLoading = false,
+    retryingAds,
+    retryAdsFetch
 }: SummaryCardsProps) {
     const adminFeePercent = omset > 0 ? ((omset - escrow) / omset * 100).toFixed(1) : '0';
     const adsPercentOfEscrow = escrow > 0 ? (totalAdsSpend / escrow * 100).toFixed(1) : '0';
+    const hasAdsError = adsData.some(ad => ad.error);
 
     return (
         <>
@@ -94,11 +101,25 @@ export function SummaryCards({
                             )}
                             <Popover>
                                 <PopoverTrigger asChild>
-                                    <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-800/40 flex-shrink-0 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-700/60 transition-colors">
-                                        <MegaphoneIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                    <div className={cn(
+                                        "p-1.5 rounded-lg flex-shrink-0 cursor-pointer transition-colors relative",
+                                        hasAdsError
+                                            ? "bg-orange-100 dark:bg-orange-900/40 hover:bg-orange-200 dark:hover:bg-orange-800/60"
+                                            : "bg-purple-100 dark:bg-purple-800/40 hover:bg-purple-200 dark:hover:bg-purple-700/60"
+                                    )}>
+                                        <MegaphoneIcon className={cn(
+                                            "w-4 h-4",
+                                            hasAdsError ? "text-orange-600 dark:text-orange-400" : "text-purple-600 dark:text-purple-400"
+                                        )} />
+                                        {hasAdsError && (
+                                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500 border-2 border-white dark:border-gray-900"></span>
+                                            </span>
+                                        )}
                                     </div>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-60 p-0" align="end">
+                                <PopoverContent className="w-[300px] p-0" align="end">
                                     <div className="flex items-center justify-between px-3 py-2 border-b">
                                         <h3 className="text-xs font-semibold">Detail Iklan</h3>
                                         <span className="text-[10px] text-muted-foreground">
@@ -117,12 +138,40 @@ export function SummaryCards({
                                         ) : (
                                             <div className="divide-y">
                                                 {[...adsData]
-                                                    .sort((a, b) => b.totalSpend - a.totalSpend)
+                                                    .sort((a, b) => {
+                                                        // Fallback sorting: error shops first, then by totalSpend
+                                                        if (a.error && !b.error) return -1;
+                                                        if (!a.error && b.error) return 1;
+                                                        return b.totalSpend - a.totalSpend;
+                                                    })
                                                     .map((ad) => (
-                                                        <div key={ad.shopId} className="px-3 py-1.5 hover:bg-muted/50">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-xs">{ad.shopName.split(' ')[0]}</span>
-                                                                <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400">
+                                                        <div key={ad.shopId} className={cn("px-3 py-2", ad.error ? "bg-orange-50/50 dark:bg-orange-900/10" : "hover:bg-muted/50")}>
+                                                            <div className="flex justify-between items-center gap-2">
+                                                                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                                                    <span className="text-xs font-medium truncate">{ad.shopName.split(' ')[0]}</span>
+                                                                    {ad.error && (
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            <div title={ad.error} className="flex items-center">
+                                                                                <AlertTriangle className="h-3 w-3 text-orange-500" />
+                                                                            </div>
+                                                                            {retryAdsFetch && (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        e.stopPropagation();
+                                                                                        retryAdsFetch(ad.shopId);
+                                                                                    }}
+                                                                                    disabled={retryingAds?.[ad.shopId]}
+                                                                                    className="text-[10px] bg-orange-100 hover:bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                                                                                >
+                                                                                    <RefreshCw className={cn("h-2 w-2", retryingAds?.[ad.shopId] && "animate-spin")} />
+                                                                                    Retry
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <span className={cn("text-[10px] font-medium shrink-0", ad.error ? "text-orange-600 dark:text-orange-400 opacity-50" : "text-purple-600 dark:text-purple-400")}>
                                                                     Rp {ad.totalSpend.toLocaleString('id-ID')}
                                                                 </span>
                                                             </div>

@@ -123,6 +123,8 @@ export default function OrdersPage() {
     adsData,
     totalAdsSpend,
     adsLoading,
+    retryingAds,
+    retryAdsFetch,
     refetch // Tambahkan fungsi refetch dari useOrders jika tersedia, atau implementasikan di hook
   } = useOrders(selectedDateRange)
   const [visibleOrders, setVisibleOrders] = useState<Order[]>([])
@@ -774,6 +776,8 @@ export default function OrdersPage() {
           adsData={adsData}
           selectedDateRange={selectedDateRange}
           adsLoading={adsLoading}
+          retryingAds={retryingAds}
+          retryAdsFetch={retryAdsFetch}
         />
         {profitCalculatorComponent}
       </div>

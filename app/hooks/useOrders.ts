@@ -36,6 +36,7 @@ export interface AdsData {
   shopName: string
   totalSpend: number
   cost_formatted: string
+  error?: string
 }
 
 // Tambahkan fungsi helper untuk format tanggal
@@ -58,6 +59,7 @@ export function useOrders(dateRange?: DateRange | undefined) {
   const [totalAdsSpend, setTotalAdsSpend] = useState(0)
   const [loading, setLoading] = useState(true)
   const [adsLoading, setAdsLoading] = useState(false)
+  const [retryingAds, setRetryingAds] = useState<Record<number, boolean>>({})
   const [error, setError] = useState<string | null>(null)
   const [syncingEscrow, setSyncingEscrow] = useState(false)
   const [syncType, setSyncType] = useState<'missing' | 'all' | null>(null)
@@ -171,7 +173,8 @@ export function useOrders(dateRange?: DateRange | undefined) {
           shopId: ad.shop_id,
           shopName: ad.shop_name || `Shop ${ad.shop_id}`,
           totalSpend: ad.raw_cost,
-          cost_formatted: ad.cost
+          cost_formatted: ad.cost,
+          error: ad.error
         })));
 
         // Debug: log hasil konversi ads_data
@@ -179,7 +182,8 @@ export function useOrders(dateRange?: DateRange | undefined) {
           shopId: ad.shop_id,
           shopName: ad.shop_name || `Shop ${ad.shop_id}`,
           totalSpend: ad.raw_cost,
-          cost_formatted: ad.cost
+          cost_formatted: ad.cost,
+          error: ad.error
         })));
       }
 
@@ -195,6 +199,66 @@ export function useOrders(dateRange?: DateRange | undefined) {
       // Tidak perlu set error utama, karena ini hanya data pendukung
     }
   }
+
+  const retryAdsFetch = async (shopId: number) => {
+    if (!lastDateRange?.from) return;
+
+    try {
+      setRetryingAds(prev => ({ ...prev, [shopId]: true }));
+
+      const startDate = lastDateRange.from;
+      const endDate = lastDateRange.to || lastDateRange.from;
+
+      const startDateStr = formatDateToYYYYMMDD(startDate);
+      const endDateStr = formatDateToYYYYMMDD(endDate);
+      const formattedStartDate = formatDateToDDMMYYYY(startDateStr);
+      const formattedEndDate = formatDateToDDMMYYYY(endDateStr);
+
+      const response = await fetch(`/api/ads?start_date=${formattedStartDate}&end_date=${formattedEndDate}&shop_ids=${shopId}&_timestamp=${Date.now()}`);
+
+      if (!response.ok) {
+        throw new Error(`Gagal mem-fetch ulang data iklan untuk toko ${shopId}`);
+      }
+
+      const retryResult = await response.json();
+
+      if (retryResult && retryResult.ads_data && retryResult.ads_data.length > 0) {
+        const ad = retryResult.ads_data[0];
+
+        setAdsData(prevAds => {
+          const newAdsData = prevAds.map(item => {
+            if (item.shopId === shopId) {
+              return {
+                shopId: ad.shop_id,
+                shopName: ad.shop_name || `Shop ${ad.shop_id}`,
+                totalSpend: ad.raw_cost,
+                cost_formatted: ad.cost,
+                error: ad.error
+              };
+            }
+            return item;
+          });
+
+          // Kalkulasi ulang total spend dari semua toko di state baru
+          const newTotalSpend = newAdsData.reduce((sum, item) => sum + (item.totalSpend || 0), 0);
+          setTotalAdsSpend(newTotalSpend);
+
+          return newAdsData;
+        });
+
+        if (!ad.error) {
+          toast.success(`Berhasil mengambil iklan untuk ${ad.shop_name || 'toko'}`);
+        } else {
+          toast.error(`Gagal mendapatkan iklan untuk ${ad.shop_name || 'toko'}: ${ad.error}`);
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error retrying ads fetch for shop ${shopId}:`, err);
+      toast.error(err.message || "Gagal mem-fetch ulang data iklan");
+    } finally {
+      setRetryingAds(prev => ({ ...prev, [shopId]: false }));
+    }
+  };
 
   // Tambahkan fungsi helper untuk memproses batch
   const processBatch = async (
@@ -381,6 +445,8 @@ export function useOrders(dateRange?: DateRange | undefined) {
     adsData,
     totalAdsSpend,
     adsLoading,
+    retryingAds,
+    retryAdsFetch,
     refetch // Ekspor fungsi refetch
   }
-} 
+}  

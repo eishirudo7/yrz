@@ -199,6 +199,16 @@ export async function GET(req: NextRequest, res: NextResponse) {
         try {
             shops = await getAllShops();
             console.log(`Berhasil mengambil ${shops.length} toko dengan getAllShops()`);
+
+            // Filter berdasarkan shop_ids jika parameter tersedia
+            const shopIdsParam = searchParams.get("shop_ids");
+            if (shopIdsParam) {
+                const shopIdsToFetch = shopIdsParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+                if (shopIdsToFetch.length > 0) {
+                    shops = shops.filter((s: any) => shopIdsToFetch.includes(Number(s.shop_id)));
+                    console.log(`Filter shop_ids aktif. Memproses ${shops.length} toko.`);
+                }
+            }
         } catch (shopError) {
             console.error("Gagal mengambil daftar toko:", shopError);
             return NextResponse.json({
