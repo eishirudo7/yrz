@@ -129,22 +129,38 @@ export async function getShopPenalty(shopId: number): Promise<any> {
     try {
         await getValidAccessToken(shopId);
         const sdk = getShopeeSDK(shopId);
-        const response: any = await sdk.accountHealth.getShopPenalty();
 
-        if (response.error) {
-            console.error(`Error saat mengambil penalti toko: ${JSON.stringify(response)}`);
-            return {
-                success: false,
-                error: response.error,
-                message: response.message || 'Gagal mengambil penalti toko',
-                request_id: response.request_id
-            };
-        }
+        // Use new APIs: getPenaltyPointHistory + getPunishmentHistory
+        const [penaltyHistory, punishmentHistory] = await Promise.all([
+            sdk.accountHealth.getPenaltyPointHistory({ page_size: 100 }),
+            sdk.accountHealth.getPunishmentHistory({ punishment_status: 1, page_size: 50 })
+        ]);
+
+        // Aggregate penalty points by violation type
+        const penaltyList = penaltyHistory.response?.penalty_point_list || [];
+        const totalPoints = penaltyList.reduce((sum: number, r: any) => sum + (r.latest_point_num || 0), 0);
+
+        // Map ongoing punishments to match old format
+        const punishmentList = punishmentHistory.response?.punishment_list || [];
+        const ongoingPunishment = punishmentList.map((p: any) => ({
+            punishment_name: `type_${p.punishment_type}`,
+            punishment_tier: p.reason || 0,
+            days_left: Math.max(0, Math.ceil((p.end_time - Date.now() / 1000) / 86400))
+        }));
 
         return {
             success: true,
-            data: response.response,
-            request_id: response.request_id
+            data: {
+                penalty_points: {
+                    overall_penalty_points: totalPoints,
+                    non_fulfillment_rate: 0,
+                    late_shipment_rate: 0,
+                    listing_violations: 0,
+                    opfr_violations: 0,
+                    others: 0
+                },
+                ongoing_punishment: ongoingPunishment
+            }
         };
     } catch (error) {
         console.error('Gagal mengambil penalti toko:', error);

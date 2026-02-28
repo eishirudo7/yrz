@@ -105,8 +105,7 @@ function ShopSkeleton() {
 }
 
 function MetricItem({ metric }: { metric: Metric }) {
-  const { helpers } = useShops();
-  
+
   const getMetricDisplayName = (name: string) => {
     const nameMap: { [key: string]: string } = {
       'non_fulfillment_rate': 'Pesanan Tidak Dipenuhi',
@@ -135,14 +134,14 @@ function MetricItem({ metric }: { metric: Metric }) {
     if (value === null) {
       return unit === 2 ? '0.0' : '0';
     }
-    
+
     if (unit === 2 || metricName.toLowerCase().includes('preparation_time')) {
       if (metricName.toLowerCase().includes('preparation_time')) {
         return Math.ceil(value * 10) / 10;
       }
       return value.toFixed(1);
     }
-    
+
     return value;
   };
 
@@ -175,17 +174,17 @@ function MetricItem({ metric }: { metric: Metric }) {
   );
 }
 
-function MetricGroup({ 
-  title, 
+function MetricGroup({
+  title,
   metrics,
-  type 
-}: { 
+  type
+}: {
   title: string;
   metrics: Metric[];
   type: number;
 }) {
   const filteredMetrics = metrics.filter(m => m.metric_type === type);
-  
+
   if (filteredMetrics.length === 0) return null;
 
   return (
@@ -200,12 +199,12 @@ function MetricGroup({
   );
 }
 
-function ShopCard({ 
-  shop, 
-  tokenStatus, 
-  syncStatus, 
-  onSync, 
-  onDeauth, 
+function ShopCard({
+  shop,
+  tokenStatus,
+  syncStatus,
+  onSync,
+  onDeauth,
   helpers,
   blockingShops
 }: {
@@ -219,7 +218,7 @@ function ShopCard({
     getPunishmentName: (name: string) => string;
     removeShop: (shopId: number) => void;
   };
-  blockingShops: {[key: number]: boolean};
+  blockingShops: { [key: number]: boolean };
 }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-md p-3 sm:p-4 border border-gray-100 dark:border-gray-700 
@@ -243,9 +242,8 @@ function ShopCard({
                 </svg>
               </div>
             ) : (
-              <div className={`w-1.5 h-1.5 rounded-full ${
-                tokenStatus[shop.shop_id]?.is_active ? 'bg-green-500' : 'bg-red-500'
-              }`}></div>
+              <div className={`w-1.5 h-1.5 rounded-full ${tokenStatus[shop.shop_id]?.is_active ? 'bg-green-500' : 'bg-red-500'
+                }`}></div>
             )}
           </div>
         </div>
@@ -261,19 +259,17 @@ function ShopCard({
                   {/* Baris pertama - Performa dan Poin */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${
-                        shop.performance.overall_performance.rating >= 3 ? 'bg-green-500' : 'bg-red-500'
-                      }`} />
+                      <div className={`w-1.5 h-1.5 rounded-full ${shop.performance.overall_performance.rating >= 3 ? 'bg-green-500' : 'bg-red-500'
+                        }`} />
                       <span className="text-xs text-gray-600 dark:text-gray-300">
                         Performa: {helpers.getRatingText(shop.performance.overall_performance.rating)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${
-                        (shop.performance.penalty?.penalty_points.overall_penalty_points || 0) <= 5 
-                          ? 'bg-green-500' 
+                      <div className={`w-1.5 h-1.5 rounded-full ${(shop.performance.penalty?.penalty_points.overall_penalty_points || 0) <= 5
+                          ? 'bg-green-500'
                           : 'bg-red-500'
-                      }`} />
+                        }`} />
                       <span className="text-xs text-gray-600 dark:text-gray-300">
                         Poin: {shop.performance.penalty?.penalty_points.overall_penalty_points || 0}
                       </span>
@@ -320,7 +316,7 @@ function ShopCard({
                   {shop.shop_name}
                 </DialogTitle>
               </DialogHeader>
-              
+
               <div className="space-y-4 sm:space-y-6">
                 {/* Overall Performance */}
                 <div className="space-y-2">
@@ -396,7 +392,7 @@ function ShopCard({
                         </h3>
                         <div className="space-y-2">
                           {shop.performance.penalty.ongoing_punishment.map((punishment: OngoingPunishment, idx: number) => (
-                            <div 
+                            <div
                               key={idx}
                               className="p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 rounded flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-0"
                             >
@@ -419,18 +415,18 @@ function ShopCard({
 
                 {/* Detailed Metrics */}
                 <div className="space-y-4 sm:space-y-6">
-                  <MetricGroup 
-                    title="Performa Pengiriman" 
+                  <MetricGroup
+                    title="Performa Pengiriman"
                     metrics={shop.performance.metric_list}
                     type={1}
                   />
-                  <MetricGroup 
-                    title="Performa Listing" 
+                  <MetricGroup
+                    title="Performa Listing"
                     metrics={shop.performance.metric_list}
                     type={2}
                   />
-                  <MetricGroup 
-                    title="Performa Layanan Pelanggan" 
+                  <MetricGroup
+                    title="Performa Layanan Pelanggan"
                     metrics={shop.performance.metric_list}
                     type={3}
                   />
@@ -464,11 +460,11 @@ function ShopCard({
               {syncStatus[shop.shop_id]?.phase}
             </p>
           )}
-          
+
           <div className="w-full bg-blue-100 dark:bg-blue-800/50 rounded-full h-1.5">
-            <div 
+            <div
               className="bg-blue-500 dark:bg-blue-400 h-1.5 rounded-full transition-all duration-300"
-              style={{ 
+              style={{
                 width: (() => {
                   const total = syncStatus[shop.shop_id]?.progress?.total || 0;
                   const current = syncStatus[shop.shop_id]?.progress?.current || 0;
@@ -510,8 +506,8 @@ function ShopCard({
             </svg>
           ) : (
             <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" 
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           )}
         </button>
@@ -526,13 +522,13 @@ export default function ShopsPage() {
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [hasCheckedTokens, setHasCheckedTokens] = useState(false);
-  const [blockingShops, setBlockingShops] = useState<{[key: number]: boolean}>({});
+  const [blockingShops, setBlockingShops] = useState<{ [key: number]: boolean }>({});
   const { subscription, isLoading: isLoadingSubscription } = useUserData();
 
   // Periksa apakah pengguna sudah mencapai batas toko
   const hasReachedShopLimit = () => {
     if (!subscription) return false;
-    
+
     const maxShops = subscription.max_shops || 1;
     return shops.length >= maxShops;
   };
@@ -543,10 +539,10 @@ export default function ShopsPage() {
     // Reset status untuk toko yang ada saja
     const initialStatus = shopsList.reduce((acc, shop) => ({
       ...acc,
-      [shop.shop_id]: { 
-        isChecking: true, 
-        is_active: false, 
-        message: 'Mengecek token...' 
+      [shop.shop_id]: {
+        isChecking: true,
+        is_active: false,
+        message: 'Mengecek token...'
       }
     }), {});
     setTokenStatus(initialStatus);
@@ -585,7 +581,7 @@ export default function ShopsPage() {
         ...prev,
         ...newStatus
       }));
-      
+
       setHasCheckedTokens(true);
     } catch (err) {
       console.error('Gagal mengecek token:', err);
@@ -618,7 +614,7 @@ export default function ShopsPage() {
     try {
       setSyncStatus(prev => ({
         ...prev,
-        [shopId]: { 
+        [shopId]: {
           progress: { current: 0, total: 0 },
           error: null,
           isSyncing: true,
@@ -631,7 +627,7 @@ export default function ShopsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           shopId,
           includeBookings: true // Include booking orders sync
         })
@@ -649,34 +645,34 @@ export default function ShopsPage() {
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
-        
+
         // Split by lines in case multiple JSON objects in one chunk
         const lines = chunk.split('\n').filter(line => line.trim());
-        
+
         for (const line of lines) {
-        try {
+          try {
             const data = JSON.parse(line);
-          
+
             // Handle progress updates
             if (data.type === 'combined' && typeof data.processed === 'number' && typeof data.total === 'number') {
-            setSyncStatus(prev => ({
-              ...prev,
-              [shopId]: {
-                ...prev[shopId],
-                progress: { 
-                    current: data.processed, 
-                    total: data.total 
-                },
+              setSyncStatus(prev => ({
+                ...prev,
+                [shopId]: {
+                  ...prev[shopId],
+                  progress: {
+                    current: data.processed,
+                    total: data.total
+                  },
                   isSyncing: true,
                   phase: data.phase || 'Mensinkronkan...'
-              }
-            }));
-          }
-            
+                }
+              }));
+            }
+
             // Handle completion
             if (data.completed === true) {
               console.info(`Sinkronisasi selesai untuk toko ${shopId}:`, data.data);
-              
+
               setSyncStatus(prev => ({
                 ...prev,
                 [shopId]: {
@@ -685,20 +681,20 @@ export default function ShopsPage() {
                   phase: 'Selesai'
                 }
               }));
-              
+
               break;
             }
-            
+
             // Handle errors
             if (data.success === false && data.error) {
               throw new Error(data.error);
             }
-            
+
           } catch (parseError) {
             // Ignore JSON parse errors for partial chunks
             console.debug('Parse error for chunk:', line);
+          }
         }
-      }
       }
 
       // Final cleanup - ensure syncing is set to false
@@ -740,7 +736,7 @@ export default function ShopsPage() {
 
   const handleBlock = async (shopId: number) => {
     setBlockingShops(prev => ({ ...prev, [shopId]: true }));
-    
+
     try {
       const response = await fetch(`/api/shops/block?shopId=${shopId}`, {
         method: 'POST'
@@ -753,7 +749,7 @@ export default function ShopsPage() {
       }
 
       toast.success('Toko berhasil dihapus');
-      
+
       // Hapus toko dari state lokal setelah berhasil diblokir
       helpers.removeShop(shopId);
     } catch (error) {
@@ -776,7 +772,7 @@ export default function ShopsPage() {
                 Toko terhubung: <span className="font-medium">{shops.length}</span> dari <span className="font-medium">{subscription?.max_shops || 1}</span>
               </span>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500"></div>
               <span className="text-gray-600 dark:text-gray-400">
@@ -784,7 +780,7 @@ export default function ShopsPage() {
               </span>
             </div>
           </div>
-          
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

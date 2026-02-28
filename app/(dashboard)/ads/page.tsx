@@ -250,6 +250,9 @@ export default function AdsPage() {
     // Error state
     const [error, setError] = useState<string | null>(null)
 
+    // Per-shop retry loading
+    const [retryingShopId, setRetryingShopId] = useState<number | null>(null)
+
     // Fetch shops list (only on initial load)
     const fetchShops = useCallback(async () => {
         try {
@@ -311,6 +314,82 @@ export default function AdsPage() {
             console.error('Failed to fetch dashboard data:', err)
         } finally {
             setIsLoadingDashboard(false)
+        }
+    }, [])
+
+    // Retry performance for a single failed shop (no full page reload)
+    const retryShopPerformance = useCallback(async (shopId: number, shopName: string) => {
+        setRetryingShopId(shopId)
+        try {
+            const isoToShopee = (iso: string) => {
+                const [y, m, d] = iso.split('-')
+                return `${d}-${m}-${y}`
+            }
+            const startDate = isoToShopee(perfStartDateRef.current)
+            const endDate = isoToShopee(perfEndDateRef.current)
+            const params = new URLSearchParams({
+                shop_id: shopId.toString(),
+                level: 'shop',
+                granularity: 'daily',
+                start_date: startDate,
+                end_date: endDate
+            })
+            const response = await fetch(`/api/ads/performance?${params}`)
+            if (response.ok) {
+                const data = await response.json()
+                const perfData = data.performance || []
+                // Aggregate daily data
+                const agg = perfData.reduce((acc: any, d: any) => ({
+                    impression: acc.impression + (d.impression || 0),
+                    clicks: acc.clicks + (d.clicks || 0),
+                    expense: acc.expense + (d.expense || 0),
+                    broad_gmv: acc.broad_gmv + (d.broad_gmv || 0),
+                    broad_order: acc.broad_order + (d.broad_order || 0),
+                }), { impression: 0, clicks: 0, expense: 0, broad_gmv: 0, broad_order: 0 })
+
+                const updatedShop = {
+                    shop_id: shopId,
+                    shop_name: shopName,
+                    impression: agg.impression,
+                    clicks: agg.clicks,
+                    ctr: agg.impression > 0 ? agg.clicks / agg.impression : 0,
+                    expense: agg.expense,
+                    direct_gmv: 0,
+                    broad_gmv: agg.broad_gmv,
+                    direct_roas: 0,
+                    broad_roas: agg.expense > 0 ? agg.broad_gmv / agg.expense : 0,
+                    direct_order: 0,
+                    broad_order: agg.broad_order,
+                    // No error = success
+                }
+
+                // Update only this shop in shopPerformances
+                setShopPerformances(prev => {
+                    const updated = prev.map(s => s.shop_id === shopId ? updatedShop : s)
+                    // Recalculate aggregated
+                    const totals = updated.reduce((acc, s) => ({
+                        impression: acc.impression + s.impression,
+                        clicks: acc.clicks + s.clicks,
+                        expense: acc.expense + s.expense,
+                        gmv: acc.gmv + s.broad_gmv,
+                        orders: acc.orders + s.broad_order
+                    }), { impression: 0, clicks: 0, expense: 0, gmv: 0, orders: 0 })
+                    setAggregatedPerformance({
+                        ...totals,
+                        ctr: totals.impression > 0 ? totals.clicks / totals.impression : 0,
+                        roas: totals.expense > 0 ? totals.gmv / totals.expense : 0
+                    })
+                    return updated
+                })
+            } else {
+                const errData = await response.json()
+                toast.error(errData.error || `Gagal retry untuk ${shopName}`)
+            }
+        } catch (err) {
+            console.error(`Failed to retry performance for shop ${shopId}:`, err)
+            toast.error(`Gagal retry untuk ${shopName}`)
+        } finally {
+            setRetryingShopId(null)
         }
     }, [])
 
@@ -948,10 +1027,10 @@ export default function AdsPage() {
                                                                     variant="ghost"
                                                                     size="sm"
                                                                     className="h-5 px-1.5 text-[10px] text-destructive hover:text-destructive"
-                                                                    onClick={(e) => { e.stopPropagation(); fetchBalance(); fetchDashboard() }}
-                                                                    disabled={isLoadingBalance || isLoadingDashboard}
+                                                                    onClick={(e) => { e.stopPropagation(); retryShopPerformance(shop.shop_id, shop.shop_name) }}
+                                                                    disabled={retryingShopId === shop.shop_id}
                                                                 >
-                                                                    {(isLoadingBalance || isLoadingDashboard) ? (
+                                                                    {retryingShopId === shop.shop_id ? (
                                                                         <Loader2 className="h-2.5 w-2.5 animate-spin mr-0.5" />
                                                                     ) : (
                                                                         <RefreshCw className="h-2.5 w-2.5 mr-0.5" />

@@ -59,7 +59,7 @@ export default function StylishLoginPage() {
       setLoginError('Silakan isi semua kolom')
       return
     }
-    
+
     setLoading(true)
     setLoginError(null)
 
@@ -77,7 +77,7 @@ export default function StylishLoginPage() {
       toast.success('Login berhasil', {
         description: 'Selamat datang kembali!'
       })
-      
+
       setTimeout(() => {
         router.push('/')
         router.refresh()
@@ -93,7 +93,7 @@ export default function StylishLoginPage() {
 
   const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    
+
     if (!signupData.email || !signupData.password || !signupData.confirmPassword || !signupData.displayName) {
       setSignupError('Silakan isi semua kolom yang wajib')
       return
@@ -108,7 +108,7 @@ export default function StylishLoginPage() {
       setSignupError('Password minimal 6 karakter')
       return
     }
-    
+
     setLoading(true)
     setSignupError(null)
     setSignupSuccess(null)
@@ -158,16 +158,16 @@ export default function StylishLoginPage() {
           width={100}
           height={100}
           priority
-          className="h-auto w-auto"
+          className="max-h-[80px] w-auto"
         />
       </div>
-      
+
       <Card className="w-full max-w-md shadow-2xl backdrop-blur-sm bg-gray-50/90 dark:bg-black/50">
         <CardHeader className="space-y-1 pb-2">
           <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white">Login System</h2>
           <p className="text-sm text-gray-700 dark:text-muted-foreground text-center">Selamat datang di Yorozuya</p>
         </CardHeader>
-        
+
         <Tabs defaultValue="login" className="w-full">
           <div className="px-6">
             <TabsList className="grid w-full grid-cols-2">
@@ -175,7 +175,7 @@ export default function StylishLoginPage() {
               <TabsTrigger value="signup">Daftar</TabsTrigger>
             </TabsList>
           </div>
-          
+
           <TabsContent value="login" className="pt-2">
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
@@ -184,7 +184,7 @@ export default function StylishLoginPage() {
                     <AlertDescription>{loginError}</AlertDescription>
                   </Alert>
                 )}
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="email" className="sr-only">Email</Label>
                   <div className="relative">
@@ -240,7 +240,7 @@ export default function StylishLoginPage() {
               </form>
             </CardContent>
           </TabsContent>
-          
+
           <TabsContent value="signup" className="pt-2">
             <CardContent>
               <form onSubmit={handleSignup} className="space-y-4">
@@ -249,7 +249,7 @@ export default function StylishLoginPage() {
                     <AlertDescription>{signupError}</AlertDescription>
                   </Alert>
                 )}
-                
+
                 {signupSuccess && (
                   <Alert className="bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900">
                     <div className="flex items-start">
@@ -258,7 +258,7 @@ export default function StylishLoginPage() {
                     </div>
                   </Alert>
                 )}
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-displayName" className="sr-only">Nama</Label>
                   <div className="relative">
@@ -276,7 +276,7 @@ export default function StylishLoginPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="signup-email" className="sr-only">Email</Label>
                   <div className="relative">
@@ -333,7 +333,7 @@ export default function StylishLoginPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="confirm-password" className="sr-only">Konfirmasi Password</Label>
                   <div className="relative">

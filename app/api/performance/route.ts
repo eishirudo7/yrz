@@ -8,9 +8,9 @@ export async function GET(request: NextRequest) {
 
         if (!shopId) {
             return NextResponse.json(
-                { 
+                {
                     error: 'invalid_parameter',
-                    message: 'Parameter shop_id diperlukan' 
+                    message: 'Parameter shop_id diperlukan'
                 },
                 { status: 400 }
             );
@@ -22,23 +22,21 @@ export async function GET(request: NextRequest) {
             getShopPenalty(shopId)
         ]);
 
-        // Periksa jika salah satu request gagal
-        if (!performance.success || !penalty.success) {
+        if (!performance.success) {
             return NextResponse.json(
-                { 
-                    error: performance.error || penalty.error,
-                    message: performance.message || penalty.message 
+                {
+                    error: performance.error,
+                    message: performance.message
                 },
                 { status: 400 }
             );
         }
 
-        // Gabungkan data performa dan penalti
         return NextResponse.json({
             success: true,
             data: {
                 performance: performance.data,
-                penalty: penalty.data
+                penalty: penalty.success ? penalty.data : null
             },
             request_id: performance.request_id
         });
@@ -46,9 +44,9 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         console.error('Kesalahan saat mengambil data toko:', error);
         return NextResponse.json(
-            { 
+            {
                 error: 'internal_server_error',
-                message: 'Terjadi kesalahan internal server' 
+                message: 'Terjadi kesalahan internal server'
             },
             { status: 500 }
         );
