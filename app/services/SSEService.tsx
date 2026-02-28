@@ -1,7 +1,7 @@
 // app/services/SSEService.tsx
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 interface SSEContextType {
   connectionId: string | null;
@@ -14,8 +14,8 @@ const SSEContext = createContext<SSEContextType | null>(null);
 class SSEService {
   private static instance: SSEService;
   private eventSource: EventSource | null = null;
-  
-  private constructor() {}
+
+  private constructor() { }
 
   static getInstance() {
     if (!SSEService.instance) {
@@ -30,10 +30,10 @@ class SSEService {
     try {
       const url = new URL('/api/notifications/sse', window.location.origin);
       this.eventSource = new EventSource(url.toString());
-      
+
       return this.eventSource;
     } catch (err) {
-      console.error('Error initializing SSE:', err);
+      console.warn('Error initializing SSE:', err);
       return null;
     }
   }
@@ -50,12 +50,18 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<any | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const sseService = SSEService.getInstance();
-    const eventSource = sseService.connect();
 
-    if (eventSource) {
+    function setupConnection() {
+      // Bersihkan koneksi lama dulu
+      sseService.disconnect();
+
+      const eventSource = sseService.connect();
+      if (!eventSource) return;
+
       eventSource.onopen = () => {
         setIsConnected(true);
       };
@@ -64,32 +70,37 @@ export function SSEProvider({ children }: { children: React.ReactNode }) {
         try {
           const data = JSON.parse(event.data);
           setLastMessage(data);
-          
+
           if (data.type === 'connection_established') {
             setConnectionId(data.connectionId);
           }
-          
+
           window.dispatchEvent(
             new CustomEvent('sse-message', { detail: data })
           );
         } catch (err) {
-          console.error('Error parsing SSE message:', err);
+          console.warn('Error parsing SSE message:', err);
         }
       };
 
       eventSource.onerror = () => {
-        console.error('SSE connection error');
+        console.warn('SSE connection lost, reconnecting in 5s...');
         setIsConnected(false);
         sseService.disconnect();
-        
-        // Reconnect setelah 5 detik
-        setTimeout(() => {
-          sseService.connect();
+
+        // Reconnect dengan listeners baru
+        reconnectTimer.current = setTimeout(() => {
+          setupConnection();
         }, 5000);
       };
     }
 
+    setupConnection();
+
     return () => {
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+      }
       sseService.disconnect();
       setIsConnected(false);
     };
