@@ -1,13 +1,20 @@
-import { shopeeApi } from '@/lib/shopeeConfig';
+/**
+ * Shopee Flash Sale Service
+ * Migrated to use @congminh1254/shopee-sdk
+ */
+
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from './tokenManager';
+
 export async function getFlashSaleTimeSlotId(
   shopId: number,
   startTime: number,
   endTime: number
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.getFlashSaleTimeSlotId(shopId, accessToken, {
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.getTimeSlotId({
       start_time: startTime,
       end_time: endTime
     });
@@ -40,8 +47,11 @@ export async function createShopFlashSale(
   timeslotId: number
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.createShopFlashSale(shopId, accessToken, timeslotId);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.createShopFlashSale({
+      timeslot_id: timeslotId,
+    } as any);
 
     if (response.error) {
       return {
@@ -71,8 +81,11 @@ export async function getFlashSaleItemCriteria(
   itemIdList: number[]
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.getFlashSaleItemCriteria(shopId, accessToken, itemIdList);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.getItemCriteria({
+      item_id_list: itemIdList,
+    } as any);
 
     if (response.error) {
       return {
@@ -101,7 +114,7 @@ export async function addShopFlashSaleItems(
   shopId: number,
   data: {
     flash_sale_id: number,
-    items : Array<{
+    items: Array<{
       item_id: number,
       purchase_limit: number,
       models: Array<{
@@ -113,8 +126,9 @@ export async function addShopFlashSaleItems(
   }
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.addShopFlashSaleItems(shopId, accessToken, data);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.addShopFlashSaleItems(data as any);
 
     if (response.error) {
       return {
@@ -151,13 +165,14 @@ export async function getShopFlashSaleList(
   }
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.getShopFlashSaleList(shopId, accessToken, {
-      type: options.type,
-      start_time: options.start_time,
-      end_time: options.end_time,
-      pagination_offset: options.pagination_offset,
-      pagination_entry_count: options.pagination_entry_count
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.getShopFlashSaleList({
+      type: options.type as 0 | 1 | 2 | 3,
+      ...(options.start_time ? { start_time: options.start_time } : {}),
+      ...(options.end_time ? { end_time: options.end_time } : {}),
+      offset: options.pagination_offset,
+      limit: options.pagination_entry_count,
     });
 
     if (response.error) {
@@ -188,8 +203,11 @@ export async function getShopFlashSale(
   flashSaleId: number
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.getShopFlashSale(shopId, accessToken, flashSaleId);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.getShopFlashSale({
+      flash_sale_id: flashSaleId,
+    });
 
     if (response.error) {
       return {
@@ -222,8 +240,9 @@ export async function updateShopFlashSale(
   }
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.updateShopFlashSale(shopId, accessToken, data);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.updateShopFlashSale(data as any);
 
     if (response.error) {
       return {
@@ -278,7 +297,7 @@ export async function updateShopFlashSaleItems(
     if (item.purchase_limit !== undefined && (item.purchase_limit < 0 || !Number.isInteger(item.purchase_limit))) {
       return {
         success: false,
-        error: "invalid_parameter", 
+        error: "invalid_parameter",
         message: "purchase_limit harus berupa integer >= 0"
       };
     }
@@ -295,8 +314,9 @@ export async function updateShopFlashSaleItems(
   }
 
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.updateShopFlashSaleItems(shopId, accessToken, data);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.updateShopFlashSaleItems(data as any);
 
     if (response.error) {
       return {
@@ -326,8 +346,11 @@ export async function deleteShopFlashSale(
   flashSaleId: number
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.deleteShopFlashSale(shopId, accessToken, flashSaleId);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.deleteShopFlashSale({
+      flash_sale_id: flashSaleId,
+    });
 
     if (response.error) {
       return {
@@ -360,8 +383,9 @@ export async function deleteShopFlashSaleItems(
   }
 ): Promise<any> {
   try {
-    const accessToken = await getValidAccessToken(shopId);
-    const response = await shopeeApi.deleteShopFlashSaleItems(shopId, accessToken, data);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    const response: any = await sdk.shopFlashSale.deleteShopFlashSaleItems(data as any);
 
     if (response.error) {
       return {
@@ -445,14 +469,13 @@ export async function getShopFlashSaleItems(
   }
 ): Promise<any> {
   try {
-    const minItems = options?.minItems || 50;
     const limit = 100;
     const offset = options?.offset || 0;
-    let allItems: any[] = [];
-    
-    const accessToken = await getValidAccessToken(shopId);
-    
-    const firstResponse = await shopeeApi.getShopFlashSaleItems(shopId, accessToken, {
+
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+
+    const firstResponse: any = await sdk.shopFlashSale.getShopFlashSaleItems({
       flash_sale_id: flashSaleId,
       offset: offset,
       limit: limit
@@ -466,7 +489,7 @@ export async function getShopFlashSaleItems(
       };
     }
 
-    allItems = [...(firstResponse.response?.item_info || [])];
+    const allItems = firstResponse.response?.item_info || [];
     const total = firstResponse.response?.total_count || 0;
     const models = firstResponse.response?.models || [];
 
@@ -489,7 +512,7 @@ export async function getShopFlashSaleItems(
       message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
     };
   }
-} 
+}
 
 interface FlashSaleAddItemModel {
   model_id: number;
@@ -510,8 +533,8 @@ interface FlashSaleAddItemsRequest {
 }
 
 export function prepareFlashSaleAddItems(
-  shopId: string, 
-  flashSaleId: string, 
+  shopId: string,
+  flashSaleId: string,
   items: FlashSaleItemsResponse
 ): FlashSaleAddItemsRequest {
   // Transform items dan models menjadi format yang sesuai untuk add items

@@ -140,13 +140,13 @@ const getStatusBadge = (status: number, type: number) => {
 };
 
 // Update interface FlashSaleCard
-const FlashSaleCard = ({ 
-  sale, 
-  onStatusChange, 
-  onDelete, 
-  onDuplicate, 
+const FlashSaleCard = ({
+  sale,
+  onStatusChange,
+  onDelete,
+  onDuplicate,
   shopName,
-  selectedShop 
+  selectedShop
 }: {
   sale: FlashSale;
   onStatusChange: (id: number, status: FlashSaleStatus) => void;
@@ -158,9 +158,8 @@ const FlashSaleCard = ({
   const router = useRouter();
 
   return (
-    <div className={`p-3 border rounded-lg space-y-2.5 dark:border-gray-800 ${
-      sale.item_count === 0 ? 'border-red-500 dark:border-red-500' : ''
-    }`}>
+    <div className={`p-3 border rounded-lg space-y-2.5 dark:border-gray-800 ${sale.item_count === 0 ? 'border-red-500 dark:border-red-500' : ''
+      }`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -185,7 +184,7 @@ const FlashSaleCard = ({
               Duplikat
             </DropdownMenuItem>
             {sale.status !== 3 && (
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 onClick={() => onDelete(sale.flash_sale_id)}
                 className="text-red-600"
               >
@@ -390,7 +389,7 @@ export default function FlashSalePage() {
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
   const [deletingFlashSale, setDeletingFlashSale] = useState<number | null>(null);
   const [isDeletingSingle, setIsDeletingSingle] = useState(false);
- 
+
   const [isDesktopDialogOpen, setIsDesktopDialogOpen] = useState(false);
   const [isMobileDialogOpen, setIsMobileDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -401,7 +400,7 @@ export default function FlashSalePage() {
     try {
       const response = await fetch(`/api/flashsale/timeslot?shop_id=${shopId}`);
       const data = await response.json();
-      
+
       if (data.success && data.data) {
         // Organisir time slots berdasarkan tanggal
         const slotsByDate: TimeSlotsByDate = {};
@@ -442,7 +441,7 @@ export default function FlashSalePage() {
         const shops = await fetchShops();
         if (shops && shops.length > 0) {
           // Urutkan toko berdasarkan nama secara ascending dengan tipe eksplisit
-          const sortedShops = shops.sort((a: { shop_name: string }, b: { shop_name: string }) => 
+          const sortedShops = shops.sort((a: { shop_name: string }, b: { shop_name: string }) =>
             a.shop_name.localeCompare(b.shop_name, 'id', { sensitivity: 'base' })
           );
           setShops(sortedShops);
@@ -467,7 +466,7 @@ export default function FlashSalePage() {
 
   const fetchFlashSales = async (page: number = 1, pageSize: number = 10) => {
     if (!selectedShop) return;
-    
+
     setLoading(true);
     setError(null); // Reset error state
     try {
@@ -503,15 +502,15 @@ export default function FlashSalePage() {
     setSelectedDialogShop(shopId);
     setSelectedTimeSlot(undefined);
     setDate(undefined);
-    
+
     try {
       const slots = await fetchTimeSlots(shopId);
       setTimeSlotsByDate(slots);
-      
+
       // Tambahkan ini untuk mengatur timeSlots untuk tampilan mobile
       const allSlots = Object.values(slots).flat();
       setTimeSlots(allSlots);
-      
+
       console.log('Mobile time slots:', allSlots); // Untuk debugging
     } catch (error) {
       toast.error('Error', {
@@ -528,12 +527,12 @@ export default function FlashSalePage() {
       });
       return;
     }
-    
+
     setSelectedDialogShop(selectedShop);
     setSelectedTimeSlot(undefined);
     setDate(undefined);
     setTimeSlots([]); // Reset timeSlots
-    
+
     setCalendarLoading(true);
     try {
       const slots = await fetchTimeSlots(selectedShop);
@@ -542,7 +541,7 @@ export default function FlashSalePage() {
       // Tambahkan ini untuk mengatur timeSlots awal untuk tampilan mobile
       const allSlots = Object.values(slots).flat();
       setTimeSlots(allSlots);
-      
+
       // Buka dialog berdasarkan ukuran layar
       if (window.innerWidth >= 768) { // md breakpoint
         setIsDesktopDialogOpen(true);
@@ -564,7 +563,7 @@ export default function FlashSalePage() {
       setDate(undefined);
       return;
     }
-    
+
     setDate(selectedDate);
     const dateKey = format(selectedDate, 'yyyy-MM-dd');
     const slotsForDate = timeSlotsByDate[dateKey] || [];
@@ -627,7 +626,7 @@ export default function FlashSalePage() {
       setShowStatusConfirmDialog(true);
       return;
     }
-    
+
     // Jika mengaktifkan, langsung proses
     await updateFlashSaleStatus(flashSaleId, newStatus);
   };
@@ -644,7 +643,7 @@ export default function FlashSalePage() {
           status: newStatus
         })
       });
-      
+
       const data = await response.json();
       if (data.success) {
         toast.success(newStatus === 1 ? 'Flash sale berhasil diaktifkan' : 'Flash sale berhasil dinonaktifkan', {
@@ -671,19 +670,19 @@ export default function FlashSalePage() {
 
   const confirmDelete = async () => {
     if (!deletingFlashSale) return;
-    
+
     setIsDeletingSingle(true);
     try {
       const response = await fetch(`/api/flashsale/delete?shop_id=${selectedShop}&flash_sale_id=${deletingFlashSale}`, {
         method: 'DELETE'
       });
-      
+
       const data = await response.json();
       if (data.success) {
         // Dapatkan informasi flash sale yang dihapus
         const deletedFlashSale = flashSales.find(sale => sale.flash_sale_id === deletingFlashSale);
         const startTime = dayjs(deletedFlashSale?.start_time ? deletedFlashSale.start_time * 1000 : undefined);
-        
+
         toast.success(`Flash sale ${deletingFlashSale} berhasil dihapus`, {
           description: (
             <div className="space-y-1">
@@ -714,11 +713,11 @@ export default function FlashSalePage() {
     setDuplicatingFlashSaleId(flashSaleId);
     setSelectedSlots([]); // Reset selected slots
     setIncludeTurnOff(true); // Reset toggle ke default true
-    
+
     try {
       const response = await fetch(`/api/flashsale/timeslot?shop_id=${selectedShop}`);
       const data = await response.json();
-      
+
       if (data.success && data.data) {
         setTimeSlots(data.data);
         setIsDuplicateDialogOpen(true);
@@ -770,12 +769,12 @@ export default function FlashSalePage() {
 
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split('\n');
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               if (data.progress?.detail) {
                 const { flash_sale_id, ...rest } = data.progress.detail;
                 if (flash_sale_id) {
@@ -957,7 +956,7 @@ export default function FlashSalePage() {
 
   const confirmBulkDelete = async () => {
     if (!selectedItems.length) return;
-    
+
     setIsDeletingItems(true);
     try {
       const promises = selectedItems.map(flashSaleId =>
@@ -997,7 +996,7 @@ export default function FlashSalePage() {
           description: 'Semua operasi penghapusan gagal'
         });
       }
-      
+
       setSelectedItems([]);
     } catch (error) {
       toast.error('Terjadi kesalahan', {
@@ -1018,12 +1017,12 @@ export default function FlashSalePage() {
           <div className="flex items-center gap-2 text-yellow-600">
             <AlertTriangle className="h-5 w-5" />
             {deletingFlashSale ? (
-              <p>Peringatan: Anda akan menghapus Flash Sale #{deletingFlashSale}.</p>
+              <span>Peringatan: Anda akan menghapus Flash Sale #{deletingFlashSale}.</span>
             ) : (
-              <p>Peringatan: Anda akan menghapus {selectedItems.length} flash sale.</p>
+              <span>Peringatan: Anda akan menghapus {selectedItems.length} flash sale.</span>
             )}
           </div>
-          <p>Tindakan ini tidak dapat dibatalkan. Apakah Anda yakin ingin melanjutkan?</p>
+          <span>Tindakan ini tidak dapat dibatalkan. Apakah Anda yakin ingin melanjutkan?</span>
         </DialogDescription>
         <DialogFooter>
           <Button
@@ -1082,19 +1081,19 @@ export default function FlashSalePage() {
 
         {/* Progress steps */}
         <div className="flex items-center gap-6 mb-2">
-          <StepIndicator 
+          <StepIndicator
             step="create"
             currentStep={detail.step}
             success={isSuccess || detail.flash_sale_id !== null}
             error={hasError}
           />
-          <StepIndicator 
+          <StepIndicator
             step="register"
             currentStep={detail.step}
             success={isSuccess}
             error={hasError}
           />
-          <StepIndicator 
+          <StepIndicator
             step="complete"
             currentStep={detail.step}
             success={isSuccess}
@@ -1105,7 +1104,7 @@ export default function FlashSalePage() {
         {/* Status message */}
         <p className={`text-sm ${hasError ? 'text-red-600' : 'text-muted-foreground'}`}>
           {detail.error || (
-            isSuccess 
+            isSuccess
               ? `Berhasil mendaftarkan ${detail.successful_items} items ke Flash Sale #${detail.flash_sale_id}`
               : detail.status
           )}
@@ -1115,11 +1114,11 @@ export default function FlashSalePage() {
   };
 
   // Update StepIndicator untuk menangani status pembuatan flash sale
-  const StepIndicator = ({ 
-    step, 
+  const StepIndicator = ({
+    step,
     currentStep,
     success,
-    error 
+    error
   }: StepIndicatorProps) => {
     const getStatus = () => {
       if (error) return 'error';
@@ -1133,16 +1132,15 @@ export default function FlashSalePage() {
 
     return (
       <div className="flex items-center gap-1">
-        <div className={`h-2 w-2 rounded-full ${
-          getStatus() === 'error' ? 'bg-red-500' :
-          getStatus() === 'pending' ? 'bg-gray-200' :
-          getStatus() === 'processing' ? 'bg-blue-400 animate-pulse' :
-          'bg-green-500'
-        }`} />
+        <div className={`h-2 w-2 rounded-full ${getStatus() === 'error' ? 'bg-red-500' :
+            getStatus() === 'pending' ? 'bg-gray-200' :
+              getStatus() === 'processing' ? 'bg-blue-400 animate-pulse' :
+                'bg-green-500'
+          }`} />
         <span className="text-xs text-muted-foreground">
           {step === 'create' ? 'Membuat' :
-           step === 'register' ? 'Mendaftarkan' :
-           'Selesai'}
+            step === 'register' ? 'Mendaftarkan' :
+              'Selesai'}
         </span>
       </div>
     );
@@ -1151,7 +1149,7 @@ export default function FlashSalePage() {
   const ProgressList = () => {
     const sortedProgressDetails = useMemo(() => {
       if (!duplicateProgress) return [];
-      
+
       return Object.values(progressDetails)
         .filter(detail => detail.flash_sale_id)
         .sort((a, b) => b.flash_sale_id - a.flash_sale_id)
@@ -1163,8 +1161,8 @@ export default function FlashSalePage() {
     return (
       <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2">
         {sortedProgressDetails.map((detail) => (
-          <ProgressItem 
-            key={detail.flash_sale_id} 
+          <ProgressItem
+            key={detail.flash_sale_id}
             detail={detail}
           />
         ))}
@@ -1189,9 +1187,9 @@ export default function FlashSalePage() {
               <span className="hidden md:inline">Hapus</span> {selectedItems.length}
             </Button>
           )}
-          <Button 
-            className="bg-primary flex-1 md:flex-none" 
-            size="sm" 
+          <Button
+            className="bg-primary flex-1 md:flex-none"
+            size="sm"
             onClick={handleCreateFlashSale}
           >
             {calendarLoading ? (
@@ -1284,7 +1282,7 @@ export default function FlashSalePage() {
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 px-6">
                         {error}
                       </p>
-                      <Button 
+                      <Button
                         onClick={() => fetchFlashSales(currentPage, pageSize)}
                         variant="outline"
                         size="sm"
@@ -1437,7 +1435,7 @@ export default function FlashSalePage() {
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 px-6">
               {error}
             </p>
-            <Button 
+            <Button
               onClick={() => fetchFlashSales(currentPage, pageSize)}
               variant="outline"
               size="sm"
@@ -1509,19 +1507,19 @@ export default function FlashSalePage() {
         </div>
 
         <div className="order-1 md:order-2 flex items-center gap-1 md:gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage <= 1}
             className="dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800 dark:disabled:text-gray-700"
           >
             Previous
           </Button>
-          
+
           {Array.from({ length: totalPages }).map((_, index) => {
             const pageNumber = index + 1;
-            
+
             // Tampilkan halaman pertama, terakhir, dan halaman di sekitar halaman aktif
             if (
               pageNumber === 1 ||
@@ -1529,13 +1527,13 @@ export default function FlashSalePage() {
               (pageNumber >= currentPage - 1 && pageNumber <= currentPage + 1)
             ) {
               return (
-                <Button 
+                <Button
                   key={pageNumber}
-                  variant="outline" 
+                  variant="outline"
                   size="sm"
                   onClick={() => handlePageChange(pageNumber)}
-                  className={pageNumber === currentPage 
-                    ? "bg-primary text-white hover:bg-primary dark:bg-white dark:text-black dark:hover:bg-white/90" 
+                  className={pageNumber === currentPage
+                    ? "bg-primary text-white hover:bg-primary dark:bg-white dark:text-black dark:hover:bg-white/90"
                     : "dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"}
                 >
                   {pageNumber}
@@ -1554,8 +1552,8 @@ export default function FlashSalePage() {
             return null;
           })}
 
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => handlePageChange(currentPage + 1)}
             disabled={currentPage >= totalPages}
@@ -1594,7 +1592,7 @@ export default function FlashSalePage() {
               </div>
             </div>
           </div>
-          
+
           {!selectedShop && (
             <div className="px-6 py-3 bg-yellow-50 dark:bg-yellow-900/30 border-b dark:border-gray-800">
               <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-200">
@@ -1646,14 +1644,14 @@ export default function FlashSalePage() {
             <div className="p-6 border-t dark:border-gray-800 h-[600px] flex flex-col">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {!date 
+                  {!date
                     ? "Pilih tanggal terlebih dahulu"
-                    : timeSlots.length > 0 
-                      ? "Sesi Flash Sale" 
+                    : timeSlots.length > 0
+                      ? "Sesi Flash Sale"
                       : "Tidak ada slot waktu tersedia"}
                 </h3>
               </div>
-              
+
               {date ? (
                 <RadioGroup
                   value={selectedTimeSlot?.timeslot_id.toString()}
@@ -1668,16 +1666,15 @@ export default function FlashSalePage() {
                   {timeSlots.map((slot) => (
                     <div
                       key={slot.timeslot_id}
-                      className={`flex items-center justify-between p-3 rounded-md border ${
-                        selectedTimeSlot?.timeslot_id === slot.timeslot_id
-                          ? 'border-primary bg-primary/5 dark:bg-primary/10' 
+                      className={`flex items-center justify-between p-3 rounded-md border ${selectedTimeSlot?.timeslot_id === slot.timeslot_id
+                          ? 'border-primary bg-primary/5 dark:bg-primary/10'
                           : 'border-gray-200 dark:border-gray-800'
-                      } hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer`}
+                        } hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer`}
                       onClick={() => setSelectedTimeSlot(slot)}
                     >
                       <div className="flex items-center gap-3">
-                        <RadioGroupItem 
-                          value={slot.timeslot_id.toString()} 
+                        <RadioGroupItem
+                          value={slot.timeslot_id.toString()}
                           id={`slot-${slot.timeslot_id}`}
                           onClick={(e) => e.stopPropagation()}
                         />
@@ -1775,17 +1772,17 @@ export default function FlashSalePage() {
       <Dialog open={isDuplicateDialogOpen} onOpenChange={setIsDuplicateDialogOpen}>
         <DialogContent className="sm:max-w-[600px] dark:border-gray-800 dark:bg-gray-950">
           <DialogTitle className="dark:text-gray-100">Duplikasi Flash Sale</DialogTitle>
-          
+
           {duplicateProgress ? (
             <div className="py-6">
               <div className="space-y-5">
                 {/* Progress bar */}
                 <div className="space-y-2">
                   <div className="h-2.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-primary transition-all duration-500 ease-in-out"
-                      style={{ 
-                        width: `${(duplicateProgress.current / duplicateProgress.total) * 100}%` 
+                      style={{
+                        width: `${(duplicateProgress.current / duplicateProgress.total) * 100}%`
                       }}
                     />
                   </div>
@@ -1807,13 +1804,13 @@ export default function FlashSalePage() {
                     {(() => {
                       const flashSale = flashSales.find(fs => fs.flash_sale_id === duplicatingFlashSaleId);
                       if (!flashSale) return '-';
-                      
+
                       return (
                         <>
                           <div>
                             {dayjs(flashSale.start_time * 1000).format('DD/MM/YYYY HH:mm')} - {dayjs(flashSale.end_time * 1000).format('HH:mm')}
                           </div>
-                         
+
                         </>
                       );
                     })()}
@@ -1858,10 +1855,10 @@ export default function FlashSalePage() {
                         }
                       }}
                     />
-                   
+
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2 mb-3 border-b pb-2 dark:border-gray-800">
                   <Switch
                     checked={includeTurnOff}
@@ -1873,7 +1870,7 @@ export default function FlashSalePage() {
                   </Label>
                   <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                 </div>
-                
+
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
                   <div className="grid grid-cols-2 gap-2">
                     {timeSlots.map((slot) => {
@@ -1881,11 +1878,10 @@ export default function FlashSalePage() {
                       return (
                         <div
                           key={slot.timeslot_id}
-                          className={`flex flex-col items-center justify-center p-2.5 rounded-md border cursor-pointer ${
-                            isSelected 
-                              ? 'border-primary bg-primary/5 dark:bg-primary/10' 
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-md border cursor-pointer ${isSelected
+                              ? 'border-primary bg-primary/5 dark:bg-primary/10'
                               : 'border-gray-200 dark:border-gray-800'
-                          } hover:bg-gray-50 dark:hover:bg-gray-800/50`}
+                            } hover:bg-gray-50 dark:hover:bg-gray-800/50`}
                           onClick={() => {
                             if (isSelected) {
                               setSelectedSlots(selectedSlots.filter(id => id !== slot.timeslot_id));

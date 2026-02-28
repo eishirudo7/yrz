@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getShopInfo } from '@/app/services/shopeeService';
-import { shopeeApi } from '@/lib/shopeeConfig';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 
 
 export async function POST(request: Request) {
@@ -19,12 +19,10 @@ export async function POST(request: Request) {
         const checkPromises = shop_ids.map(async (shop_id: number) => {
             try {
                 const shopInfo = await getShopInfo(shop_id);
-                
-                // Coba menggunakan token untuk memastikan masih valid
-                const testResponse = await shopeeApi.getShopInfo(
-                    shop_id,
-                    shopInfo.access_token
-                );
+
+                // Gunakan SDK untuk validasi token
+                const sdk = getShopeeSDK(shop_id);
+                const testResponse: any = await sdk.shop.getShopInfo();
 
                 const isActive = !testResponse.error;
 

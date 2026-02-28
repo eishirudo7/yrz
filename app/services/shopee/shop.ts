@@ -1,11 +1,13 @@
 /**
  * Shopee Service - Shop Operations
+ * Migrated to use @congminh1254/shopee-sdk
  */
 
 import { supabase } from '@/lib/supabase';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { createClient } from '@/utils/supabase/server';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 
 export async function getShopInfo(shopId: number): Promise<any> {
     try {
@@ -75,8 +77,9 @@ export async function getRefreshCount(shopId: number): Promise<number> {
 
 export function generateAuthUrl(): string {
     try {
+        const sdk = getShopeeSDK();
         const redirectUrl = `https://yorozuya.me/api/callback`;
-        const authUrl = shopeeApi.generateAuthUrl(redirectUrl);
+        const authUrl = sdk.getAuthorizationUrl(redirectUrl);
         console.info(`URL otentikasi berhasil dibuat: ${authUrl}`);
         return authUrl;
     } catch (error) {
@@ -86,14 +89,16 @@ export function generateAuthUrl(): string {
 }
 
 export function generateDeauthUrl(): string {
+    // SDK belum support deauth URL — tetap pakai legacy method
     const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/shops`;
     return shopeeApi.generateDeauthUrl(redirectUrl);
 }
 
 export async function getShopPerformance(shopId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getShopPerformance(shopId, accessToken);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.accountHealth.getShopPerformance();
 
         if (response.error) {
             console.error(`Error saat mengambil performa toko: ${JSON.stringify(response)}`);
@@ -122,8 +127,9 @@ export async function getShopPerformance(shopId: number): Promise<any> {
 
 export async function getShopPenalty(shopId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getShopPenalty(shopId, accessToken);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.accountHealth.getShopPenalty();
 
         if (response.error) {
             console.error(`Error saat mengambil penalti toko: ${JSON.stringify(response)}`);
@@ -152,8 +158,12 @@ export async function getShopPenalty(shopId: number): Promise<any> {
 
 export async function getAdsDailyPerformance(shopId: number, startDate: string, endDate: string): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getAdsDailyPerformance(shopId, accessToken, startDate, endDate);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.ads.getAllCpcAdsDailyPerformance({
+            start_date: startDate,
+            end_date: endDate,
+        } as any);
 
         if (response.error) {
             console.error(`Error saat mendapatkan data performa iklan harian: ${JSON.stringify(response)}`);
@@ -173,17 +183,18 @@ export async function getAdsDailyPerformance(shopId: number, startDate: string, 
 
 export async function blockShopWebhook(shopId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const currentConfig = await shopeeApi.getAppPushConfig();
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK();
+        const currentConfig: any = await sdk.push.getAppPushConfig();
 
-        let blockedList = currentConfig.response?.blocked_shop_id_list || [];
+        let blockedList = currentConfig.blocked_shop_id_list || [];
         if (!blockedList.includes(shopId)) {
             blockedList.push(shopId);
         }
 
-        const response = await shopeeApi.setAppPushConfig({
+        const response: any = await sdk.push.setAppPushConfig({
             blocked_shop_id_list: blockedList
-        });
+        } as any);
 
         if (response.error) {
             return {
@@ -209,15 +220,16 @@ export async function blockShopWebhook(shopId: number): Promise<any> {
 
 export async function unblockShopWebhook(shopId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const currentConfig = await shopeeApi.getAppPushConfig();
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK();
+        const currentConfig: any = await sdk.push.getAppPushConfig();
 
-        let blockedList = currentConfig.response?.blocked_shop_id_list || [];
+        let blockedList = currentConfig.blocked_shop_id_list || [];
         blockedList = blockedList.filter((id: number) => id !== shopId);
 
-        const response = await shopeeApi.setAppPushConfig({
+        const response: any = await sdk.push.setAppPushConfig({
             blocked_shop_id_list: blockedList
-        });
+        } as any);
 
         if (response.error) {
             return {

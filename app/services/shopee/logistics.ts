@@ -1,8 +1,9 @@
 /**
  * Shopee Service - Logistics Operations
+ * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { shopeeApi } from '@/lib/shopeeConfig';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { retryOperation } from './utils';
 
@@ -11,8 +12,12 @@ export async function getTrackingNumber(
     orderSn: string,
     packageNumber?: string
 ): Promise<any> {
-    const accessToken = await getValidAccessToken(shopId);
-    return shopeeApi.getTrackingNumber(shopId, orderSn, accessToken);
+    await getValidAccessToken(shopId);
+    const sdk = getShopeeSDK(shopId);
+    return sdk.logistics.getTrackingNumber({
+        order_sn: orderSn,
+        ...(packageNumber ? { package_number: packageNumber } : {}),
+    });
 }
 
 export async function createShippingDocument(
@@ -25,8 +30,16 @@ export async function createShippingDocument(
     documentType: string = 'THERMAL_AIR_WAYBILL'
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.createShippingDocument(shopId, accessToken, orderList, documentType);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.logistics.createShippingDocument({
+            order_list: orderList.map(o => ({
+                order_sn: o.order_sn,
+                ...(o.package_number ? { package_number: o.package_number } : {}),
+                ...(o.tracking_number ? { tracking_number: o.tracking_number } : {}),
+            })),
+            document_type: documentType,
+        } as any);
 
         if (result.error) {
             console.error(`Error saat membuat dokumen pengiriman: ${JSON.stringify(result)}`);
@@ -53,7 +66,8 @@ export async function downloadShippingDocument(
     }>
 ): Promise<Buffer | any> {
     return retryOperation(async () => {
-        const accessToken = await getValidAccessToken(shopId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
 
         if (!shopId || !orderList || orderList.length === 0) {
             return {
@@ -79,11 +93,9 @@ export async function downloadShippingDocument(
             return formattedOrder;
         });
 
-        const response = await shopeeApi.downloadShippingDocument(
-            shopId,
-            accessToken,
-            formattedOrderList
-        );
+        const response: any = await sdk.logistics.downloadShippingDocument({
+            order_list: formattedOrderList,
+        } as any);
 
         if (response instanceof Buffer) {
             return response;

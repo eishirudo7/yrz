@@ -1,6 +1,4 @@
-import { redis } from '@/app/services/redis';
-import { refreshToken } from '@/app/services/tokenManager';
-
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { supabase } from '@/lib/supabase';
 
 
@@ -24,9 +22,19 @@ export async function refreshAllTokens() {
     const results = await Promise.all(
       shops.map(async (shop) => {
         try {
-          const data = await refreshToken(shop.shop_id, shop.refresh_token, shop.shop_name, shop.user_id);
-          await redis.hset(`shopee:token:${shop.shop_id}`, 'access_token', JSON.stringify(data.access_token));
-          await redis.expire(`shopee:token:${shop.shop_id}`, 24 * 60 * 60);
+          const sdk = getShopeeSDK(shop.shop_id, {
+            userId: shop.user_id,
+            shopName: shop.shop_name,
+          });
+
+          // SDK handles: get old token → refresh → store new token (via SupabaseTokenStorage)
+          const newToken = await sdk.refreshToken(shop.shop_id);
+
+          if (!newToken) {
+            throw new Error('Token refresh returned null');
+          }
+          // Redis is automatically updated by SupabaseTokenStorage.store() inside sdk.refreshToken()
+
           console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shop_id}`);
           return { success: true, shop_id: shop.shop_id };
         } catch (error) {

@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useParams } from 'next/navigation';
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,11 +48,11 @@ import { useUserData } from "@/contexts/UserDataContext";
 import Link from "next/link";
 
 interface ModelChanges {
-    [key: number]: {
-      price: number;
-      previousPrice?: number;
-    }
+  [key: number]: {
+    price: number;
+    previousPrice?: number;
   }
+}
 interface ModelDetail {
   model_id: number;
   model_name: string;
@@ -111,7 +111,8 @@ interface Product {
   }[];
 }
 
-export default function DiscountDetailPage({ params }: { params: { discountId: string } }) {
+export default function DiscountDetailPage() {
+  const params = useParams<{ discountId: string }>();
   const searchParams = useSearchParams();
   const shopId = searchParams.get('shopId');
   const { shops } = useUserData();
@@ -144,10 +145,10 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const getCheckedItemIds = () => {
     if (!discount?.item_list) return [];
-    
+
     return discount.item_list
-      .filter(item => 
-        item.model_list?.some(model => 
+      .filter(item =>
+        item.model_list?.some(model =>
           selectedModels.includes(model.model_id)
         )
       )
@@ -156,11 +157,11 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   useEffect(() => {
     const checkedIds = getCheckedItemIds();
-    
+
     if (checkedIds?.length === 1) {
       setModelFilter(['all']);
       setSizeFilter(['all']);
-      
+
       const selectedItem = discount?.item_list?.find(item => item.item_id === checkedIds[0]);
       if (selectedItem?.model_list && selectedModels.length === 0) {
         const modelIds = selectedItem.model_list.map(model => model.model_id);
@@ -202,7 +203,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       // Jika diaktifkan, gunakan nilai diskon sebelumnya atau default 26%
       const previousPrice = changes[modelId]?.previousPrice;
       const newPrice = previousPrice || Math.round(originalPrice * 0.74); // 26% discount
-      
+
       setChanges(prev => ({
         ...prev,
         [modelId]: {
@@ -213,7 +214,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
     } else {
       // Jika dinonaktifkan, simpan harga promosi saat ini sebagai previousPrice dan atur harga = harga asli
       const currentPrice = changes[modelId]?.price;
-      
+
       setChanges(prev => ({
         ...prev,
         [modelId]: {
@@ -233,32 +234,32 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       const existingItemChanges = new Map();
       const newItemChanges = new Map();
       const newModelChanges = new Map(); // Untuk model yang belum dalam promosi tapi itemnya sudah ada
-      
+
       discount?.item_list.forEach(item => {
         // Identifikasi apakah ini item baru atau item yang sudah ada
         const isNewItem = newItemIds.has(item.item_id);
-        
+
         const modelChanges = item.model_list
           .filter(model => changes[model.model_id])
           .map(model => ({
             model_id: model.model_id,
             model_promotion_price: changes[model.model_id].price
           }));
-          
+
         if (modelChanges.length > 0) {
           const itemChange = {
             item_id: item.item_id,
             purchase_limit: item.purchase_limit,
             model_list: modelChanges
           };
-          
+
           if (isNewItem) {
             newItemChanges.set(item.item_id, itemChange);
           } else {
             // Cek apakah model sudah dalam promosi atau belum
             const inPromotionModels: { model_id: number, model_promotion_price: number }[] = [];
             const notInPromotionModels: { model_id: number, model_promotion_price: number }[] = [];
-            
+
             modelChanges.forEach(model => {
               const detailModel = item.model_list.find(m => m.model_id === model.model_id);
               if (detailModel?.in_promotion === false) {
@@ -267,14 +268,14 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                 inPromotionModels.push(model);
               }
             });
-            
+
             if (inPromotionModels.length > 0) {
               existingItemChanges.set(item.item_id, {
                 ...itemChange,
                 model_list: inPromotionModels
               });
             }
-            
+
             if (notInPromotionModels.length > 0) {
               newModelChanges.set(item.item_id, {
                 ...itemChange,
@@ -288,7 +289,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       // Proses item yang sudah ada dan modelnya sudah dalam promosi (update-items)
       if (existingItemChanges.size > 0) {
         const existingItems = Array.from(existingItemChanges.values());
-        
+
         const updateResponse = await fetch(`/api/discount/${params.discountId}?action=update-items`, {
           method: 'POST',
           headers: {
@@ -305,15 +306,15 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
         }
 
         const updateResult = await updateResponse.json();
-        
+
         if (!updateResult.success) {
           throw new Error(updateResult.message || 'Gagal menyimpan perubahan pada item yang sudah ada');
         }
       }
-      
+
       // Gabungkan model baru dari item yang sudah ada dengan item baru
       const allNewItems = [...Array.from(newItemChanges.values()), ...Array.from(newModelChanges.values())];
-      
+
       // Proses item baru dan model baru dari item yang sudah ada (add-items)
       if (allNewItems.length > 0) {
         const addResponse = await fetch(`/api/discount/${params.discountId}?action=add-items`, {
@@ -332,14 +333,14 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
         }
 
         const addResult = await addResponse.json();
-        
+
         if (!addResult.success) {
           throw new Error(addResult.message || 'Gagal menambahkan item/model baru');
         }
       }
 
       toast.success("Perubahan harga promo telah disimpan");
-      
+
       setChanges({});
       setNewItemIds(new Set()); // Reset newItemIds setelah berhasil disimpan
       fetchDiscountDetail();
@@ -416,13 +417,13 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
       if (model) {
         if (massUpdateType === 'price') {
-          newChanges[modelId] = { 
+          newChanges[modelId] = {
             price: numValue,
             previousPrice: changes[modelId]?.previousPrice || model.model_promotion_price
           };
         } else {
           const promoPrice = calculatePromoPrice(model.model_original_price, numValue);
-          newChanges[modelId] = { 
+          newChanges[modelId] = {
             price: promoPrice,
             previousPrice: changes[modelId]?.previousPrice || model.model_promotion_price
           };
@@ -442,13 +443,13 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
     setSelectedModels(prev => {
       const currentSelected = prev || [];
-      const allSelected = allModelIds.length > 0 && 
+      const allSelected = allModelIds.length > 0 &&
         allModelIds.every(id => currentSelected.includes(id));
-      
+
       if (allSelected) {
         return currentSelected.filter(id => !allModelIds.includes(id));
       } else {
-        return [...currentSelected, ...allModelIds].filter((id, index, self) => 
+        return [...currentSelected, ...allModelIds].filter((id, index, self) =>
           self.indexOf(id) === index
         );
       }
@@ -465,13 +466,13 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
     setSelectedModels(prev => {
       const currentSelected = prev || [];
-      const allSelected = modelIds.length > 0 && 
+      const allSelected = modelIds.length > 0 &&
         modelIds.every(id => currentSelected.includes(id));
-      
+
       if (allSelected) {
         return currentSelected.filter(id => !modelIds.includes(id));
       } else {
-        return [...currentSelected, ...modelIds].filter((id, index, self) => 
+        return [...currentSelected, ...modelIds].filter((id, index, self) =>
           self.indexOf(id) === index
         );
       }
@@ -502,14 +503,14 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       newFilter = sizeFilter.includes(size)
         ? sizeFilter.filter(s => s !== size && s !== 'all')
         : [...sizeFilter.filter(s => s !== 'all'), size];
-      
+
       if (newFilter.length === 0) {
         newFilter = ['all'];
       }
     }
-    
+
     setSizeFilter(newFilter);
-    
+
     const selectedItem = discount?.item_list?.find(
       item => item.item_id === getCheckedItemIds()[0]
     );
@@ -518,19 +519,19 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
     const filteredModelIds = selectedItem.model_list
       .filter(m => {
         if (!m?.model_name) return false;
-        
+
         const modelName = m.model_name.split(',')[0].trim();
         const modelSize = m.model_name.split(',')[1]?.trim() || '';
-        
-        const passModelFilter = modelFilter.includes('all') || 
+
+        const passModelFilter = modelFilter.includes('all') ||
           modelFilter.includes(modelName);
-        const passSizeFilter = newFilter.includes('all') || 
+        const passSizeFilter = newFilter.includes('all') ||
           newFilter.includes(modelSize);
-        
+
         return passModelFilter && passSizeFilter;
       })
       .map(m => m.model_id);
-    
+
     setSelectedModels(filteredModelIds);
   };
 
@@ -560,7 +561,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const handleModelFilterChange = (model: string, e?: Event) => {
     e?.preventDefault();
-    const newFilter = model === 'all' 
+    const newFilter = model === 'all'
       ? ['all']
       : modelFilter.includes(model)
         ? modelFilter.filter(m => m !== model && m !== 'all')
@@ -580,18 +581,18 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
     const filteredModelIds = selectedItem.model_list
       .filter(m => {
         if (!m?.model_name) return false;
-        
+
         const [modelName, modelSize] = m.model_name.split(',').map(s => s.trim());
-        
-        const passModelFilter = currentModelFilter.includes('all') || 
+
+        const passModelFilter = currentModelFilter.includes('all') ||
           currentModelFilter.includes(modelName);
-        const passSizeFilter = currentSizeFilter.includes('all') || 
+        const passSizeFilter = currentSizeFilter.includes('all') ||
           currentSizeFilter.includes(modelSize);
-        
+
         return passModelFilter && passSizeFilter;
       })
       .map(m => m.model_id);
-    
+
     setSelectedModels(filteredModelIds);
   };
 
@@ -605,7 +606,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       item_list: [...data.item_list]
         .map(item => ({
           ...item,
-          model_list: [...item.model_list].sort((a, b) => 
+          model_list: [...item.model_list].sort((a, b) =>
             a.model_name.toLowerCase().localeCompare(b.model_name.toLowerCase())
           )
         }))
@@ -619,11 +620,11 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
     try {
       const response = await fetch(`/api/discount/${params.discountId}?shopId=${shopId}`);
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Gagal mengambil data diskon');
       }
-      
+
       setDiscount(sortDiscountData(data.data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal mengambil data diskon');
@@ -648,20 +649,20 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const getFilteredModels = useCallback((models: ModelDetail[] | undefined) => {
     if (!models) return [];
-    
+
     return models.filter(m => {
       if (!m?.model_name) return false;
-      
+
       // Pisahkan nama model dan ukuran jika tersedia
       const parts = m.model_name.split(',');
       const modelName = parts[0].trim();
       const modelSize = parts[1]?.trim() || '';
-      
-      const passModelFilter = isAllSelected(modelFilter) || 
+
+      const passModelFilter = isAllSelected(modelFilter) ||
         modelFilter.includes(modelName);
-      const passSizeFilter = isAllSelected(sizeFilter) || 
+      const passSizeFilter = isAllSelected(sizeFilter) ||
         sizeFilter.includes(modelSize);
-      
+
       return passModelFilter && passSizeFilter;
     });
   }, [modelFilter, sizeFilter]);
@@ -673,17 +674,17 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
       fetchDiscountDetail()
         .then(() => {
           if (!isSubscribed) return;
-          
+
           if (discount?.item_list) {
             const sortedItems = [...discount.item_list].map(item => ({
               ...item,
-              model_list: [...item.model_list].sort((a, b) => 
+              model_list: [...item.model_list].sort((a, b) =>
                 a.model_name.localeCompare(b.model_name)
               )
-            })).sort((a, b) => 
+            })).sort((a, b) =>
               a.item_name.localeCompare(b.item_name)
             );
-            setDiscount(prev => prev ? {...prev, item_list: sortedItems} : null);
+            setDiscount(prev => prev ? { ...prev, item_list: sortedItems } : null);
           }
         })
         .catch(console.error);
@@ -695,8 +696,8 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
   }, [shopId, params.discountId]);
 
   const toggleExpand = (itemId: number) => {
-    setExpandedItems(prev => 
-      prev.includes(itemId) 
+    setExpandedItems(prev =>
+      prev.includes(itemId)
         ? prev.filter(id => id !== itemId)
         : [...prev, itemId]
     );
@@ -704,7 +705,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const handleAddProduct = () => {
     setIsProductDialogOpen(true);
-    
+
     if (!hasLoadedProducts) {
       fetchProducts();
     }
@@ -712,12 +713,12 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const fetchProducts = async () => {
     if (!shopId) return;
-    
+
     setLoadingProducts(true);
     try {
       const response = await fetch(`/api/produk?shop_id=${shopId}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setProducts(data.data.items);
         setHasLoadedProducts(true);
@@ -757,7 +758,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
   const handleConfirmProducts = async () => {
     const selectedProducts = products.filter(p => selectedProductIds.has(p.item_id));
-    
+
     const newItems = selectedProducts.map(product => {
       const models = product.models.map(model => ({
         model_id: model.model_id,
@@ -765,9 +766,9 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
         model_original_price: model.price_info?.current_price || model.model_original_price,
         model_promotion_price: model.price_info?.current_price || model.model_original_price,
         model_promotion_stock: 0,
-        model_normal_stock: model.stock_info?.summary_info?.total_available_stock || 
-                           model.stock_info?.seller_stock || 
-                           model.model_normal_stock || 0
+        model_normal_stock: model.stock_info?.summary_info?.total_available_stock ||
+          model.stock_info?.seller_stock ||
+          model.model_normal_stock || 0
       }));
 
       return {
@@ -788,7 +789,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
       const existingItemIds = new Set(prev.item_list.map(item => item.item_id));
       const filteredNewItems = newItems.filter(item => !existingItemIds.has(item.item_id));
-      
+
       // Track item baru dengan menambahkannya ke newItemIds
       const newItemIdSet = filteredNewItems.map(item => item.item_id);
       setNewItemIds(prev => {
@@ -814,13 +815,13 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
 
     const itemIds = Array.from(new Set(
       selectedModels.map(modelId => {
-        const item = discount?.item_list.find(item => 
+        const item = discount?.item_list.find(item =>
           item.model_list.some(model => model.model_id === modelId)
         );
         return item?.item_id;
       }).filter(Boolean) as number[]
     ));
-    
+
     setItemToDelete(itemIds);
     setDeleteDialogOpen(true);
   };
@@ -836,16 +837,16 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
     setIsDeleting(true);
     try {
       const itemIds = Array.isArray(itemToDelete) ? itemToDelete : [itemToDelete];
-      
+
       // Hapus item satu per satu karena API hanya mendukung penghapusan 1 item per request
       let successCount = 0;
       let errorMessages = [];
-      
+
       for (const itemId of itemIds) {
         try {
           // Format item untuk API
           const itemRequest = { item_id: itemId };
-          
+
           // Panggil API untuk menghapus item dari diskon
           const response = await fetch(`/api/discount/${params.discountId}?action=delete-items`, {
             method: 'POST',
@@ -864,18 +865,18 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
           }
 
           const result = await response.json();
-          
+
           if (!result.success) {
             throw new Error(result.message || 'Gagal menghapus item dari diskon');
           }
-          
+
           successCount++;
         } catch (itemError: unknown) {
           console.error(`Error deleting item ID ${itemId}:`, itemError);
           errorMessages.push(`Item ID ${itemId}: ${itemError instanceof Error ? itemError.message : 'Unknown error'}`);
         }
       }
-      
+
       // Update state lokal setelah berhasil menghapus dari API
       if (successCount > 0) {
         setDiscount(prev => {
@@ -886,19 +887,19 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
           };
         });
 
-        setSelectedModels(prev => 
+        setSelectedModels(prev =>
           prev.filter(modelId => {
             const modelBelongsToDeletedItem = discount?.item_list
               .filter(item => itemIds.includes(item.item_id))
               .some(item => item.model_list.some(model => model.model_id === modelId));
-            
+
             return !modelBelongsToDeletedItem;
           })
         );
 
         toast.success(`${successCount} dari ${itemIds.length} item berhasil dihapus dari diskon`);
       }
-      
+
       if (errorMessages.length > 0) {
         toast.error(errorMessages.join(', '));
       }
@@ -948,7 +949,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
           </Button>
         </Link>
       </div>
-      
+
       {/* Header Section */}
       <div className="bg-white rounded-lg shadow-sm border mb-6 overflow-hidden">
         <CardHeader className="border-b bg-slate-50 py-4">
@@ -964,7 +965,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
             </Badge>
           </div>
         </CardHeader>
-        
+
         <div className="p-5">
           <div className="flex flex-col md:flex-row justify-between items-start gap-4">
             <div>
@@ -993,9 +994,9 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
         >
           + Tambah Produk
         </Button>
-        
+
         {Object.keys(changes).length > 0 && (
-          <Button 
+          <Button
             onClick={handleSave}
             disabled={isSaving}
             size="default"
@@ -1030,7 +1031,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
               placeholder={massUpdateType === 'price' ? 'Harga' : '% Diskon'}
               className="w-32"
             />
-            <Button 
+            <Button
               size="sm"
               variant="secondary"
               onClick={handleMassUpdate}
@@ -1105,7 +1106,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
               <TableRow className="border-b">
                 <TableHead className="w-10 p-2 text-left">
                   <Checkbox
-                    checked={selectedModels.length > 0 && 
+                    checked={selectedModels.length > 0 &&
                       discount?.item_list.flatMap(item => item.model_list)
                         .every(model => selectedModels.includes(model.model_id))
                     }
@@ -1134,19 +1135,18 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                     </TableCell>
                     <TableCell colSpan={6} className="py-2">
                       <div className="flex items-center gap-2">
-                        <div 
+                        <div
                           className="flex items-center gap-2 cursor-pointer flex-1"
                           onClick={() => toggleExpand(item.item_id)}
                         >
-                          <ChevronDown 
-                            className={`h-4 w-4 text-gray-400 transition-transform ${
-                              expandedItems.includes(item.item_id) ? 'transform rotate-180' : ''
-                            }`}
+                          <ChevronDown
+                            className={`h-4 w-4 text-gray-400 transition-transform ${expandedItems.includes(item.item_id) ? 'transform rotate-180' : ''
+                              }`}
                           />
                           {item.image_url && (
                             <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
-                              <img 
-                                src={item.image_url} 
+                              <img
+                                src={item.image_url}
                                 alt={item.item_name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
@@ -1182,8 +1182,8 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                   {/* Model List - Only show models when item is expanded */}
                   {expandedItems.includes(item.item_id) && (
                     getFilteredModels(item.model_list).map((model) => (
-                      <TableRow 
-                        key={model.model_id} 
+                      <TableRow
+                        key={model.model_id}
                         className={`border-t hover:bg-gray-50 ${model.in_promotion === false ? 'bg-yellow-50/30' : ''}`}
                       >
                         <TableCell className="p-2 pl-10">
@@ -1238,10 +1238,10 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                         <TableCell className="text-center py-2">
                           <Switch
                             checked={(changes[model.model_id]?.price || model.model_promotion_price) < model.model_original_price}
-                            onCheckedChange={(checked) => 
+                            onCheckedChange={(checked) =>
                               handleDiscountToggle(
-                                model.model_id, 
-                                checked, 
+                                model.model_id,
+                                checked,
                                 model.model_original_price
                               )
                             }
@@ -1300,7 +1300,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
               </Button>
             </div>
           </DialogHeader>
-          
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <Input
@@ -1330,8 +1330,8 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
               </TableHeader>
               <TableBody>
                 {products
-                  .filter(product => 
-                    searchQuery === '' || 
+                  .filter(product =>
+                    searchQuery === '' ||
                     product.item_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     product.item_sku.toLowerCase().includes(searchQuery.toLowerCase())
                   )
@@ -1343,19 +1343,19 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                     );
                     const totalStock = product.models.reduce(
                       (sum, m) => {
-                        const modelStock = m.stock_info?.summary_info?.total_available_stock || 
-                                          m.stock_info?.seller_stock || 
-                                          m.model_normal_stock || 0;
+                        const modelStock = m.stock_info?.summary_info?.total_available_stock ||
+                          m.stock_info?.seller_stock ||
+                          m.model_normal_stock || 0;
                         return sum + modelStock;
                       }, 0
                     );
                     const isExisting = discount?.item_list.some(
                       item => item.item_id === product.item_id
                     ) ?? false;
-                    
+
                     return (
-                      <TableRow 
-                        key={product.item_id} 
+                      <TableRow
+                        key={product.item_id}
                         className={`cursor-pointer hover:bg-gray-50 ${isExisting ? 'opacity-50' : ''}`}
                         onClick={() => !isExisting && handleProductSelect(product.item_id)}
                       >
@@ -1369,7 +1369,7 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                         <TableCell className="w-[100px] p-4">
                           {product.image?.image_url_list?.[0] && (
                             <div className="relative w-16 h-16">
-                              <img 
+                              <img
                                 src={product.image.image_url_list[0]}
                                 alt={product.item_name}
                                 className="object-cover rounded-md w-full h-full"
@@ -1452,8 +1452,8 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                           <li key={itemId} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-100">
                             {item?.image_url && (
                               <div className="w-6 h-6 rounded overflow-hidden flex-shrink-0">
-                                <img 
-                                  src={item.image_url} 
+                                <img
+                                  src={item.image_url}
                                   alt={item.item_name}
                                   className="w-full h-full object-cover"
                                   onError={(e) => {
@@ -1483,8 +1483,8 @@ export default function DiscountDetailPage({ params }: { params: { discountId: s
                           <div className="flex items-center gap-3">
                             {item?.image_url && (
                               <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
-                                <img 
-                                  src={item.image_url} 
+                                <img
+                                  src={item.image_url}
                                   alt={item.item_name}
                                   className="w-full h-full object-cover"
                                   onError={(e) => {

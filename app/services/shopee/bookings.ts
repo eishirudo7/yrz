@@ -1,22 +1,24 @@
 /**
  * Shopee Service - Booking Operations
+ * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { shopeeApi } from '@/lib/shopeeConfig';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { createClient } from '@/utils/supabase/server';
 import { BookingListOptions, retryOperation } from './utils';
 
 export async function getBookingList(shopId: number, options: BookingListOptions = {}) {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getBookingList(shopId, accessToken, {
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.order.getBookingList({
             time_range_field: options.timeRangeField || 'create_time',
             time_from: options.startTime || Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60),
             time_to: options.endTime || Math.floor(Date.now() / 1000),
             page_size: options.pageSize || 50,
             cursor: options.cursor || '',
-            booking_status: options.bookingStatus || 'ALL'
+            booking_status: (options.bookingStatus || 'ALL') as any
         });
 
         if (response.error) {
@@ -78,8 +80,12 @@ export async function getBookingDetail(
 
         const fieldsToUse = responseOptionalFields || defaultOptionalFields;
 
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getBookingDetail(shopId, accessToken, bookingSns, fieldsToUse);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.order.getBookingDetail({
+            booking_sn_list: bookingSns,
+            response_optional_fields: fieldsToUse.join(','),
+        } as any);
 
         if (response.error) {
             return {
@@ -114,8 +120,11 @@ export async function getBookingShippingParameter(shopId: number, bookingSn: str
             return { success: false, error: "invalid_input", message: 'Nomor booking diperlukan' };
         }
 
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getBookingShippingParameter(shopId, accessToken, bookingSn.trim());
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.logistics.getBookingShippingParameter({
+            booking_sn: bookingSn.trim(),
+        });
 
         if (response.error) {
             return {
@@ -158,7 +167,8 @@ export async function shipBooking(
             return { success: false, error: "invalid_input", message: 'Metode pengiriman harus pickup atau dropoff' };
         }
 
-        const accessToken = await getValidAccessToken(shopId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
 
         let pickupData = null;
         let dropoffData = null;
@@ -170,7 +180,9 @@ export async function shipBooking(
                 dropoffData = shippingData;
             }
         } else {
-            const shippingParams = await shopeeApi.getBookingShippingParameter(shopId, accessToken, bookingSn.trim());
+            const shippingParams: any = await sdk.logistics.getBookingShippingParameter({
+                booking_sn: bookingSn.trim(),
+            });
 
             if (shippingParams.error) {
                 return {
@@ -182,13 +194,13 @@ export async function shipBooking(
             }
 
             if (shippingMethod === 'pickup') {
-                if (shippingParams.response.pickup) {
+                if (shippingParams.response?.pickup) {
                     pickupData = shippingParams.response.pickup;
                 } else {
                     return { success: false, error: "pickup_not_available", message: `Metode pickup tidak tersedia untuk booking ${bookingSn}` };
                 }
             } else {
-                if (shippingParams.response.dropoff) {
+                if (shippingParams.response?.dropoff) {
                     dropoffData = shippingParams.response.dropoff;
                 } else {
                     return { success: false, error: "dropoff_not_available", message: `Metode dropoff tidak tersedia untuk booking ${bookingSn}` };
@@ -196,9 +208,31 @@ export async function shipBooking(
             }
         }
 
-        const shippingDataParam = shippingMethod === 'pickup' ? pickupData : dropoffData;
-        const response = await shopeeApi.shipBooking(shopId, accessToken, bookingSn.trim(), shippingMethod, shippingDataParam);
-        return response;
+        const shipParams: any = {
+            booking_sn: bookingSn.trim(),
+        };
+        if (shippingMethod === 'pickup' && pickupData) {
+            shipParams.pickup = pickupData;
+        } else if (dropoffData) {
+            shipParams.dropoff = dropoffData;
+        }
+
+        const response: any = await sdk.logistics.shipBooking(shipParams);
+
+        if (response.error) {
+            return {
+                success: false,
+                error: response.error,
+                message: response.message || 'Gagal melakukan ship booking',
+                request_id: response.request_id
+            };
+        }
+
+        return {
+            success: true,
+            data: response.response,
+            request_id: response.request_id
+        };
     } catch (error: unknown) {
         console.error('Gagal melakukan ship booking:', error);
         return {
@@ -223,8 +257,12 @@ export async function getBookingTrackingNumber(
             return { success: false, error: "invalid_input", message: 'Nomor booking diperlukan' };
         }
 
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.getBookingTrackingNumber(shopId, accessToken, bookingSn.trim(), packageNumber);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.logistics.getBookingTrackingNumber({
+            booking_sn: bookingSn.trim(),
+            ...(packageNumber ? { package_number: packageNumber } : {}),
+        } as any);
 
         if (response.error) {
             return {
@@ -275,8 +313,12 @@ export async function createBookingShippingDocument(
             return { success: false, error: "invalid_input", message: `Document type tidak valid. Harus salah satu dari: ${validDocumentTypes.join(', ')}` };
         }
 
-        const accessToken = await getValidAccessToken(shopId);
-        const response = await shopeeApi.createBookingShippingDocument(shopId, accessToken, bookingList, documentType);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const response: any = await sdk.logistics.createBookingShippingDocument({
+            booking_list: bookingList,
+            document_type: documentType,
+        } as any);
 
         if (response.error) {
             return {
@@ -325,7 +367,8 @@ export async function downloadBookingShippingDocument(
     }>
 ): Promise<Buffer | any> {
     return retryOperation(async () => {
-        const accessToken = await getValidAccessToken(shopId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
 
         if (!shopId || !bookingList || bookingList.length === 0) {
             return { error: "invalid_parameters", message: "Parameter shopId dan bookingList harus diisi" };
@@ -343,7 +386,9 @@ export async function downloadBookingShippingDocument(
             return formattedBooking;
         });
 
-        const response = await shopeeApi.downloadBookingShippingDocument(shopId, accessToken, formattedBookingList);
+        const response: any = await sdk.logistics.downloadBookingShippingDocument({
+            booking_list: formattedBookingList,
+        } as any);
 
         if (response instanceof Buffer) return response;
         if (response.error) return { error: response.error, message: response.message || "Gagal mengunduh dokumen booking" };

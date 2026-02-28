@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdsDailyPerformance, getAllShops } from '@/app/services/shopeeService';
 import { formatCurrency } from '@/utils/currencyFormatter';
 
-export async function GET(req: NextRequest, res: NextResponse) {
+export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     let start_date = searchParams.get("start_date");

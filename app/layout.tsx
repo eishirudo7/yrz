@@ -1,11 +1,11 @@
 import '@/app/globals.css'
 import { Inter } from 'next/font/google'
-import dynamic from 'next/dynamic'
 import { Toaster } from 'sonner';
 
 import MiniChatContainer from '@/components/MiniChatContainer';
 import { UserDataProvider } from '@/contexts/UserDataContext'
 import { SSEProvider } from '@/app/services/SSEService';
+import { ThemeProvider } from '@/components/layout/theme-provider';
 import { GlobalNotification } from '@/components/GlobalNotification';
 import StoreInitializer from '@/components/StoreInitializer';
 
@@ -40,13 +40,10 @@ interface RootLayoutProps {
   children: React.ReactNode
 }
 
-const ThemeProvider = dynamic(() => import('@/components/layout/theme-provider').then(mod => mod.ThemeProvider), {
-  ssr: false
-})
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" className="h-full overflow-hidden">
+    <html lang="en" className="h-full overflow-hidden" suppressHydrationWarning>
       <body className={`h-full ${inter.className}`}>
         <UserDataProvider>
           <SSEProvider>

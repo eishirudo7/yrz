@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
+import {
   getDiscountDetails,
   addDiscountItems,
-  updateDiscount, 
+  updateDiscount,
   deleteDiscount,
   updateDiscountItems,
   deleteDiscountItems,
@@ -13,12 +13,13 @@ import { createClient } from '@/utils/supabase/server';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { discountId: string } }
+  { params }: { params: Promise<{ discountId: string }> }
 ) {
   try {
+    const { discountId: discountIdParam } = await params;
     const searchParams = req.nextUrl.searchParams;
     const shopId = parseInt(searchParams.get('shopId') || '');
-    const discountId = parseInt(params.discountId);
+    const discountId = parseInt(discountIdParam);
 
     if (!shopId || !discountId) {
       return NextResponse.json(
@@ -35,7 +36,7 @@ export async function GET(
         { status: 400 }
       );
     }
-    
+
     // Ambil semua model dari setiap item, termasuk yang tidak dalam promosi
     if (result.data?.item_list?.length > 0) {
       try {
@@ -44,11 +45,11 @@ export async function GET(
           result.data.item_list.map(async (item: any) => {
             // Ambil semua model untuk item ini
             const modelListResult = await getModelList(shopId, item.item_id);
-            
+
             if (modelListResult.success && modelListResult.data?.model) {
               // Gabungkan model dari promosi dengan model lain
               const allModelMap = new Map();
-              
+
               // Tambahkan model yang dalam promosi ke map
               item.model_list.forEach((promoModel: any) => {
                 allModelMap.set(promoModel.model_id, {
@@ -56,7 +57,7 @@ export async function GET(
                   in_promotion: true
                 });
               });
-              
+
               // Tambahkan model dari getModelList yang belum ada
               modelListResult.data.model.forEach((model: any) => {
                 if (!allModelMap.has(model.model_id)) {
@@ -71,23 +72,23 @@ export async function GET(
                   });
                 }
               });
-              
+
               // Konversi map kembali ke array
               return {
                 ...item,
                 model_list: Array.from(allModelMap.values())
               };
             }
-            
+
             return item;
           })
         );
-        
+
         result.data.item_list = itemsWithAllModels;
-        
+
         // Ambil data gambar dari Supabase
         const itemIds = result.data.item_list.map((item: any) => item.item_id);
-        
+
         // Buat koneksi ke Supabase
         const supabase = await createClient();
 
@@ -126,12 +127,13 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { discountId: string } }
+  { params }: { params: Promise<{ discountId: string }> }
 ) {
   try {
+    const { discountId: discountIdParam } = await params;
     const body = await req.json();
     const { shopId, updateData } = body;
-    const discountId = parseInt(params.discountId);
+    const discountId = parseInt(discountIdParam);
 
     if (!shopId || !discountId || !updateData) {
       return NextResponse.json(
@@ -161,12 +163,13 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { discountId: string } }
+  { params }: { params: Promise<{ discountId: string }> }
 ) {
   try {
+    const { discountId: discountIdParam } = await params;
     const searchParams = req.nextUrl.searchParams;
     const shopId = parseInt(searchParams.get('shopId') || '');
-    const discountId = parseInt(params.discountId);
+    const discountId = parseInt(discountIdParam);
 
     if (!shopId || !discountId) {
       return NextResponse.json(
@@ -196,16 +199,17 @@ export async function DELETE(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { discountId: string } }
+  { params }: { params: Promise<{ discountId: string }> }
 ) {
   try {
+    const { discountId: discountIdParam } = await params;
     const searchParams = req.nextUrl.searchParams;
     const action = searchParams.get('action');
-    
+
     if (action === 'end') {
       const body = await req.json();
       const { shopId } = body;
-      const discountId = parseInt(params.discountId);
+      const discountId = parseInt(discountIdParam);
 
       if (!shopId || !discountId) {
         return NextResponse.json(
@@ -224,12 +228,12 @@ export async function POST(
       }
 
       return NextResponse.json(result);
-    } 
-    
+    }
+
     else if (action === 'update-items') {
       const body = await req.json();
       const { shopId, items } = body;
-      const discountId = parseInt(params.discountId);
+      const discountId = parseInt(discountIdParam);
 
       console.log('Request update items:', {
         shopId,
@@ -245,7 +249,7 @@ export async function POST(
       }
 
       const result = await updateDiscountItems(shopId, discountId, items);
-      
+
       console.log('Response from Shopee:', result);
 
       if (!result.success) {
@@ -261,7 +265,7 @@ export async function POST(
     else if (action === 'add-items') {
       const body = await req.json();
       const { shopId, items } = body;
-      const discountId = parseInt(params.discountId);
+      const discountId = parseInt(discountIdParam);
 
       console.log('Request add items:', {
         shopId,
@@ -277,7 +281,7 @@ export async function POST(
       }
 
       const result = await addDiscountItems(shopId, discountId, items);
-      
+
       console.log('Response from Shopee:', result);
 
       if (!result.success) {
@@ -289,11 +293,11 @@ export async function POST(
 
       return NextResponse.json(result);
     }
-    
+
     else if (action === 'delete-items') {
       const body = await req.json();
       const { shopId, itemIds } = body;
-      const discountId = parseInt(params.discountId);
+      const discountId = parseInt(discountIdParam);
 
       console.log('Request delete items:', {
         shopId,
@@ -309,8 +313,8 @@ export async function POST(
       }
 
       // Validasi format item_id
-      const isValidItemFormat = itemIds.every(item => 
-        typeof item === 'object' && item !== null && 'item_id' in item && 
+      const isValidItemFormat = itemIds.every(item =>
+        typeof item === 'object' && item !== null && 'item_id' in item &&
         typeof item.item_id === 'number'
       );
 
@@ -322,7 +326,7 @@ export async function POST(
       }
 
       const result = await deleteDiscountItems(shopId, discountId, itemIds);
-      
+
       console.log('Response from Shopee:', result);
 
       if (!result.success) {

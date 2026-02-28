@@ -1,8 +1,9 @@
 /**
  * Shopee Service - Discount Operations
+ * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { shopeeApi } from '@/lib/shopeeConfig';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 
 export async function createDiscount(
@@ -10,8 +11,9 @@ export async function createDiscount(
     discountData: { discount_name: string, start_time: number, end_time: number }
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.addDiscount(shopId, accessToken, discountData);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.addDiscount(discountData as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal membuat diskon' };
@@ -30,8 +32,12 @@ export async function addDiscountItems(
     items: Array<{ item_id: number, purchase_limit: 0, model_id?: number, promotion_price: number, stock: number }>
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.addDiscountItem(shopId, accessToken, discountId, items);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.addDiscountItem({
+            discount_id: discountId,
+            item_list: items,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal menambahkan item diskon' };
@@ -46,8 +52,13 @@ export async function addDiscountItems(
 
 export async function getDiscountDetails(shopId: number, discountId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getDiscount(shopId, accessToken, discountId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.getDiscount({
+            discount_id: discountId,
+            page_no: 1,
+            page_size: 50,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mendapatkan detail diskon' };
@@ -65,8 +76,13 @@ export async function getDiscountList(
     options: { discount_status: 'upcoming' | 'ongoing' | 'expired' | 'all', page_size?: number, cursor?: string }
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getDiscountList(shopId, accessToken, options);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.getDiscountList({
+            discount_status: options.discount_status,
+            page_size: options.page_size,
+            cursor: options.cursor,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mendapatkan daftar diskon' };
@@ -85,8 +101,12 @@ export async function updateDiscount(
     updateData: { discount_name?: string, start_time?: number, end_time?: number }
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.updateDiscount(shopId, accessToken, discountId, updateData);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.updateDiscount({
+            discount_id: discountId,
+            ...updateData,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengupdate diskon' };
@@ -105,8 +125,12 @@ export async function updateDiscountItems(
     items: Array<{ item_id: number, purchase_limit?: number, model_list: Array<{ model_id: number, model_promotion_price: number }> }>
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.updateDiscountItem(shopId, accessToken, discountId, items);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.updateDiscountItem({
+            discount_id: discountId,
+            item_list: items,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengupdate item diskon' };
@@ -121,8 +145,11 @@ export async function updateDiscountItems(
 
 export async function deleteDiscount(shopId: number, discountId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.deleteDiscount(shopId, accessToken, discountId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.deleteDiscount({
+            discount_id: discountId,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal menghapus diskon' };
@@ -141,8 +168,12 @@ export async function deleteDiscountItems(
     itemIds: Array<{ item_id: number, model_id?: number }>
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.deleteDiscountItem(shopId, accessToken, discountId, itemIds);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.deleteDiscountItem({
+            discount_id: discountId,
+            item_list: itemIds,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal menghapus item diskon' };
@@ -157,8 +188,11 @@ export async function deleteDiscountItems(
 
 export async function endDiscount(shopId: number, discountId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.endDiscount(shopId, accessToken, discountId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.discount.endDiscount({
+            discount_id: discountId,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengakhiri diskon' };

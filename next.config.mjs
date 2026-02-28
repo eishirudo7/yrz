@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  turbopack: {},
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -13,7 +14,10 @@ const nextConfig = {
     return config;
   },
   images: {
-    domains: ['mms.img.susercontent.com', 'cf.shopee.co.id'],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'mms.img.susercontent.com' },
+      { protocol: 'https', hostname: 'cf.shopee.co.id' },
+    ],
   },
   env: {
     // Gunakan RENDER_EXTERNAL_URL untuk environment production

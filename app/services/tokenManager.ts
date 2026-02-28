@@ -1,128 +1,114 @@
+/**
+ * Token Manager — migrated to use @congminh1254/shopee-sdk
+ * 
+ * Changes from legacy:
+ * - Uses SDK's authenticateWithCode() and refreshToken() instead of manual API calls
+ * - Token storage is handled by SupabaseTokenStorage (same Supabase+Redis backend)
+ * - getValidAccessToken() now auto-refreshes expired tokens (no more cron dependency)
+ */
+
+import { getShopeeSDK } from '@/lib/shopee-sdk';
+import { SupabaseTokenStorage } from '@/lib/shopee-sdk/tokenStorage';
 import { supabase } from '@/lib/supabase';
-import { SHOPEE_PARTNER_ID,shopeeApi } from '@/lib/shopeeConfig';
-import { redis } from '@/app/services/redis';
-import jsonStableStringify from 'json-stable-stringify';
 
-
-export async function getTokens(code: string, shopId: number, userId?: string): Promise<{ tokens: any, shopName: string }> {
+/**
+ * Get initial tokens using authorization code (OAuth callback)
+ */
+export async function getTokens(code: string, shopId: number, userId?: string): Promise<{ tokens: any; shopName: string }> {
     try {
-        const tokens = await shopeeApi.getTokens(code, shopId);
-        const shopName = await getShopName(shopId, tokens.access_token);
-        await saveTokens(shopId, tokens, shopName, userId);
-        return { tokens, shopName };
+        // Create SDK with userId so SupabaseTokenStorage saves it
+        const sdk = getShopeeSDK(shopId, { userId });
+
+        // SDK handles: getAccessToken → store in SupabaseTokenStorage
+        const token = await sdk.authenticateWithCode(code, shopId);
+
+        if (!token) {
+            throw new Error('Gagal mendapatkan token dari Shopee API');
+        }
+
+        // Fetch shop name via SDK (token is already stored at this point)
+        let shopName = 'Nama Toko Tidak Tersedia';
+        try {
+            const shopInfo: any = await sdk.shop.getShopInfo();
+            shopName = shopInfo?.shop_name || 'Nama Toko Tidak Tersedia';
+        } catch {
+            console.error('Gagal mendapatkan nama toko');
+        }
+
+        // Update shop_name in database (SupabaseTokenStorage.store already saved the token)
+        await supabase
+            .from('shopee_tokens')
+            .update({ shop_name: shopName })
+            .eq('shop_id', shopId);
+
+        return { tokens: token, shopName };
     } catch (error) {
         console.error('Gagal mendapatkan token:', error);
         throw new Error('Gagal mendapatkan token dari Shopee API');
     }
 }
 
-async function getShopName(shopId: number, accessToken: string): Promise<string> {
-    try {
-        const response = await shopeeApi.getShopInfo(shopId, accessToken);
-        return response.shop_name || 'Nama Toko Tidak Tersedia';
-    } catch (error) {
-        console.error('Gagal mendapatkan nama toko:', error);
-        return "Toko Tidak Dikenali";
-    }
-}
-
-export async function saveTokens(shopId: number, tokens: any, shopName?: string, userId?: string): Promise<void> {
-    try {
-        // Ambil status is_active yang ada
-        const { data: existingData } = await supabase
-            .from('shopee_tokens')
-            .select('is_active')
-            .eq('shop_id', shopId)
-            .single();
-
-        const now = new Date();
-        const data: any = {
-            partner_id: SHOPEE_PARTNER_ID,
-            shop_id: shopId,
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            access_token_expiry: new Date(now.getTime() + tokens.expire_in * 1000).toISOString(),
-            refresh_token_expiry: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            authorization_expiry: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-            last_refresh_attempt: now.toISOString(),
-            is_active: existingData ? existingData.is_active : true, // Gunakan status yang ada atau true jika baru
-            updated_at: now.toISOString()
-        };
-
-        // Tambahkan user_id jika ada
-        if (userId) {
-            data.user_id = userId;
-        }
-
-        // Gunakan fungsi getShopName untuk mendapatkan nama toko
-        if (!shopName) {
-            shopName = await getShopName(shopId, tokens.access_token);
-        }
-        data.shop_name = shopName;
-
-        const { error } = await supabase
-            .from('shopee_tokens')
-            .upsert(data, { onConflict: 'shop_id' });
-            
-
-        if (error) {
-            console.error('Gagal menyimpan token ke database:', error);
-            throw new Error('Gagal menyimpan token ke database');
-        }
-
-        // Simpan token ke Redis jika penyimpanan ke database berhasil
-        await redis.hmset(`shopee:token:${shopId}`, Object.fromEntries(
-            Object.entries(data).map(([k, v]) => [k, jsonStableStringify(v)])
-        ));
-        await redis.expire(`shopee:token:${shopId}`, 24 * 60 * 60); // Expire setelah 1 hari
-
-    } catch (error) {
-        console.error('Terjadi kesalahan saat menyimpan token:', error);
-        throw new Error('Gagal menyimpan token');
-    }
-}
-
-export async function refreshToken(shopId: number, refreshToken: string, shopName?: string, userId?: string): Promise<any> {
+/**
+ * Refresh access token for a shop
+ */
+export async function refreshToken(shopId: number, refreshTokenValue?: string, shopName?: string, userId?: string): Promise<any> {
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            const newTokens = await shopeeApi.refreshAccessToken(refreshToken, shopId);
-            
-            await saveTokens(shopId, newTokens, shopName, userId);
-            
-            return newTokens;
+            const sdk = getShopeeSDK(shopId, { userId, shopName });
 
+            // SDK handles: get old token → refresh → store new token
+            const newToken = await sdk.refreshToken(shopId);
+
+            if (!newToken) {
+                throw new Error('Gagal me-refresh token');
+            }
+
+            return newToken;
         } catch (error) {
             if (attempt === 3) throw error;
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Tunggu 2 detik sebelum mencoba lagi
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
     }
 }
 
+/**
+ * Get a valid access token, auto-refreshing if expired or about to expire
+ * 
+ * This replaces the old cron-based refresh approach:
+ * - Checks token expiry with 5-minute buffer
+ * - Auto-refreshes if needed
+ * - Returns a valid access_token string
+ */
 export async function getValidAccessToken(shopId: number): Promise<string> {
     try {
-        // Langsung gunakan Redis client
-        const redisData = await redis.hgetall(`shopee:token:${shopId}`);
-        
-        if (redisData && redisData.access_token) {
-            // Parse token karena tersimpan sebagai string JSON
-            const accessToken = JSON.parse(redisData.access_token);
-            return accessToken;
+        const sdk = getShopeeSDK(shopId);
+        const token = await sdk.getAuthToken();
+
+        if (!token) {
+            throw new Error('Token tidak ditemukan');
         }
-        
-        // Jika tidak ada di Redis, ambil dari database
-        const { data, error } = await supabase
-            .from('shopee_tokens')
-            .select('access_token')
-            .eq('shop_id', shopId)
-            .single();
-        
-        if (error) throw error;
-        
-        if (data && data.access_token) {
-            return data.access_token;
+
+        // Check if token is expired or about to expire (within 5 minutes)
+        const EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 menit
+        const now = Date.now();
+
+        if (token.expired_at && now >= token.expired_at - EXPIRY_BUFFER_MS) {
+            console.log(`Token untuk shop ${shopId} hampir/sudah expired, auto-refresh...`);
+
+            const newToken = await sdk.refreshToken(shopId);
+            if (newToken) {
+                return newToken.access_token;
+            }
+
+            // If refresh failed but old token not yet fully expired, use it
+            if (now < token.expired_at) {
+                return token.access_token;
+            }
+
+            throw new Error('Gagal me-refresh token yang sudah expired');
         }
-        
-        throw new Error('Token tidak ditemukan');
+
+        return token.access_token;
     } catch (error) {
         console.error('Gagal mendapatkan access token untuk toko', shopId, error);
         throw new Error(`Gagal mendapatkan access token untuk toko ${shopId}`);

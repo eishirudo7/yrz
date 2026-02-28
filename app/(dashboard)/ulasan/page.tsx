@@ -107,9 +107,9 @@ interface ProductDetail {
 export default function ProductCommentsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const [shops, setShops] = useState<Shop[]>([]);
-  const [products, setProducts] = useState<{item_id: number, item_name: string, item_sku?: string}[]>([]);
+  const [products, setProducts] = useState<{ item_id: number, item_name: string, item_sku?: string }[]>([]);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [loadingShops, setLoadingShops] = useState(true);
   const [loadingProducts, setLoadingProducts] = useState(false);
@@ -117,11 +117,11 @@ export default function ProductCommentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  
+
   const shopId = searchParams.get('shop_id');
   const itemId = searchParams.get('item_id');
   const pageSize = 100;
-  
+
   const [selectedShopId, setSelectedShopId] = useState<string | null>(shopId);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(itemId);
 
@@ -131,7 +131,7 @@ export default function ProductCommentsPage() {
   const [isFetchingAllComments, setIsFetchingAllComments] = useState(false);
   const [currentRating, setCurrentRating] = useState<number | undefined>(undefined);
   const itemsPerPage = 20;
-  
+
   // Cache untuk menyimpan sudah di-fetch detail produk
   const [fetchedProducts, setFetchedProducts] = useState<Set<number>>(new Set());
 
@@ -143,15 +143,15 @@ export default function ProductCommentsPage() {
   // Fungsi untuk mendapatkan jumlah komentar berdasarkan rating
   const getCommentCountByRating = useCallback((rating?: number) => {
     if (!allComments.length) return 0;
-    
+
     // Filter berdasarkan produk yang dipilih
-    const filteredByItem = selectedItemId 
+    const filteredByItem = selectedItemId
       ? allComments.filter(comment => comment.item_id.toString() === selectedItemId)
       : allComments;
-    
+
     // Jika rating tidak ditentukan, kembalikan semua komentar
     if (rating === undefined) return filteredByItem.length;
-    
+
     // Filter berdasarkan rating
     return filteredByItem.filter(comment => comment.rating_star === rating).length;
   }, [allComments, selectedItemId]);
@@ -162,13 +162,13 @@ export default function ProductCommentsPage() {
       setLoadingShops(true);
       const response = await fetch('/api/shops');
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.message || 'Gagal mengambil daftar toko');
       }
-      
+
       setShops(data.data || []);
-      
+
       // Jika tidak ada shopId yang dipilih, gunakan toko pertama
       if (!shopId && data.data && data.data.length > 0) {
         setSelectedShopId(data.data[0].shop_id.toString());
@@ -184,18 +184,18 @@ export default function ProductCommentsPage() {
   // Fungsi untuk fetch daftar produk berdasarkan toko
   const fetchProducts = useCallback(async (shopIdParam?: string) => {
     if (!shopIdParam && !selectedShopId) return;
-    
+
     const shopIdToUse = shopIdParam || selectedShopId;
 
     try {
       setLoadingProducts(true);
       const response = await fetch(`/api/produk?shop_id=${shopIdToUse}&page_size=50`);
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error('Gagal mengambil daftar produk');
       }
-      
+
       // Perbaiki penanganan format data untuk menyesuaikan dengan struktur yang diterima dari API
       if (data.data && data.data.items && Array.isArray(data.data.items)) {
         // Format response: { success: true, data: { shop_id: number, items: Array, total: number, has_next_page: boolean } }
@@ -234,7 +234,7 @@ export default function ProductCommentsPage() {
   // Fungsi untuk fetch detail produk berdasarkan item_id
   const fetchProductDetails = async (comments: CommentItem[]) => {
     if (!selectedShopId) return;
-    
+
     try {
       // Dapatkan semua item_id unik dari komentar yang belum di-cache
       const uniqueItemIds = Array.from(
@@ -244,18 +244,18 @@ export default function ProductCommentsPage() {
             .filter(id => !fetchedProducts.has(id))
         )
       );
-      
+
       if (uniqueItemIds.length === 0) return;
-      
-      const productDetailsMap: Record<number, ProductDetail> = {...productsDetails};
-      
+
+      const productDetailsMap: Record<number, ProductDetail> = { ...productsDetails };
+
       // Batch requests untuk mengambil detail produk (maksimal 10 per request)
       const batchSize = 10;
       for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
         const batchIds = uniqueItemIds.slice(i, i + batchSize);
-        
+
         // Buat semua promise secara paralel
-        const promises = batchIds.map(itemId => 
+        const promises = batchIds.map(itemId =>
           fetch(`/api/produk?shop_id=${selectedShopId}&item_id=${itemId}`)
             .then(response => response.json())
             .then(data => {
@@ -286,16 +286,16 @@ export default function ProductCommentsPage() {
               return null;
             })
         );
-        
+
         // Tunggu semua promise dalam batch selesai sebelum melanjutkan ke batch berikutnya
         const results = await Promise.all(promises);
-        
+
         // Update cache produk yang sudah di-fetch
         const newFetchedProducts = new Set(fetchedProducts);
         results.filter(Boolean).forEach(id => id && newFetchedProducts.add(id));
         setFetchedProducts(newFetchedProducts);
       }
-      
+
       setProductsDetails(productDetailsMap);
     } catch (err) {
       console.error('Error fetching product details:', err);
@@ -306,7 +306,7 @@ export default function ProductCommentsPage() {
   const fetchAllComments = useCallback(async (shopIdParam?: string, itemIdParam?: string) => {
     const shopIdToUse = shopIdParam || selectedShopId;
     const itemIdToUse = itemIdParam || selectedItemId;
-    
+
     if (!shopIdToUse) {
       setError('ID Toko diperlukan');
       return;
@@ -315,32 +315,32 @@ export default function ProductCommentsPage() {
     try {
       setIsFetchingAllComments(true);
       setLoadingComments(true);
-      
+
       let url = `/api/ulasan?shop_id=${shopIdToUse}&page_size=${pageSize}`;
       if (itemIdToUse) url += `&item_id=${itemIdToUse}`;
-      
+
       let allFetchedComments: CommentItem[] = [];
       let hasMoreComments = true;
       let currentCursor: string | null = null;
       let fetchCount = 0;
       const maxFetches = 10; // Batasi jumlah fetch untuk mencegah looping tak terbatas
-      
+
       // Loop untuk fetch semua komentar
       while (hasMoreComments && fetchCount < maxFetches) {
         fetchCount++;
         const fetchUrl: string = currentCursor ? `${url}&cursor=${currentCursor}` : url;
         const response: Response = await fetch(fetchUrl);
         const data: any = await response.json();
-        
+
         // Penanganan berbagai format respons
         if (!data.success) {
           throw new Error('Gagal mengambil data komentar');
         }
-        
+
         let commentList: CommentItem[] = [];
         let hasMore = false;
         let nextCursor = null;
-        
+
         // Deteksi format respons
         if (data.data && Array.isArray(data.data.item_comment_list)) {
           // Format standar: { success: true, data: { item_comment_list: [], more: boolean, next_cursor: string } }
@@ -361,48 +361,48 @@ export default function ProductCommentsPage() {
           console.log('Format data komentar tidak diketahui:', data);
           break;
         }
-        
+
         // Jika tidak ada komentar baru, keluar dari loop
         if (commentList.length === 0) {
           break;
         }
-        
+
         allFetchedComments = [...allFetchedComments, ...commentList];
-        
+
         // Tampilkan data segera setelah batch pertama berhasil diambil
         if (fetchCount === 1) {
           setAllComments([...commentList]);
           setLoadingComments(false); // Matikan loading state utama
-          
+
           // Fetch detail produk untuk batch pertama
           fetchProductDetails(commentList);
         } else {
           // Update state untuk batch selanjutnya
           setAllComments([...allFetchedComments]);
         }
-        
+
         // Reset currentPage jika komentar baru di-fetch
         if (fetchCount === 1) {
           setCurrentPage(1);
         }
-        
+
         hasMoreComments = hasMore;
         currentCursor = nextCursor;
-        
+
         // Jika tidak ada lagi data atau cursor, keluar dari loop
         if (!hasMoreComments || !currentCursor) {
           break;
         }
       }
-      
+
       // Pastikan state terakhir memiliki semua komentar
       setAllComments(allFetchedComments);
-      
+
       // Mulai fetch detail produk untuk semua data jika belum
       if (allFetchedComments.length > pageSize) {
         fetchProductDetails(allFetchedComments);
       }
-      
+
     } catch (err) {
       console.error('Error fetching all comments:', err);
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mengambil data komentar');
@@ -435,7 +435,7 @@ export default function ProductCommentsPage() {
   const handleShopChange = (value: string) => {
     setSelectedShopId(value);
     setSelectedItemId(null);
-    
+
     // Update URL tanpa me-refresh halaman
     const params = new URLSearchParams();
     params.set('shop_id', value);
@@ -446,10 +446,10 @@ export default function ProductCommentsPage() {
     // Jika nilai adalah _all, anggap sebagai tidak ada filter produk
     const itemIdToUse = value === "_all" ? null : value;
     setSelectedItemId(itemIdToUse);
-    
+
     // Reset halaman ke halaman pertama saat produk berubah
     setCurrentPage(1);
-    
+
     // Update URL tanpa me-refresh halaman
     const params = new URLSearchParams();
     if (selectedShopId) params.set('shop_id', selectedShopId);
@@ -460,7 +460,7 @@ export default function ProductCommentsPage() {
   const handleResetFilters = () => {
     setSelectedItemId(null);
     setCurrentPage(1); // Reset ke halaman pertama
-    
+
     const params = new URLSearchParams();
     if (selectedShopId) params.set('shop_id', selectedShopId);
     router.push(`/ulasan?${params.toString()}`);
@@ -482,24 +482,24 @@ export default function ProductCommentsPage() {
   // Komponen Pagination
   const Pagination = ({ currentPage, totalItems, itemsPerPage }: { currentPage: number, totalItems: number, itemsPerPage: number }) => {
     const totalPages = Math.ceil(totalItems / itemsPerPage);
-    
+
     if (totalPages <= 1) return null;
-    
+
     // Tentukan rentang halaman yang akan ditampilkan
     let startPage = Math.max(1, currentPage - 2);
     let endPage = Math.min(totalPages, startPage + 4);
-    
+
     if (endPage - startPage < 4) {
       startPage = Math.max(1, endPage - 4);
     }
-    
+
     const pages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
-    
+
     return (
       <div className="flex items-center justify-center gap-1 py-3">
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           className="h-7 w-7 p-0"
           onClick={() => handlePageChange(1)}
           disabled={currentPage === 1}
@@ -507,9 +507,9 @@ export default function ProductCommentsPage() {
           <span className="sr-only">Halaman pertama</span>
           <span>&laquo;</span>
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           className="h-7 w-7 p-0"
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage === 1}
@@ -517,12 +517,12 @@ export default function ProductCommentsPage() {
           <span className="sr-only">Halaman sebelumnya</span>
           <span>&lsaquo;</span>
         </Button>
-        
+
         {startPage > 1 && (
           <>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="h-7 w-7 p-0"
               onClick={() => handlePageChange(1)}
             >
@@ -531,25 +531,25 @@ export default function ProductCommentsPage() {
             {startPage > 2 && <span className="text-xs text-muted-foreground">...</span>}
           </>
         )}
-        
+
         {pages.map(page => (
-          <Button 
+          <Button
             key={page}
             variant={currentPage === page ? "default" : "outline"}
-            size="sm" 
+            size="sm"
             className="h-7 w-7 p-0"
             onClick={() => handlePageChange(page)}
           >
             {page}
           </Button>
         ))}
-        
+
         {endPage < totalPages && (
           <>
             {endPage < totalPages - 1 && <span className="text-xs text-muted-foreground">...</span>}
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="h-7 w-7 p-0"
               onClick={() => handlePageChange(totalPages)}
             >
@@ -557,10 +557,10 @@ export default function ProductCommentsPage() {
             </Button>
           </>
         )}
-        
-        <Button 
-          variant="outline" 
-          size="sm" 
+
+        <Button
+          variant="outline"
+          size="sm"
           className="h-7 w-7 p-0"
           onClick={() => handlePageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
@@ -568,9 +568,9 @@ export default function ProductCommentsPage() {
           <span className="sr-only">Halaman berikutnya</span>
           <span>&rsaquo;</span>
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           className="h-7 w-7 p-0"
           onClick={() => handlePageChange(totalPages)}
           disabled={currentPage === totalPages}
@@ -585,10 +585,10 @@ export default function ProductCommentsPage() {
   // Fungsi untuk filter komentar berdasarkan produk dan rating
   const getFilteredComments = useCallback((rating?: number) => {
     // Filter berdasarkan produk yang dipilih (jika ada)
-    const commentsByItem = selectedItemId 
+    const commentsByItem = selectedItemId
       ? allComments.filter(comment => comment.item_id.toString() === selectedItemId)
       : allComments;
-      
+
     // Kemudian filter berdasarkan rating (jika ada)
     return rating
       ? commentsByItem.filter(comment => comment.rating_star === rating)
@@ -603,7 +603,7 @@ export default function ProductCommentsPage() {
       const startIndex = (currentPage - 1) * itemsPerPage;
       const endIndex = startIndex + itemsPerPage;
       const visibleComments = filteredComments.slice(startIndex, endIndex);
-      
+
       // Fetch detail produk hanya untuk komentar yang terlihat
       fetchProductDetails(visibleComments);
     }
@@ -637,17 +637,17 @@ export default function ProductCommentsPage() {
     const [isReplying, setIsReplying] = useState(false);
     const [replyText, setReplyText] = useState('');
     const productModelName = getModelName(comment, productDetail);
-    
+
     // Tombol balas hanya ditampilkan jika belum ada balasan (baik dari API maupun lokal)
     const canReply = !comment.reply && !comment.comment_reply;
 
     // Fungsi untuk mengirim balasan, dipindahkan ke dalam komponen
     const handleSubmitReply = async () => {
       if (!selectedShopId || !replyText.trim()) return;
-      
+
       try {
         setIsReplying(true);
-        
+
         const response = await fetch('/api/ulasan', {
           method: 'POST',
           headers: {
@@ -663,40 +663,40 @@ export default function ProductCommentsPage() {
             ]
           }),
         });
-        
+
         const data = await response.json();
-        
+
         if (!data.success) {
           throw new Error(data.message || 'Gagal membalas komentar');
         }
-        
+
         // Perbarui komentar di state
-        setAllComments(prevComments => 
-          prevComments.map(c => 
-            c.comment_id === comment.comment_id 
-              ? { 
-                  ...c, 
-                  reply: { 
-                    reply_id: Date.now(), // ID sementara
-                    comment: replyText,
-                    create_time: Math.floor(Date.now() / 1000) 
-                  } 
-                } 
+        setAllComments(prevComments =>
+          prevComments.map(c =>
+            c.comment_id === comment.comment_id
+              ? {
+                ...c,
+                reply: {
+                  reply_id: Date.now(), // ID sementara
+                  comment: replyText,
+                  create_time: Math.floor(Date.now() / 1000)
+                }
+              }
               : c
           )
         );
-        
+
         // Reset state 
         setReplyText('');
         setIsReplying(false);
         setCurrentReplyCommentId(null);
         setReplySuccess(true);
-        
+
         // Sembunyikan notifikasi sukses setelah beberapa detik
         setTimeout(() => {
           setReplySuccess(false);
         }, 3000);
-        
+
       } catch (err) {
         console.error('Error replying to comment:', err);
         setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat membalas komentar');
@@ -704,7 +704,7 @@ export default function ProductCommentsPage() {
         setIsReplying(false);
       }
     };
-    
+
     return (
       <Card key={comment.comment_id} className="shadow-sm border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden transition-all hover:shadow-md h-full flex flex-col">
         <CardHeader className="py-3 px-4 bg-zinc-50/80 dark:bg-zinc-900/50 border-b border-zinc-200 dark:border-zinc-800">
@@ -747,9 +747,9 @@ export default function ProductCommentsPage() {
                 ))}
               </div>
               {canReply && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-6 px-2 text-[10px] mt-1 text-muted-foreground hover:text-primary hover:bg-transparent"
                   onClick={() => setCurrentReplyCommentId(comment.comment_id)}
                 >
@@ -764,7 +764,7 @@ export default function ProductCommentsPage() {
             </div>
           </div>
         </CardHeader>
-        
+
         <CardContent className="p-0 flex-1 flex flex-col">
           {/* Informasi produk */}
           {productDetail && (
@@ -779,8 +779,8 @@ export default function ProductCommentsPage() {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <Link 
-                  href={`/produk/edit?shop_id=${selectedShopId}&item_id=${comment.item_id}`} 
+                <Link
+                  href={`/produk/edit?shop_id=${selectedShopId}&item_id=${comment.item_id}`}
                   className="hover:text-primary transition-colors"
                 >
                   <p className="text-xs font-medium line-clamp-1">{productDetail.item_name}</p>
@@ -800,7 +800,7 @@ export default function ProductCommentsPage() {
               </div>
             </div>
           )}
-          
+
           {/* Content ulasan */}
           <div className="px-4 py-3 flex-1">
             {comment.comment ? (
@@ -811,7 +811,7 @@ export default function ProductCommentsPage() {
               </p>
             )}
           </div>
-          
+
           {/* Balasan dari API (dalam comment_reply) */}
           {comment.comment_reply && (
             <div className="px-4 py-2 bg-muted/30 border-t border-zinc-200 dark:border-zinc-800">
@@ -826,7 +826,7 @@ export default function ProductCommentsPage() {
               <p className="text-xs">{comment.comment_reply.reply}</p>
             </div>
           )}
-          
+
           {/* Balasan lokal (dalam reply, hanya jika tidak ada comment_reply) */}
           {comment.reply && !comment.comment_reply && (
             <div className="px-4 py-2 bg-muted/30 border-t border-zinc-200 dark:border-zinc-800">
@@ -841,7 +841,7 @@ export default function ProductCommentsPage() {
               <p className="text-xs">{comment.reply.comment}</p>
             </div>
           )}
-          
+
           {/* Form balasan */}
           {currentReplyCommentId === comment.comment_id && (
             <div className="px-4 py-3 bg-muted/30 border-t border-zinc-200 dark:border-zinc-800">
@@ -895,7 +895,7 @@ export default function ProductCommentsPage() {
               </div>
             </div>
           )}
-          
+
           {/* Foto ulasan */}
           {comment.media.image_url_list && comment.media.image_url_list.length > 0 && (
             <div className="px-4 pb-4 mt-auto">
@@ -931,9 +931,9 @@ export default function ProductCommentsPage() {
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Error: </strong>
           <span className="block sm:inline">{error}</span>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             className="mt-2"
             onClick={() => setError(null)}
           >
@@ -955,7 +955,7 @@ export default function ProductCommentsPage() {
             </Button>
           </div>
         )}
-        
+
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-lg sm:text-xl font-semibold tracking-tight">Komentar Produk</h1>
@@ -963,20 +963,20 @@ export default function ProductCommentsPage() {
               Lihat dan filter komentar dari pelanggan untuk produk Anda
             </p>
           </div>
-          
+
           {selectedItemId && (
             <Button variant="outline" size="sm" onClick={handleResetFilters} className="h-8">
               Reset Filter
             </Button>
           )}
         </div>
-        
+
         <div className="bg-card rounded-lg border shadow-sm p-3 sm:p-4 mb-4">
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
             <div className="w-full sm:w-[220px] md:w-[300px] flex items-center gap-2">
               <Label htmlFor="shop-select" className="text-xs font-medium min-w-14">Toko</Label>
-              <Select 
-                value={selectedShopId || ''} 
+              <Select
+                value={selectedShopId || ''}
                 onValueChange={handleShopChange}
                 disabled={loadingShops}
               >
@@ -1006,11 +1006,11 @@ export default function ProductCommentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="w-full sm:w-[180px] md:w-[200px] flex items-center gap-2">
               <Label htmlFor="product-select" className="text-xs font-medium min-w-14">Produk</Label>
-              <Select 
-                value={selectedItemId || "_all"} 
+              <Select
+                value={selectedItemId || "_all"}
                 onValueChange={handleItemChange}
                 disabled={loadingProducts || !selectedShopId}
               >
@@ -1044,12 +1044,12 @@ export default function ProductCommentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="w-full sm:w-auto flex-1 sm:pl-1 md:pl-2">
               <div className="flex gap-1.5 sm:gap-2 h-8 sm:h-9">
-                <Button 
-                  variant={currentRating === undefined ? "default" : "outline"} 
-                  size="sm" 
+                <Button
+                  variant={currentRating === undefined ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === undefined ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(undefined);
@@ -1061,10 +1061,10 @@ export default function ProductCommentsPage() {
                     {getCommentCountByRating()}
                   </Badge>
                 </Button>
-                
-                <Button 
-                  variant={currentRating === 5 ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={currentRating === 5 ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === 5 ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(5);
@@ -1072,16 +1072,16 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span className="flex items-center">
-                    5 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400"/>
+                    5 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400" />
                   </span>
                   <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === 5 ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating(5)}
                   </Badge>
                 </Button>
-                
-                <Button 
-                  variant={currentRating === 4 ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={currentRating === 4 ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === 4 ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(4);
@@ -1089,16 +1089,16 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span className="flex items-center">
-                    4 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400"/>
+                    4 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400" />
                   </span>
                   <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === 4 ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating(4)}
                   </Badge>
                 </Button>
-                
-                <Button 
-                  variant={currentRating === 3 ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={currentRating === 3 ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === 3 ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(3);
@@ -1106,16 +1106,16 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span className="flex items-center">
-                    3 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400"/>
+                    3 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400" />
                   </span>
                   <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === 3 ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating(3)}
                   </Badge>
                 </Button>
-                
-                <Button 
-                  variant={currentRating === 2 ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={currentRating === 2 ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === 2 ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(2);
@@ -1123,16 +1123,16 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span className="flex items-center">
-                    2 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400"/>
+                    2 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400" />
                   </span>
                   <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === 2 ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating(2)}
                   </Badge>
                 </Button>
-                
-                <Button 
-                  variant={currentRating === 1 ? "default" : "outline"} 
-                  size="sm" 
+
+                <Button
+                  variant={currentRating === 1 ? "default" : "outline"}
+                  size="sm"
                   className={`px-1.5 sm:px-2 h-full text-xs ${currentRating === 1 ? "bg-primary text-primary-foreground border-primary shadow-sm" : ""}`}
                   onClick={() => {
                     setCurrentRating(1);
@@ -1140,7 +1140,7 @@ export default function ProductCommentsPage() {
                   }}
                 >
                   <span className="flex items-center">
-                    1 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400"/>
+                    1 <StarFilledIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 ml-0.5 text-yellow-400" />
                   </span>
                   <Badge className={`ml-1 sm:ml-1.5 border-none text-[10px] sm:text-xs py-0 px-1 sm:px-1.5 ${currentRating === 1 ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
                     {getCommentCountByRating(1)}
@@ -1150,7 +1150,7 @@ export default function ProductCommentsPage() {
             </div>
           </div>
         </div>
-        
+
         <div className="h-[calc(100vh-280px)] sm:h-[calc(100vh-256px)] overflow-y-auto pr-1">
           {renderCommentsList(currentRating)}
         </div>
@@ -1159,18 +1159,18 @@ export default function ProductCommentsPage() {
   );
 
   // Fungsi untuk fetch semua komentar sampai tidak ada lagi
-  function renderCommentsList(rating?: number): JSX.Element {
+  function renderCommentsList(rating?: number): React.JSX.Element {
     // Filter semua komentar berdasarkan rating dan item terlebih dahulu
     const filteredAllComments = getFilteredComments(rating);
-    
+
     // Hitung total untuk pagination
     const totalFilteredComments = filteredAllComments.length;
-    
+
     // Terapkan pagination setelah filtering
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const paginatedComments = filteredAllComments.slice(startIndex, endIndex);
-    
+
     if (loadingComments && allComments.length === 0) {
       // Skeleton loading hanya jika tidak ada data sama sekali
       return (
@@ -1192,7 +1192,7 @@ export default function ProductCommentsPage() {
         </div>
       );
     }
-    
+
     if (isFetchingAllComments && allComments.length > 0) {
       // Tampilkan data dengan indikator loading untuk batch selanjutnya
       return (
@@ -1207,15 +1207,15 @@ export default function ProductCommentsPage() {
               />
             ))}
           </div>
-          
+
           {/* Tampilkan informasi bahwa masih memuat lebih banyak data */}
           <div className="flex items-center justify-center py-3 mt-3 text-sm text-muted-foreground">
             <ReloadIcon className="h-3 w-3 animate-spin mr-2" />
             <span>Memuat lebih banyak ulasan...</span>
           </div>
-          
+
           {/* Pagination */}
-          <Pagination 
+          <Pagination
             currentPage={currentPage}
             totalItems={totalFilteredComments}
             itemsPerPage={itemsPerPage}
@@ -1223,14 +1223,14 @@ export default function ProductCommentsPage() {
         </>
       );
     }
-    
+
     if (!loadingComments && !isFetchingAllComments && paginatedComments.length === 0) {
       // Empty state
       return (
         <div className="text-center py-8 border rounded-lg bg-muted/30">
           <InfoCircledIcon className="mx-auto h-8 w-8 text-muted-foreground/60" />
           <p className="mt-2 text-sm text-muted-foreground">
-            {rating 
+            {rating
               ? `Tidak ada komentar dengan rating ${rating} bintang`
               : 'Tidak ada komentar yang tersedia'}
           </p>
@@ -1242,7 +1242,7 @@ export default function ProductCommentsPage() {
         </div>
       );
     }
-    
+
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1255,9 +1255,9 @@ export default function ProductCommentsPage() {
             />
           ))}
         </div>
-        
+
         {/* Pagination */}
-        <Pagination 
+        <Pagination
           currentPage={currentPage}
           totalItems={totalFilteredComments}
           itemsPerPage={itemsPerPage}
@@ -1269,38 +1269,38 @@ export default function ProductCommentsPage() {
   // Fungsi helper untuk mendapatkan nama model dari comment
   function getModelName(comment: CommentItem, productDetail?: ProductDetail): string | null {
     if (!productDetail || !productDetail.models) return null;
-    
+
     // Jika ada model_id_list pada komentar, cari model yang sesuai
     if (comment.model_id_list && comment.model_id_list.length > 0) {
       const model = productDetail.models.find(m => comment.model_id_list.includes(m.model_id));
       return model?.model_name || null;
     }
-    
+
     // Jika ada model_id pada komentar, cari model yang sesuai
     if (comment.model_id) {
       const model = productDetail.models.find(m => m.model_id === comment.model_id);
       return model?.model_name || null;
     }
-    
+
     return null;
   }
 
   // Fungsi helper untuk mendapatkan SKU model dari comment
   function getModelSku(comment: CommentItem, productDetail?: ProductDetail): string | null {
     if (!productDetail || !productDetail.models) return null;
-    
+
     // Jika ada model_id_list pada komentar, cari model yang sesuai
     if (comment.model_id_list && comment.model_id_list.length > 0) {
       const model = productDetail.models.find(m => comment.model_id_list.includes(m.model_id));
       return model?.model_sku || null;
     }
-    
+
     // Jika ada model_id pada komentar, cari model yang sesuai
     if (comment.model_id) {
       const model = productDetail.models.find(m => m.model_id === comment.model_id);
       return model?.model_sku || null;
     }
-    
+
     return null;
   }
 } 

@@ -75,11 +75,10 @@ const ConversationItem = React.memo(({ conversation, isSelected, isMobileView, o
   return (
     <>
       <div
-        className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0 p-2 ${
-          isSelected 
-            ? 'bg-primary/10 border-l-4 border-primary shadow-sm dark:bg-primary/20 relative' 
+        className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0 p-2 ${isSelected
+            ? 'bg-primary/10 border-l-4 border-primary shadow-sm dark:bg-primary/20 relative'
             : 'hover:bg-muted/50 cursor-pointer border-l-4 border-transparent'
-        } ${isMobileView ? 'text-sm' : ''} transition-all duration-200 ease-in-out mb-1 rounded-sm`}
+          } ${isMobileView ? 'text-sm' : ''} transition-all duration-200 ease-in-out mb-1 rounded-sm`}
         onClick={() => {
           // Pada mobile, percakapan yang aktif juga bisa diklik
           // supaya bisa kembali ke chat view
@@ -91,12 +90,12 @@ const ConversationItem = React.memo(({ conversation, isSelected, isMobileView, o
             <ArrowRight className="h-4 w-4" />
           </div>
         )}
-        
+
         <Avatar className={`${isMobileView ? 'h-8 w-8' : 'h-9 w-9'} row-span-3 self-center ${isSelected ? 'ring-2 ring-primary ring-offset-1' : ''}`}>
           <AvatarImage src={conversation.to_avatar} />
           <AvatarFallback><User className={isMobileView ? 'h-4 w-4' : ''} /></AvatarFallback>
         </Avatar>
-        
+
         <div className="flex justify-between items-center w-full pr-6">
           <div className="flex items-center max-w-[65%]">
             <p className={`font-medium truncate text-xs leading-tight ${isSelected ? 'text-primary font-semibold' : ''}`}>{conversation.shop_name}</p>
@@ -108,14 +107,14 @@ const ConversationItem = React.memo(({ conversation, isSelected, isMobileView, o
             {new Date(conversation.last_message_timestamp / 1000000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
-        
+
         <div className="flex justify-between items-center w-full pr-6">
           <p className={`font-bold truncate max-w-[75%] text-xs leading-tight ${isSelected ? 'text-primary' : ''}`}>{conversation.to_name}</p>
           {conversation.to_id != conversation.latest_message_from_id && conversation.unread_count === 0 && (
             <CheckCircle2 className={`text-primary flex-shrink-0 h-2 w-2`} />
           )}
         </div>
-        
+
         <p className={`text-muted-foreground truncate pr-6 text-xs leading-tight ${isSelected ? 'opacity-80' : 'opacity-60'}`}>
           {conversation.latest_message_content?.text}
         </p>
@@ -155,8 +154,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isSendingMes
         className="flex-grow"
         disabled={isSendingMessage}
       />
-      <Button 
-        type="submit" 
+      <Button
+        type="submit"
         disabled={!newMessage.trim() || isSendingMessage}
         className={!newMessage.trim() || isSendingMessage ? "opacity-70" : ""}
       >
@@ -166,7 +165,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ onSendMessage, isSendingMes
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
         ) : (
-        <Send className="h-4 w-4" />
+          <Send className="h-4 w-4" />
         )}
       </Button>
     </form>
@@ -257,8 +256,8 @@ const ItemPreview = React.memo(({ itemId }: { itemId: number }) => {
 
   return (
     <div className="flex gap-2 items-center p-2 bg-muted/30 rounded-md mt-2">
-      <img 
-        src={imageUrl} 
+      <img
+        src={imageUrl}
         alt={item.item_name}
         className="h-10 w-10 object-cover rounded"
       />
@@ -277,47 +276,46 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   // Tambahkan state untuk expand/collapse order detail
   const [isOrderExpanded, setIsOrderExpanded] = useState(false);
-  
+
   // Cek jika message memiliki source_content dengan order_sn
-  const hasOrderReference = message.type === 'order' || 
+  const hasOrderReference = message.type === 'order' ||
     (message.sourceContent && message.sourceContent.order_sn);
-  
+
   // Ambil order_sn baik dari orderData atau sourceContent
-  const orderSn = message.orderData?.orderSn || 
+  const orderSn = message.orderData?.orderSn ||
     (message.sourceContent && message.sourceContent.order_sn);
-  
+
   // Dapatkan informasi order jika tersedia
   const orderInfo = useMemo(() => {
     if (!orderSn || !orders.length) return null;
     return orders.find(o => o.order_sn === orderSn);
   }, [orderSn, orders]);
-  
+
   // Format currency
   const formatCurrency = (amount: number) => {
     return `Rp${amount.toLocaleString('id-ID')}`;
   };
-  
+
   return (
     <div className={`flex ${message.sender === 'seller' ? 'justify-end' : 'justify-start'} mb-4 w-full`}>
-      <div className={`max-w-[75%] rounded-lg p-3 ${
-        message.sender === 'seller' 
-          ? 'bg-primary text-primary-foreground dark:bg-primary/90' 
+      <div className={`max-w-[75%] rounded-lg p-3 ${message.sender === 'seller'
+          ? 'bg-primary text-primary-foreground dark:bg-primary/90'
           : 'bg-muted dark:bg-muted/50 dark:text-foreground'
-      }`}>
+        }`}>
         {message.type === 'text' ? (
           <div>
             <p className="break-words whitespace-pre-wrap">{message.content}</p>
-            
+
             {/* Cek jika ada item_id di sourceContent */}
             {message.sourceContent?.item_id && (
               <ItemPreview itemId={message.sourceContent.item_id} />
             )}
-            
+
             {/* Tambahkan penanganan untuk source_content.order_sn */}
             {message.sourceContent?.order_sn && (
               <div className="flex flex-col mt-2 bg-muted/30 rounded p-2">
                 {/* Header order yang selalu ditampilkan */}
-                <div 
+                <div
                   className="flex items-center justify-between w-full cursor-pointer hover:opacity-90 transition-opacity"
                   onClick={() => setIsOrderExpanded(!isOrderExpanded)}
                 >
@@ -327,28 +325,27 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                       Pesanan #{message.sourceContent.order_sn}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {orderInfo && orderInfo.order_status && (
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${
-                        orderInfo.order_status === 'PAID'
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${orderInfo.order_status === 'PAID'
                           ? 'bg-green-500 text-white dark:bg-green-600'
                           : orderInfo.order_status === 'UNPAID'
-                          ? 'bg-yellow-500 text-white dark:bg-yellow-600'
-                          : orderInfo.order_status === 'CANCELLED'
-                          ? 'bg-red-500 text-white dark:bg-red-600'
-                          : orderInfo.order_status === 'COMPLETED'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
-                          : orderInfo.order_status === 'PROCESSED'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
-                          : orderInfo.order_status === 'SHIPPED'
-                          ? 'bg-blue-500 text-white dark:bg-blue-600'
-                          : orderInfo.order_status === 'DELIVERED'
-                          ? 'bg-green-500 text-white dark:bg-green-600'
-                          : orderInfo.order_status === 'IN_CANCEL'
-                          ? 'bg-red-500 text-white dark:bg-red-600'
-                          : 'bg-muted text-white dark:bg-muted/80'
-                      }`}>
+                            ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                            : orderInfo.order_status === 'CANCELLED'
+                              ? 'bg-red-500 text-white dark:bg-red-600'
+                              : orderInfo.order_status === 'COMPLETED'
+                                ? 'bg-blue-500 text-white dark:bg-blue-600'
+                                : orderInfo.order_status === 'PROCESSED'
+                                  ? 'bg-blue-500 text-white dark:bg-blue-600'
+                                  : orderInfo.order_status === 'SHIPPED'
+                                    ? 'bg-blue-500 text-white dark:bg-blue-600'
+                                    : orderInfo.order_status === 'DELIVERED'
+                                      ? 'bg-green-500 text-white dark:bg-green-600'
+                                      : orderInfo.order_status === 'IN_CANCEL'
+                                        ? 'bg-red-500 text-white dark:bg-red-600'
+                                        : 'bg-muted text-white dark:bg-muted/80'
+                        }`}>
                         {orderInfo.order_status}
                       </span>
                     )}
@@ -356,17 +353,17 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                     <div className="flex-shrink-0 text-current opacity-70">
                       {isOrderExpanded ? (
                         <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       ) : (
                         <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       )}
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Detail order yang hanya ditampilkan jika di-expand */}
                 {isOrderExpanded && orderInfo && (
                   <div className={`ml-5 text-xs text-muted-foreground space-y-1 mt-1 ${message.sender === 'seller' ? 'dark:text-primary-foreground/90' : 'dark:text-muted-foreground'}`}>
@@ -374,7 +371,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                       <span>Pembayaran:</span>
                       <span className="text-[11px]">{orderInfo.payment_method}</span>
                     </div>
-                    
+
                     {/* Items in order */}
                     {orderInfo.order_items && orderInfo.order_items.length > 0 && (
                       <div>
@@ -382,8 +379,8 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                           <div key={`${item.item_id}-${index}`} className="text-xs mt-1">
                             <div className="flex items-start gap-1.5">
                               {item.image_url && (
-                                <img 
-                                  src={item.image_url} 
+                                <img
+                                  src={item.image_url}
                                   alt={item.item_name}
                                   className="w-7 h-7 object-cover rounded-sm flex-shrink-0"
                                 />
@@ -408,7 +405,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Total di bagian bawah */}
                     <div className="flex justify-between border-t border-muted-foreground/20 dark:border-muted-foreground/10 pt-1 mt-1">
                       <span>Total:</span>
@@ -434,7 +431,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                 }}
                 onClick={() => setIsLightboxOpen(true)}
               />
-              
+
               <CustomImageLightbox
                 isOpen={isLightboxOpen}
                 onClose={() => setIsLightboxOpen(false)}
@@ -449,7 +446,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
         ) : message.type === 'order' && message.orderData ? (
           <div className="flex flex-col">
             {/* Header order yang selalu ditampilkan */}
-            <div 
+            <div
               className="flex items-center justify-between w-full cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => setIsOrderExpanded(!isOrderExpanded)}
             >
@@ -459,28 +456,27 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                   Pesanan #{message.orderData.orderSn}
                 </span>
               </div>
-              
+
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {orderInfo && orderInfo.order_status && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${
-                    orderInfo.order_status === 'PAID'
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${orderInfo.order_status === 'PAID'
                       ? 'bg-green-500 text-white dark:bg-green-600'
                       : orderInfo.order_status === 'UNPAID'
-                      ? 'bg-yellow-500 text-white dark:bg-yellow-600'
-                      : orderInfo.order_status === 'CANCELLED'
-                      ? 'bg-red-500 text-white dark:bg-red-600'
-                      : orderInfo.order_status === 'COMPLETED'
-                      ? 'bg-blue-500 text-white dark:bg-blue-600'
-                      : orderInfo.order_status === 'PROCESSED'
-                      ? 'bg-blue-500 text-white dark:bg-blue-600'
-                      : orderInfo.order_status === 'SHIPPED'
-                      ? 'bg-blue-500 text-white dark:bg-blue-600'
-                      : orderInfo.order_status === 'DELIVERED'
-                      ? 'bg-green-500 text-white dark:bg-green-600'
-                      : orderInfo.order_status === 'IN_CANCEL'
-                      ? 'bg-red-500 text-white dark:bg-red-600'
-                      : 'bg-muted text-white dark:bg-muted/80'
-                  }`}>
+                        ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                        : orderInfo.order_status === 'CANCELLED'
+                          ? 'bg-red-500 text-white dark:bg-red-600'
+                          : orderInfo.order_status === 'COMPLETED'
+                            ? 'bg-blue-500 text-white dark:bg-blue-600'
+                            : orderInfo.order_status === 'PROCESSED'
+                              ? 'bg-blue-500 text-white dark:bg-blue-600'
+                              : orderInfo.order_status === 'SHIPPED'
+                                ? 'bg-blue-500 text-white dark:bg-blue-600'
+                                : orderInfo.order_status === 'DELIVERED'
+                                  ? 'bg-green-500 text-white dark:bg-green-600'
+                                  : orderInfo.order_status === 'IN_CANCEL'
+                                    ? 'bg-red-500 text-white dark:bg-red-600'
+                                    : 'bg-muted text-white dark:bg-muted/80'
+                    }`}>
                     {orderInfo.order_status}
                   </span>
                 )}
@@ -488,17 +484,17 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                 <div className="flex-shrink-0 text-current opacity-70">
                   {isOrderExpanded ? (
                     <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   ) : (
                     <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                 </div>
               </div>
             </div>
-            
+
             {/* Detail order yang hanya ditampilkan jika di-expand */}
             {isOrderExpanded && orderInfo && (
               <div className={`ml-5 text-xs text-muted-foreground space-y-1 mt-1 ${message.sender === 'seller' ? 'dark:text-primary-foreground/90' : 'dark:text-muted-foreground'}`}>
@@ -506,7 +502,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                   <span>Pembayaran:</span>
                   <span className="text-[11px]">{orderInfo.payment_method}</span>
                 </div>
-                
+
                 {/* Items in order */}
                 {orderInfo.order_items && orderInfo.order_items.length > 0 && (
                   <div>
@@ -514,8 +510,8 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                       <div key={`${item.item_id}-${index}`} className="text-xs mt-1">
                         <div className="flex items-start gap-1.5">
                           {item.image_url && (
-                            <img 
-                              src={item.image_url} 
+                            <img
+                              src={item.image_url}
                               alt={item.item_name}
                               className="w-7 h-7 object-cover rounded-sm flex-shrink-0"
                             />
@@ -540,7 +536,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                     ))}
                   </div>
                 )}
-                
+
                 {/* Total di bagian bawah */}
                 <div className="flex justify-between border-t border-muted-foreground/20 dark:border-muted-foreground/10 pt-1 mt-1">
                   <span>Total:</span>
@@ -572,8 +568,8 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
     </div>
   );
 }, (prevProps, nextProps) => {
-  return prevProps.message.id === nextProps.message.id && 
-         prevProps.message.type === nextProps.message.type;
+  return prevProps.message.id === nextProps.message.id &&
+    prevProps.message.type === nextProps.message.type;
 });
 // Tambahkan displayName
 MessageBubble.displayName = 'MessageBubble';
@@ -586,18 +582,18 @@ interface ChatContentProps {
   error: string | null;
   hasMoreMessages: boolean;
   isLoadingConversation: boolean;
-  messagesEndRef: React.RefObject<HTMLDivElement>;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
   setActiveTab: (tab: 'chat' | 'orders') => void;
   selectedConversation: string | null;
   isMobileView: boolean;
 }
 
-const ChatContent = React.memo(({ 
-    messages, 
-  orders, 
-    isLoading, 
-    error, 
-    hasMoreMessages,
+const ChatContent = React.memo(({
+  messages,
+  orders,
+  isLoading,
+  error,
+  hasMoreMessages,
   isLoadingConversation,
   messagesEndRef,
   selectedConversation,
@@ -615,7 +611,7 @@ const ChatContent = React.memo(({
           scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
         }
       }, 150);
-      
+
       return () => clearTimeout(timeoutId);
     }
   }, [messages.length, isLoading]);
@@ -670,7 +666,7 @@ const ChatContent = React.memo(({
           </div>
         </div>
       )}
-      
+
       <div
         ref={scrollContainerRef}
         className="h-full w-full overflow-auto scrollbar-thin p-4"
@@ -705,8 +701,8 @@ interface OrderDetailProps {
 // Komponen OrderItem yang dimemoize
 const OrderItem = React.memo(({ item }: OrderItemProps) => (
   <div className="flex gap-3 py-2.5 border-b last:border-b-0">
-    <img 
-      src={item.image_url} 
+    <img
+      src={item.image_url}
       alt={item.item_name}
       className="w-14 h-14 object-cover rounded-md flex-shrink-0"
     />
@@ -775,7 +771,7 @@ const OrderDetail = React.memo(({ order }: OrderDetailProps) => {
             <p className="font-medium">{order.payment_method}</p>
           </div>
         </div>
-        
+
         <div className="flex justify-between items-center pt-2 border-t">
           <span className="text-sm text-muted-foreground">Total Pembayaran:</span>
           <span className="text-sm font-semibold">Rp{order.total_amount.toLocaleString()}</span>
@@ -852,7 +848,7 @@ const WebChatPage: React.FC = () => {
   // State lokal untuk filter dan pencarian
   const [selectedShops, setSelectedShops] = useState<number[]>([]);
   const [statusFilter, setStatusFilter] = useState<'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS'>('SEMUA');
-  
+
   // State lokal untuk UI
   const [selectedShop, setSelectedShop] = useState<number | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
@@ -877,7 +873,7 @@ const WebChatPage: React.FC = () => {
   const [processedSSEMessages] = useState<Set<string>>(new Set());
 
   // Gunakan allConversations untuk mendapatkan data percakapan yang dipilih
-  const selectedConversationData = useMemo(() => 
+  const selectedConversationData = useMemo(() =>
     conversations.find(conv => conv.conversation_id === selectedConversation),
     [conversations, selectedConversation]
   );
@@ -913,7 +909,7 @@ const WebChatPage: React.FC = () => {
         const timeoutId = setTimeout(() => {
           handleMarkAsRead(selectedConversation);
         }, 1500);
-        
+
         return () => clearTimeout(timeoutId);
       }
     }
@@ -925,7 +921,7 @@ const WebChatPage: React.FC = () => {
 
     try {
       setIsSendingMessage(true);
-      
+
       const params = {
         conversationId: selectedConversation,
         content: message,
@@ -937,7 +933,7 @@ const WebChatPage: React.FC = () => {
       const messageId = await sendMessageStore(params);
 
       console.log('[handleSendMessage] Message sent, updating UI');
-      
+
       // Update conversation untuk menandai sudah dibalas
       updateConversation(selectedConversation, {
         unread_count: 0,
@@ -954,14 +950,14 @@ const WebChatPage: React.FC = () => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         type: 'text',
       };
-      
+
       setMessages(prev => [...prev, newMessage]);
-      
+
       // Scroll ke pesan terbaru
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
-      
+
     } catch (error) {
       console.error('[handleSendMessage] Error:', error);
       toast.error('Gagal mengirim pesan. Silakan coba lagi.');
@@ -976,7 +972,7 @@ const WebChatPage: React.FC = () => {
       newConversation: conversation,
       currentSelectedConversation: selectedConversation
     });
-    
+
     // Jika percakapan yang dipilih sama dengan yang sebelumnya, hanya ubah tampilan
     if (conversation.conversation_id === selectedConversation) {
       console.log('[handleConversationSelect] Same conversation selected');
@@ -986,26 +982,26 @@ const WebChatPage: React.FC = () => {
       }
       return;
     }
-    
+
     // Tampilkan loading terlebih dahulu
     setIsLoadingConversation(true);
     setError(null);
-    
+
     // Reset state dan set new conversation atomically
     const newConversationId = conversation.conversation_id;
     const newShopId = conversation.shop_id;
-    
+
     console.log('[handleConversationSelect] Setting new conversation:', {
       newConversationId,
       newShopId
     });
-    
+
     // Reset state sebelum fetch
     setMessages([]);
     setSelectedShop(newShopId);
     setSelectedConversation(newConversationId);
     setShouldFetchOrders(true);
-    
+
     // Update mobile view
     if (isMobileView) {
       setShowConversationList(false);
@@ -1014,19 +1010,19 @@ const WebChatPage: React.FC = () => {
 
     try {
       console.log('[handleConversationSelect] Fetching messages directly');
-      
+
       // Langsung panggil fetchMessagesStore dan capture hasil
       const fetchedMessages = await fetchMessagesStore(newConversationId);
-      
+
       console.log('[handleConversationSelect] Messages fetched:', {
         messageCount: fetchedMessages?.length || 0
       });
-      
+
       // Konversi pesan ke format UIMessage menggunakan convertToUIMessage dari store
-      const uiMessages = fetchedMessages?.map(msg => 
+      const uiMessages = fetchedMessages?.map(msg =>
         convertToUIMessage(msg as ShopeeMessage, newShopId)
       ) || [];
-      
+
       setMessages(uiMessages);
       setHasMoreMessages(fetchedMessages?.length === 25);
       console.log('[handleConversationSelect] UI updated with messages:', {
@@ -1035,7 +1031,7 @@ const WebChatPage: React.FC = () => {
     } catch (error) {
       console.error('[handleConversationSelect] Error:', error);
       toast.error('Gagal memuat percakapan');
-      
+
       setSelectedShop(null);
       setSelectedConversation(null);
       setMessages([]);
@@ -1044,7 +1040,7 @@ const WebChatPage: React.FC = () => {
       setIsLoadingConversation(false);
     }
   }, [
-    isMobileView, 
+    isMobileView,
     selectedConversation,
     fetchMessagesStore,
     convertToUIMessage
@@ -1053,34 +1049,34 @@ const WebChatPage: React.FC = () => {
   // Fungsi untuk memuat pesan - gunakan untuk refresh saja, bukan initial load
   const loadMessages = useCallback(async () => {
     if (!selectedConversation || !selectedShop) return;
-    
+
     const conversationId = selectedConversation;
     const shopId = selectedShop;
-    
+
     console.log('[loadMessages] Starting refresh messages:', {
       conversationId,
       shopId
     });
-    
+
     try {
       setIsLoading(true);
       const fetchedMessages = await fetchMessagesStore(conversationId);
-      
+
       // Pastikan conversation masih sama setelah fetch
       if (selectedConversation !== conversationId) {
         console.log('[loadMessages] Conversation changed during fetch, aborting');
         return;
       }
-      
+
       console.log('[loadMessages] Processing messages:', {
         messageCount: fetchedMessages?.length || 0
       });
-      
+
       // Konversi pesan ke format UIMessage menggunakan convertToUIMessage dari store
-      const uiMessages = fetchedMessages?.map(msg => 
+      const uiMessages = fetchedMessages?.map(msg =>
         convertToUIMessage(msg as ShopeeMessage, shopId)
       ) || [];
-      
+
       // Pastikan conversation masih sama sebelum update UI
       if (selectedConversation === conversationId) {
         setMessages(uiMessages);
@@ -1114,7 +1110,7 @@ const WebChatPage: React.FC = () => {
       const timer = setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [messages.length, isLoading]);
@@ -1126,7 +1122,7 @@ const WebChatPage: React.FC = () => {
       const searchTerm = searchInput.toLowerCase();
       // Filter conversations berdasarkan pencarian akan diimplementasikan di UI
     }, 300);
-    
+
     return () => clearTimeout(timerId);
   }, [searchInput]);
 
@@ -1162,15 +1158,15 @@ const WebChatPage: React.FC = () => {
       const userId = urlParams.get('user_id');
       const orderSn = urlParams.get('order_sn');
       const shopId = urlParams.get('shop_id');
-      
+
       if (!userId) return;
 
       // Cari conversation yang sesuai
       const targetConversation = conversations.find(
-        conv => conv.to_id.toString() === userId && 
-        (!shopId || conv.shop_id.toString() === shopId)
+        conv => conv.to_id.toString() === userId &&
+          (!shopId || conv.shop_id.toString() === shopId)
       );
-      
+
       if (targetConversation) {
         handleConversationSelect(targetConversation);
         setUrlProcessed(true); // Tandai URL sudah diproses
@@ -1187,10 +1183,10 @@ const WebChatPage: React.FC = () => {
           setTimeout(() => {
             // Cari conversation yang baru dibuat di state
             const newConversation = conversations.find(
-              conv => conv.to_id.toString() === userId && 
-              conv.shop_id.toString() === shopId
+              conv => conv.to_id.toString() === userId &&
+                conv.shop_id.toString() === shopId
             );
-            
+
             if (newConversation) {
               handleConversationSelect(newConversation);
             }
@@ -1277,25 +1273,25 @@ const WebChatPage: React.FC = () => {
   useEffect(() => {
     // Jika tidak ada lastMessage atau tidak ada conversationId yang aktif, abaikan
     if (!lastMessage?.message_id || !selectedConversation) return;
-    
+
     // Periksa apakah pesan ini untuk percakapan yang saat ini terbuka
     if (lastMessage.conversation_id !== selectedConversation) return;
-    
+
     // Periksa apakah pesan ini sudah pernah diproses sebelumnya
     if (processedSSEMessages.has(lastMessage.message_id)) return;
-    
-    console.log('[WebChat] Menerima pesan baru dari SSE:', { 
+
+    console.log('[WebChat] Menerima pesan baru dari SSE:', {
       id: lastMessage.message_id,
       type: lastMessage.message_type,
       sender: lastMessage.sender,
       conversation: lastMessage.conversation_id
     });
-    
+
     // Tambahkan pesan ke daftar yang sudah diproses
     processedSSEMessages.add(lastMessage.message_id);
-    
+
     if (!selectedShop) return;
-    
+
     // Buat objek ShopeeMessage dari data SSE
     const newShopeeMessage: ShopeeMessage = {
       message_id: lastMessage.message_id,
@@ -1314,17 +1310,17 @@ const WebChatPage: React.FC = () => {
       source_content: {},
       quoted_msg: null
     };
-    
+
     // Konversi ke UIMessage
     const newUIMessage = convertToUIMessage(newShopeeMessage, selectedShop);
-    
+
     // Periksa apakah pesan sudah ada di daftar pesan lokal
     const messageExists = messages.some(msg => msg.id === lastMessage.message_id);
-    
+
     if (!messageExists) {
       // Tambahkan pesan baru ke daftar pesan lokal
       setMessages(prev => [...prev, newUIMessage]);
-      
+
       // Jika pesan dari pembeli, tambahkan juga ke unread di state conversation
       if (newShopeeMessage.from_id === selectedConversationData?.to_id) {
         // Jika pesan baru sudah lama tidak ada respons, tandai notifikasi
@@ -1334,115 +1330,115 @@ const WebChatPage: React.FC = () => {
           });
         }
       }
-      
+
       // Scroll ke pesan terbaru
       setTimeout(() => {
         if (messagesEndRef.current) {
           messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
       }, 100);
-      
+
       console.log('[WebChat] Pesan baru berhasil ditambahkan ke state lokal');
     }
   }, [lastMessage, selectedConversation, processedSSEMessages, selectedShop, messages, selectedConversationData, updateConversation]);
 
   // Tambahkan pesan instruksi untuk tampilan awal
   if (!selectedConversation) {
-  return (
-    <div className={`flex h-full w-full overflow-hidden ${isFullScreenChat ? 'fixed inset-0 z-50 bg-background' : ''}`}>
-      {/* Daftar Percakapan */}
-      {(!isMobileView || (isMobileView && showConversationList)) && (
-        <div className={`${isMobileView ? 'w-full' : 'w-1/3 md:w-1/4 lg:w-1/5'} border-r bg-muted/20 flex flex-col h-full`}>
-          {/* Kolom Pencarian dan Filter */}
-          <div className="p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <Input
-                type="text"
-                placeholder="Cari percakapan..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                className="flex-grow"
-              />
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Filter className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <div>
-                    <h4 className="font-medium mb-2">Filter Toko:</h4>
-                    {formattedUniqueShops.map(shop => (
-                      <label key={shop.id} className="flex items-center mb-1">
-                        <input
-                          type="checkbox"
-                          checked={selectedShops.includes(shop.id)}
-                          onChange={() => {
-                            const newSelectedShops = selectedShops.includes(shop.id)
-                              ? selectedShops.filter(id => id !== shop.id)
-                              : [...selectedShops, shop.id];
-                            setSelectedShops(newSelectedShops);
-                          }}
-                          className="mr-2"
-                        />
-                        {shop.name}
-                      </label>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="SEMUA" className="text-xs">Semua</TabsTrigger>
-                <TabsTrigger value="BELUM DIBACA" className="text-xs">Belum Dibaca</TabsTrigger>
-                <TabsTrigger value="BELUM DIBALAS" className="text-xs">Belum Dibalas</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          <Virtuoso 
-            className="flex-grow"
-            data={filteredConversations}
-            itemContent={(index, conversation) => (
-              <div className="px-3 py-1">
-                <ConversationItem
-                  key={conversation.conversation_id}
-                  conversation={conversation}
-                  isSelected={selectedConversation === conversation.conversation_id}
-                  isMobileView={isMobileView}
-                  onSelect={handleConversationSelect}
+    return (
+      <div className={`flex h-full w-full overflow-hidden ${isFullScreenChat ? 'fixed inset-0 z-50 bg-background' : ''}`}>
+        {/* Daftar Percakapan */}
+        {(!isMobileView || (isMobileView && showConversationList)) && (
+          <div className={`${isMobileView ? 'w-full' : 'w-1/3 md:w-1/4 lg:w-1/5'} border-r bg-muted/20 flex flex-col h-full`}>
+            {/* Kolom Pencarian dan Filter */}
+            <div className="p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  placeholder="Cari percakapan..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="flex-grow"
                 />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="icon">
+                      <Filter className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <div>
+                      <h4 className="font-medium mb-2">Filter Toko:</h4>
+                      {formattedUniqueShops.map(shop => (
+                        <label key={shop.id} className="flex items-center mb-1">
+                          <input
+                            type="checkbox"
+                            checked={selectedShops.includes(shop.id)}
+                            onChange={() => {
+                              const newSelectedShops = selectedShops.includes(shop.id)
+                                ? selectedShops.filter(id => id !== shop.id)
+                                : [...selectedShops, shop.id];
+                              setSelectedShops(newSelectedShops);
+                            }}
+                            className="mr-2"
+                          />
+                          {shop.name}
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
-            )}
-            overscan={200}
-            style={{ height: '100%' }}
-            totalCount={filteredConversations.length}
-            defaultItemHeight={72}
-            initialTopMostItemIndex={filteredConversations.findIndex(
-              conv => conv.conversation_id === selectedConversation
-            ) !== -1 ? filteredConversations.findIndex(
-              conv => conv.conversation_id === selectedConversation
-            ) : 0}
-            followOutput={selectedConversation ? 'smooth' : false}
-          />
-        </div>
-      )}
 
-      {/* Tampilan instruksi saat belum ada chat yang dipilih */}
-      <div className="flex-1 flex flex-col items-center justify-center min-w-0 h-full overflow-hidden">
-        <div className="text-center space-y-4 max-w-md p-4">
-          <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
-          <h3 className="text-lg font-medium">Pilih percakapan untuk memulai chat</h3>
-          <p className="text-sm text-muted-foreground">
-            Pilih salah satu percakapan dari daftar di sebelah kiri untuk mulai berkomunikasi dengan pelanggan Anda.
-          </p>
+              <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="SEMUA" className="text-xs">Semua</TabsTrigger>
+                  <TabsTrigger value="BELUM DIBACA" className="text-xs">Belum Dibaca</TabsTrigger>
+                  <TabsTrigger value="BELUM DIBALAS" className="text-xs">Belum Dibalas</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            <Virtuoso
+              className="flex-grow"
+              data={filteredConversations}
+              itemContent={(index, conversation) => (
+                <div className="px-3 py-1">
+                  <ConversationItem
+                    key={conversation.conversation_id}
+                    conversation={conversation}
+                    isSelected={selectedConversation === conversation.conversation_id}
+                    isMobileView={isMobileView}
+                    onSelect={handleConversationSelect}
+                  />
+                </div>
+              )}
+              overscan={200}
+              style={{ height: '100%' }}
+              totalCount={filteredConversations.length}
+              defaultItemHeight={72}
+              initialTopMostItemIndex={filteredConversations.findIndex(
+                conv => conv.conversation_id === selectedConversation
+              ) !== -1 ? filteredConversations.findIndex(
+                conv => conv.conversation_id === selectedConversation
+              ) : 0}
+              followOutput={selectedConversation ? 'smooth' : false}
+            />
+          </div>
+        )}
+
+        {/* Tampilan instruksi saat belum ada chat yang dipilih */}
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0 h-full overflow-hidden">
+          <div className="text-center space-y-4 max-w-md p-4">
+            <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground opacity-20" />
+            <h3 className="text-lg font-medium">Pilih percakapan untuk memulai chat</h3>
+            <p className="text-sm text-muted-foreground">
+              Pilih salah satu percakapan dari daftar di sebelah kiri untuk mulai berkomunikasi dengan pelanggan Anda.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className={`flex h-full w-full overflow-hidden ${isFullScreenChat ? 'fixed inset-0 z-50 bg-background' : ''}`}>
@@ -1488,7 +1484,7 @@ const WebChatPage: React.FC = () => {
                 </PopoverContent>
               </Popover>
             </div>
-            
+
             <Tabs value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'SEMUA' | 'BELUM DIBACA' | 'BELUM DIBALAS')}>
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="SEMUA" className="text-xs">Semua</TabsTrigger>
@@ -1498,7 +1494,7 @@ const WebChatPage: React.FC = () => {
             </Tabs>
           </div>
 
-          <Virtuoso 
+          <Virtuoso
             className="flex-grow"
             data={filteredConversations}
             itemContent={(index, conversation) => (
@@ -1555,7 +1551,7 @@ const WebChatPage: React.FC = () => {
                       <p className="font-bold truncate text-xs">{selectedConversationData?.to_name}</p>
                     </div>
                   </div>
-                  
+
                   <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'chat' | 'orders')}>
                     <TabsList className="flex gap-1">
                       <TabsTrigger value="chat" className="px-2">
@@ -1583,11 +1579,11 @@ const WebChatPage: React.FC = () => {
                     isMobileView={isMobileView}
                   />
                 </div>
-                
+
                 {/* Area Input */}
                 <div className="p-4 py-3 border-t shrink-0">
-                  <MessageInput 
-                    onSendMessage={(message) => handleSendMessage(message)} 
+                  <MessageInput
+                    onSendMessage={(message) => handleSendMessage(message)}
                     isSendingMessage={isSendingMessage}
                   />
                 </div>
@@ -1597,9 +1593,9 @@ const WebChatPage: React.FC = () => {
                 {/* Header untuk tab orders */}
                 <div className="border-b bg-background z-10 p-3 flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => {
                         // Hanya tampilkan daftar percakapan tanpa mereset selectedConversation
                         setShowConversationList(true);
@@ -1617,7 +1613,7 @@ const WebChatPage: React.FC = () => {
                       <p className="font-bold truncate text-xs">{selectedConversationData?.to_name}</p>
                     </div>
                   </div>
-                  
+
                   <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'chat' | 'orders')}>
                     <TabsList className="flex gap-1">
                       <TabsTrigger value="chat" className="px-2">
@@ -1629,7 +1625,7 @@ const WebChatPage: React.FC = () => {
                     </TabsList>
                   </Tabs>
                 </div>
-                
+
                 <ScrollArea className="flex-grow pt-2">
                   <OrderList orders={orders} isLoading={isLoadingOrders} />
                 </ScrollArea>
@@ -1664,7 +1660,7 @@ const WebChatPage: React.FC = () => {
                   </Tabs>
                 )}
               </div>
-              
+
               {activeTab === 'chat' ? (
                 <>
                   {/* Area isi chat */}
@@ -1682,11 +1678,11 @@ const WebChatPage: React.FC = () => {
                       isMobileView={isMobileView}
                     />
                   </div>
-                  
+
                   {/* Area Input */}
                   <div className="p-4 py-3 border-t shrink-0">
-                    <MessageInput 
-                      onSendMessage={(message) => handleSendMessage(message)} 
+                    <MessageInput
+                      onSendMessage={(message) => handleSendMessage(message)}
                       isSendingMessage={isSendingMessage}
                     />
                   </div>

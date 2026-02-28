@@ -1,8 +1,9 @@
 /**
  * Shopee Service - Product Operations
+ * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { shopeeApi } from '@/lib/shopeeConfig';
+import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 
 export async function getItemList(
@@ -19,8 +20,15 @@ export async function getItemList(
     } = {}
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getItemList(shopId, accessToken, options);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getItemList({
+            offset: options.offset || 0,
+            page_size: options.page_size || 100,
+            item_status: options.item_status || ['NORMAL'],
+            ...(options.update_time_from ? { update_time_from: options.update_time_from } : {}),
+            ...(options.update_time_to ? { update_time_to: options.update_time_to } : {}),
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil daftar produk' };
@@ -35,8 +43,11 @@ export async function getItemList(
 
 export async function getItemBaseInfo(shopId: number, itemIdList: number[]): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getItemBaseInfo(shopId, accessToken, itemIdList);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getItemBaseInfo({
+            item_id_list: itemIdList,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil informasi dasar produk' };
@@ -51,8 +62,11 @@ export async function getItemBaseInfo(shopId: number, itemIdList: number[]): Pro
 
 export async function getModelList(shopId: number, itemId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getModelList(shopId, accessToken, itemId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getModelList({
+            item_id: itemId,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil daftar model' };
@@ -67,14 +81,15 @@ export async function getModelList(shopId: number, itemId: number): Promise<any>
 
 export async function getItemLimit(shopId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getItemLimit(shopId, accessToken);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getItemLimit({} as any);
 
-        if (result.data?.error) {
-            return { error: result.data.error, message: result.data.message || 'Gagal mengambil limit produk', request_id: result.data.request_id };
+        if (result.error) {
+            return { error: result.error, message: result.message || 'Gagal mengambil limit produk', request_id: result.request_id };
         }
 
-        return { error: '', message: '', request_id: result.data.request_id, response: result.data.response };
+        return { error: '', message: '', request_id: result.request_id, response: result.response };
     } catch (error) {
         console.error('Kesalahan saat mengambil limit produk:', error);
         return { error: "internal_server_error", message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui', request_id: '', response: null };
@@ -83,8 +98,9 @@ export async function getItemLimit(shopId: number): Promise<any> {
 
 export async function addItem(shopId: number, itemData: any): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.addItem(shopId, accessToken, itemData);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.addItem(itemData);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal menambah produk' };
@@ -99,8 +115,12 @@ export async function addItem(shopId: number, itemData: any): Promise<any> {
 
 export async function updateItem(shopId: number, itemId: number, updateData: any): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.updateItem(shopId, accessToken, itemId, updateData);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.updateItem({
+            item_id: itemId,
+            ...updateData,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengupdate produk' };
@@ -115,8 +135,11 @@ export async function updateItem(shopId: number, itemId: number, updateData: any
 
 export async function deleteItem(shopId: number, itemId: number): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.deleteItem(shopId, accessToken, itemId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.deleteItem({
+            item_id: itemId,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal menghapus produk' };
@@ -138,8 +161,11 @@ export async function unlistItems(
         if (!items || items.length === 0) throw new Error('Daftar item diperlukan');
         if (items.length > 50) throw new Error('Maksimal 50 item dapat diproses dalam satu waktu');
 
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.unlistItem(shopId, accessToken, items);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.unlistItem({
+            item_list: items,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal unlist item', request_id: result.request_id };
@@ -158,7 +184,8 @@ export async function updateStock(
     stockInfo: { stock_list: Array<{ model_id?: number, seller_stock: Array<{ location_id?: string, stock: number }> }> }
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
 
         if (!stockInfo.stock_list || stockInfo.stock_list.length === 0) {
             throw new Error('stock_list tidak boleh kosong');
@@ -174,7 +201,10 @@ export async function updateStock(
         let failureList: any[] = [];
 
         for (const batch of batches) {
-            const batchResult = await shopeeApi.updateStock(shopId, accessToken, itemId, { stock_list: batch });
+            const batchResult: any = await sdk.product.updateStock({
+                item_id: itemId,
+                stock_list: batch,
+            } as any);
 
             if (batchResult.error) {
                 failureList = [...failureList, ...(batchResult.response?.failure_list || [])];
@@ -199,8 +229,11 @@ export async function updateStock(
 
 export async function getItemPromotion(shopId: number, itemIdList: number[]): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getItemPromotion(shopId, accessToken, itemIdList);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getItemPromotion({
+            item_id_list: itemIdList,
+        });
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil informasi promosi produk' };
@@ -218,8 +251,11 @@ export async function getProductComment(
     options: { item_id?: number, comment_id?: number, cursor?: string, page_size?: number }
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.getProductComment(shopId, accessToken, options);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.getComment({
+            ...options,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil komentar produk' };
@@ -244,8 +280,11 @@ export async function replyProductComment(
             return { success: false, error: "invalid_input", message: 'Jumlah komentar tidak boleh lebih dari 100' };
         }
 
-        const accessToken = await getValidAccessToken(shopId);
-        const result = await shopeeApi.replyProductComment(shopId, accessToken, commentList);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
+        const result: any = await sdk.product.replyComment({
+            comment_list: commentList,
+        } as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal membalas komentar produk' };
@@ -263,10 +302,11 @@ export async function getReturnList(
     options: { page_no?: number, page_size?: number, create_time_from?: number, create_time_to?: number, status?: string } = {}
 ): Promise<any> {
     try {
-        const accessToken = await getValidAccessToken(shopId);
+        await getValidAccessToken(shopId);
+        const sdk = getShopeeSDK(shopId);
         const finalOptions = { page_no: 0, page_size: 50, ...options };
 
-        const result = await shopeeApi.getReturnList(shopId, accessToken, finalOptions);
+        const result: any = await sdk.returns.getReturnList(finalOptions as any);
 
         if (result.error) {
             return { success: false, error: result.error, message: result.message || 'Gagal mengambil daftar retur', request_id: result.request_id };

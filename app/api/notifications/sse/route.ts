@@ -3,11 +3,11 @@ import { checkRateLimit, createSSEConnection } from '@/app/services/serverSSESer
 import { createClient } from '@/utils/supabase/server';
 
 export async function GET(req: NextRequest) {
-  const ip = req.ip || 'unknown';
-  
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+
   // Cek rate limiting
   const rateLimitResult = checkRateLimit(ip);
-  
+
   if (!rateLimitResult.allowed) {
     return new Response('Too Many Requests', { status: 429 });
   }
@@ -15,25 +15,25 @@ export async function GET(req: NextRequest) {
   try {
     // Autentikasi user
     const supabase = await createClient();
-    
+
     // Menggunakan getUser() yang lebih aman daripada getSession()
     const { data: { user }, error } = await supabase.auth.getUser();
-    
+
     if (error || !user) {
       return new Response('Unauthorized', { status: 401 });
     }
-    
+
     const userId = user.id;
-    
+
     // Ambil daftar toko yang dimiliki user
     const { data: shops } = await supabase
       .from('shopee_tokens')
       .select('shop_id')
       .eq('user_id', userId)
       .eq('is_active', true);
-    
+
     const shopIds = shops ? shops.map(shop => shop.shop_id) : [];
-    
+
     // Buat koneksi SSE dengan informasi user dan toko
     const stream = createSSEConnection(req, userId, shopIds);
 
