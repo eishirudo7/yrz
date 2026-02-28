@@ -12,14 +12,20 @@ export async function getBookingList(shopId: number, options: BookingListOptions
     try {
         await getValidAccessToken(shopId);
         const sdk = getShopeeSDK(shopId);
-        const response: any = await sdk.order.getBookingList({
+        const params: any = {
             time_range_field: options.timeRangeField || 'create_time',
             time_from: options.startTime || Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60),
             time_to: options.endTime || Math.floor(Date.now() / 1000),
             page_size: options.pageSize || 50,
             cursor: options.cursor || '',
-            booking_status: (options.bookingStatus || 'ALL') as any
-        });
+        };
+
+        // Hanya kirim booking_status jika bukan 'ALL' (omit = ambil semua status)
+        if (options.bookingStatus && options.bookingStatus !== 'ALL') {
+            params.booking_status = options.bookingStatus;
+        }
+
+        const response: any = await sdk.order.getBookingList(params);
 
         if (response.error) {
             return {
