@@ -8,20 +8,20 @@ import { toZonedTime } from 'date-fns-tz';
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Ambil user yang sedang login
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (userError || !user) {
       return NextResponse.json({
         success: false,
         message: 'Pengguna tidak terautentikasi'
       }, { status: 401 });
     }
-    
+
     // Gunakan getAllShops() untuk mendapatkan toko milik user
     const shops = await getAllShops();
-    
+
     if (!shops || shops.length === 0) {
       return NextResponse.json({
         success: true,
@@ -37,105 +37,86 @@ export async function GET(req: NextRequest) {
         }
       });
     }
-    
+
     console.log('Shops found:', shops.length);
-    
+
     // Ambil shop_ids untuk filter
     const shopIds = shops.map(shop => shop.shop_id);
-    
+
     // Konversi waktu ke zona Jakarta dan ambil timestamp
     const jakartaDate = toZonedTime(new Date(), 'Asia/Jakarta');
     const startTimestamp = Math.floor(startOfDay(jakartaDate).getTime() / 1000);
     const endTimestamp = Math.floor(endOfDay(jakartaDate).getTime() / 1000);
-    
-    // Query semua data secara paralel
-    const [
-      { data: normalOrdersData, error: normalOrdersError },
-      { data: cancelledOrdersData, error: cancelledOrdersError },
-      { data: shippedOrdersData, error: shippedOrdersError }
-    ] = await Promise.all([
-      // Query untuk mendapatkan orders dengan status non-SHIPPED dan CANCELLED
-      supabase
-        .from('orders')
-        .select(`
-          order_sn,
-          shop_id,
-          order_status,
-          buyer_user_id,
-          create_time,
-          update_time,
-          pay_time,
-          buyer_username,
-          escrow_amount_after_adjustment,
-          shipping_carrier,
-          cod,
-          tracking_number,
-          document_status,
-          is_printed
-        `)
-        .in('shop_id', shopIds)
-        .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
-        .order('pay_time', { ascending: false }),
 
-      // Query untuk mendapatkan orders dengan status CANCELLED
-      supabase
-        .from('orders')
-        .select(`
-          order_sn,
-          shop_id,
-          order_status,
-          buyer_user_id,
-          create_time,
-          update_time,
-          pay_time,
-          buyer_username,
-          escrow_amount_after_adjustment,
-          shipping_carrier,
-          cod,
-          tracking_number,
-          document_status,
-          is_printed
-        `)
-        .in('shop_id', shopIds)
-        .eq('order_status', 'CANCELLED')
-        .gte('pay_time', startTimestamp)
-        .lte('pay_time', endTimestamp)
-        .order('pay_time', { ascending: false }),
+    const fetchPaginatedOrders = async (queryBuilder: any, pageSize: number = 800) => {
+      let allData: any[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      // Query untuk mendapatkan orders dengan status SHIPPED
-      supabase
-        .from('orders')
-        .select(`
-          order_sn,
-          shop_id,
-          order_status,
-          buyer_user_id,
-          create_time,
-          update_time,
-          pay_time,
-          buyer_username,
-          escrow_amount_after_adjustment,
-          shipping_carrier,
-          cod,
-          tracking_number,
-          document_status,
-          is_printed
+      while (hasMore) {
+        // range bersifat inklusif di Supabase, contoh: baris 0 s/d 799
+        const { data, error } = await queryBuilder.range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) {
+          throw error;
+        }
+
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          page++;
+          // Jika jumlah baris yang kembali < pageSize, artinya kita sudah di halaman terakhir
+          hasMore = data.length === pageSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      return allData;
+    };
+
+    const normalOrdersQuery = supabase
+      .from('orders')
+      .select(`
+          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
+          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
         `)
-        .in('shop_id', shopIds)
-        .eq('order_status', 'SHIPPED')
-        .gte('pickup_done_time', startTimestamp)
-        .lte('pickup_done_time', endTimestamp)
-        .order('pickup_done_time', { ascending: false })
+      .in('shop_id', shopIds)
+      .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
+      .order('pay_time', { ascending: false });
+
+    const cancelledOrdersQuery = supabase
+      .from('orders')
+      .select(`
+          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
+          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
+        `)
+      .in('shop_id', shopIds)
+      .eq('order_status', 'CANCELLED')
+      .gte('pay_time', startTimestamp)
+      .lte('pay_time', endTimestamp)
+      .order('pay_time', { ascending: false });
+
+    const shippedOrdersQuery = supabase
+      .from('orders')
+      .select(`
+          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
+          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
+        `)
+      .in('shop_id', shopIds)
+      .eq('order_status', 'SHIPPED')
+      .gte('pickup_done_time', startTimestamp)
+      .lte('pickup_done_time', endTimestamp)
+      .order('pickup_done_time', { ascending: false });
+
+    console.time('fetch_orders_dashboard');
+
+    const [normalOrdersData, cancelledOrdersData, shippedOrdersData] = await Promise.all([
+      fetchPaginatedOrders(normalOrdersQuery),
+      fetchPaginatedOrders(cancelledOrdersQuery),
+      fetchPaginatedOrders(shippedOrdersQuery)
     ]);
 
-    if (normalOrdersError || cancelledOrdersError || shippedOrdersError) {
-      console.error('Gagal mengambil data pesanan:', normalOrdersError || cancelledOrdersError || shippedOrdersError);
-      return NextResponse.json({
-        success: false,
-        message: 'Gagal mengambil data pesanan',
-        error: (normalOrdersError || cancelledOrdersError || shippedOrdersError)?.message
-      }, { status: 500 });
-    }
+    console.timeEnd('fetch_orders_dashboard');
 
     // Gabungkan hasil ketiga query
     const ordersData = [
@@ -143,6 +124,7 @@ export async function GET(req: NextRequest) {
       ...(cancelledOrdersData || []),
       ...(shippedOrdersData || [])
     ];
+
 
     if (!ordersData || ordersData.length === 0) {
       return NextResponse.json({
@@ -162,10 +144,10 @@ export async function GET(req: NextRequest) {
 
     // Ambil order_items secara paralel
     const orderSns = ordersData.map(order => order.order_sn);
-    
+
     // Implementasi batching untuk order_items
     const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
-    
+
     interface OrderItem {
       order_sn: string;
       model_quantity_purchased: string | number;
@@ -188,7 +170,7 @@ export async function GET(req: NextRequest) {
         console.error(`Gagal mengambil batch order items ${i}:`, itemsBatchError);
         continue;
       }
-      
+
       if (itemsBatchData) {
         allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
       }
@@ -257,7 +239,7 @@ export async function GET(req: NextRequest) {
         shops: shops
       }
     });
-    
+
   } catch (error) {
     console.error('Error saat mengambil data dashboard:', error);
     return NextResponse.json({

@@ -84,7 +84,7 @@ export interface UIMessage {
 
 // Fungsi untuk mengkonversi dari ShopeeMessage ke UIMessage
 export function convertToUIMessage(
-  message: ShopeeMessage, 
+  message: ShopeeMessage,
   shopId: number
 ): UIMessage {
   return {
@@ -105,39 +105,39 @@ export function convertToUIMessage(
       : message.message_type === 'image_with_text'
         ? message.content.image_url
         : undefined,
-    imageThumb: ['image', 'image_with_text'].includes(message.message_type) 
+    imageThumb: ['image', 'image_with_text'].includes(message.message_type)
       ? {
-          url: message.message_type === 'image'
-            ? (message.content.thumb_url || message.content.url || '')
-            : (message.content.thumb_url || message.content.image_url || ''),
-          height: message.content.thumb_height || 0,
-          width: message.content.thumb_width || 0
-        }
+        url: message.message_type === 'image'
+          ? (message.content.thumb_url || message.content.url || '')
+          : (message.content.thumb_url || message.content.image_url || ''),
+        height: message.content.thumb_height || 0,
+        width: message.content.thumb_width || 0
+      }
       : undefined,
     orderData: message.message_type === 'order'
       ? {
-          shopId: message.content.shop_id || 0,
-          orderSn: message.content.order_sn || ''
-        }
+        shopId: message.content.shop_id || 0,
+        orderSn: message.content.order_sn || ''
+      }
       : undefined,
     stickerData: message.message_type === 'sticker'
       ? {
-          stickerId: message.content.sticker_id || '',
-          packageId: message.content.sticker_package_id || ''
-        }
+        stickerId: message.content.sticker_id || '',
+        packageId: message.content.sticker_package_id || ''
+      }
       : undefined,
     itemData: message.message_type === 'item'
       ? {
-          shopId: message.content.shop_id || 0,
-          itemId: message.content.item_id || 0
-        }
+        shopId: message.content.shop_id || 0,
+        itemId: message.content.item_id || 0
+      }
       : undefined,
     sourceContent: message.source_content,
     time: new Date(message.created_timestamp * 1000).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit'
     })
-};
+  };
 }
 
 // Definisikan tipe untuk data percakapan dari API
@@ -248,12 +248,12 @@ export interface ChatState {
   // Core Data
   conversations: Conversation[];
   totalUnread: number;
-  
+
   // SSE Related
   processedMessages: Set<string>;
   lastMessage: SSEMessageData | null;
   isConnected: boolean;
-  
+
   // Loading States
   isInitialized: boolean;
   isLoading: boolean;
@@ -296,13 +296,13 @@ export interface ChatActions {
   handleSSEMessage: (data: SSEMessageData) => void;
   initializeConversation: (params: { userId: string; shopId: string; orderSn?: string }) => Promise<string>;
   fetchOneConversation: (conversationId: string, shopId: number, shopName?: string) => Promise<Conversation | null>;
-  
+
   // Messages Actions
   fetchMessages: (
-    conversationId: string, 
+    conversationId: string,
     options?: FetchMessagesOptions
   ) => Promise<Message[]>;
-  
+
   // State Updates
   setConversations: (conversations: Conversation[]) => void;
   updateConversation: (conversationId: string, updates: Partial<Conversation>) => void;
@@ -353,22 +353,29 @@ const initialState: ChatState = {
   activeChats: [],
 };
 
+// Utils: Sort conversations (descending timestamp)
+const sortConversations = (conversations: Conversation[]) => {
+  return [...conversations].sort((a, b) => b.last_message_timestamp - a.last_message_timestamp);
+};
+
 // Create store
 const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   ...initialState,
 
   // State Updates
   setConversations: (conversations) => {
-    set({ conversations });
+    set({ conversations: sortConversations(conversations) });
     get().updateTotalUnread();
   },
 
   updateConversation: (conversationId, updates) => {
     set(state => ({
-      conversations: state.conversations.map(conv =>
-        conv.conversation_id === conversationId
-          ? { ...conv, ...updates }
-          : conv
+      conversations: sortConversations(
+        state.conversations.map(conv =>
+          conv.conversation_id === conversationId
+            ? { ...conv, ...updates }
+            : conv
+        )
       )
     }));
     get().updateTotalUnread();
@@ -376,10 +383,10 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
 
   addConversation: (conversation) => {
     set(state => ({
-      conversations: [
+      conversations: sortConversations([
         conversation,
         ...state.conversations.filter(c => c.conversation_id !== conversation.conversation_id)
-      ]
+      ])
     }));
     get().updateTotalUnread();
   },
@@ -387,12 +394,12 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   updateTotalUnread: () => {
     // Hitung jumlah conversation yang memiliki unread_count > 0
     const totalUnread = get().conversations.filter(conv => conv.unread_count > 0).length;
-    
+
     console.log('[StoreChat] Updating total unread:', {
       totalConversations: get().conversations.length,
       conversationsWithUnread: totalUnread
     });
-    
+
     set({ totalUnread });
   },
 
@@ -404,7 +411,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   setConnected: (isConnected) => {
     const prevConnected = get().isConnected;
     set({ isConnected });
-    
+
     // Jika baru saja online, refresh data
     if (!prevConnected && isConnected) {
       get().refreshWithThrottle();
@@ -412,7 +419,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   },
 
   // Error Handling
-  setError: (type, error) => 
+  setError: (type, error) =>
     set(state => ({
       errors: { ...state.errors, [type]: error }
     })),
@@ -438,23 +445,23 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       logger.info('Memulai refresh conversations');
       get().setError('fetch', undefined);
       const timestamp = new Date().getTime();
-      
+
       logger.info('Fetching conversation list...');
       const response = await fetch(`/api/msg/get_conversation_list?_=${timestamp}`);
-      
+
       logger.info('Response status:', response.status);
-      
+
       if (!response.ok) {
         logger.error('Response not OK:', { status: response.status, statusText: response.statusText });
         throw new Error('Gagal mengambil daftar percakapan');
       }
-      
+
       const data = await response.json();
       logger.info('Berhasil mengambil data conversations:', data);
-      
+
       if (Array.isArray(data)) {
-      get().setConversations(data);
-      logger.info(`Berhasil mengambil ${data.length} percakapan`);
+        get().setConversations(data);
+        logger.info(`Berhasil mengambil ${data.length} percakapan`);
       } else {
         logger.error('Data bukan array:', { data });
         throw new Error('Format data tidak valid');
@@ -523,7 +530,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       }
 
       const data = await response.json();
-      
+
       if (data.success && data.data) {
         // Update conversation dengan pesan terakhir
         get().updateConversation(params.conversationId, {
@@ -547,20 +554,20 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   },
 
   handleSSEMessage: (data) => {
-    logger.info('Menerima pesan SSE:', { 
-      messageId: data?.message_id, 
+    logger.info('Menerima pesan SSE:', {
+      messageId: data?.message_id,
       conversationId: data?.conversation_id,
       type: data?.message_type,
       sender: data?.sender,
       content: data?.content,
       timestamp: data?.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : undefined
     });
-    
+
     if (!data?.message_id || !data.conversation_id || !data.shop_id) {
       logger.error('Invalid SSE message data:', data);
       return;
     }
-    
+
     if (get().processedMessages.has(data.message_id)) {
       logger.info(`Pesan dengan ID ${data.message_id} sudah diproses sebelumnya, mengabaikan...`);
       return;
@@ -576,7 +583,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
 
     logger.info(`Menambahkan pesan ID ${data.message_id} ke daftar pesan yang sudah diproses`);
     get().processedMessages.add(data.message_id);
-    
+
     logger.info(`Mencari percakapan dengan ID ${data.conversation_id} dalam daftar ${get().conversations.length} percakapan...`);
     const conversation = get().conversations.find(
       conv => conv.conversation_id === data.conversation_id
@@ -619,15 +626,15 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   initializeConversation: async (params: { userId: string; shopId: string; orderSn?: string }): Promise<string> => {
     try {
       logger.info('Menginisialisasi percakapan:', params);
-      
+
       // Konversi dan validasi parameter
       const userId = Number(params.userId);
       const shopId = Number(params.shopId);
-      
+
       if (isNaN(userId) || userId <= 0) {
         throw new Error('Invalid userId: Harus berupa bilangan bulat positif');
       }
-      
+
       if (isNaN(shopId) || shopId <= 0) {
         throw new Error('Invalid shopId: Harus berupa bilangan bulat positif');
       }
@@ -635,7 +642,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       if (!params.orderSn) {
         throw new Error('orderSn harus diisi');
       }
-      
+
       const response = await fetch('/api/msg/initialize', {
         method: 'POST',
         headers: {
@@ -659,7 +666,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
 
       if (data.success && data.conversation) {
         const conversationId = data.conversation.conversation_id;
-        
+
         // Tambahkan conversation baru ke state
         const newConversation: Conversation = {
           conversation_id: conversationId,
@@ -674,7 +681,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
           last_message_timestamp: Math.floor(Date.now() / 1000),
           unread_count: 0
         };
-        
+
         // Tambahkan ke state tanpa refresh
         get().addConversation(newConversation);
         return conversationId;
@@ -720,7 +727,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
           return newConversation;
         }
       }
-      
+
       console.error('[MiniChat] Gagal mengambil conversation, fallback ke refresh');
       await get().refreshConversations();
       return null;
@@ -769,7 +776,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       }
 
       const data = await response.json();
-      
+
       if (data.error) {
         logger.error('Error dari API:', data);
         throw new Error(data.error);
@@ -790,7 +797,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   refreshWithThrottle: async () => {
     const now = Date.now();
     const timeSinceLastRefresh = now - get().lastRefreshTime;
-    
+
     if (!navigator.onLine) {
       logger.info('Offline, skipping refresh');
       return;
@@ -820,17 +827,17 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   // Initialization
   initialize: async () => {
     const state = get();
-    logger.info('Initializing chat store:', { 
-      isInitialized: state.isInitialized, 
-      isLoading: state.isLoading, 
-      userId: state.userId 
+    logger.info('Initializing chat store:', {
+      isInitialized: state.isInitialized,
+      isLoading: state.isLoading,
+      userId: state.userId
     });
-    
+
     if (state.isInitialized || state.isLoading || !state.userId) {
       logger.info('Skipping initialization:', {
         reason: state.isInitialized ? 'already initialized' :
-                state.isLoading ? 'loading in progress' :
-                'no userId'
+          state.isLoading ? 'loading in progress' :
+            'no userId'
       });
       return;
     }
@@ -851,7 +858,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
 
   openChat: (chatData) => {
     const { activeChats = [] } = get();
-    
+
     // Cek apakah chat dengan kombinasi toId dan shopId yang sama sudah ada
     const existingChatIndex = activeChats.findIndex(
       existing => existing.toId === chatData.toId && existing.shopId === chatData.shopId
@@ -869,10 +876,10 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       // Jika belum ada, tambahkan chat baru
       // Batasi jumlah chat aktif (misal maksimal 3)
       const maxChats = 3;
-      const newChats = activeChats.length >= maxChats 
+      const newChats = activeChats.length >= maxChats
         ? [...activeChats.slice(1), chatData]
         : [...activeChats, chatData];
-      
+
       set({ activeChats: newChats });
     }
   },
@@ -894,9 +901,9 @@ export const useStoreChatInitializer = () => {
 export const useStoreChatIntegration = () => {
   const { userId, isLoading: isUserLoading } = useUserData();
   const { lastMessage, isConnected } = useSSE();
-  const { 
-    setUserId, 
-    setUserLoading, 
+  const {
+    setUserId,
+    setUserLoading,
     setConnected,
     handleSSEMessage,
     initialize,
@@ -906,7 +913,7 @@ export const useStoreChatIntegration = () => {
   // Integrasi UserData
   useEffect(() => {
     logger.info('UserData changed:', { userId, isUserLoading });
-    
+
     // Convert UUID to numeric ID jika perlu
     if (typeof userId === 'string' && userId) {
       // Gunakan hash sederhana untuk mengkonversi UUID ke number
