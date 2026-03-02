@@ -119,7 +119,7 @@ export function Header() {
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [expandedShop, setExpandedShop] = useState<number | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userShops, setUserShops] = useState<Array<{shop_id: number; shop_name: string}>>([]);
+  const [userShops, setUserShops] = useState<Array<{ shop_id: number; shop_name: string }>>([]);
   const { subscription, isLoading } = useUserData();
 
   // Cek apakah user adalah Pro user
@@ -127,7 +127,7 @@ export function Header() {
 
   useEffect(() => {
     if (!lastMessage) return
-    
+
     if (['shop_penalty', 'shopee_update', 'item_violation'].includes(lastMessage.type)) {
       setNotifications(prev => [{
         id: lastMessage.id,
@@ -174,15 +174,15 @@ export function Header() {
       console.log('Memulai fetchUserShops...');
       const response = await fetch('/api/shops');
       console.log('Response status dari /api/shops:', response.status);
-      
+
       if (!response.ok) {
         console.error('Response tidak OK:', response.status, response.statusText);
         throw new Error('Gagal mengambil daftar toko');
       }
-      
+
       const data = await response.json();
       console.log('Data dari /api/shops:', data);
-      
+
       if (data && data.success === true && Array.isArray(data.data)) {
         const shops = data.data.map((shop: any) => ({
           shop_id: shop.shop_id,
@@ -228,11 +228,11 @@ export function Header() {
       if (!loadingHealth) {
         setLoadingHealth(true);
       }
-      
+
       const shopIds = userShops.map(shop => shop.shop_id);
       console.log('User shops tersedia:', userShops.length, 'toko');
       console.log('ShopIds yang akan dikirim:', shopIds);
-      
+
       if (shopIds.length === 0) {
         console.log('Tidak ada toko yang ditemukan, tidak melakukan health check');
         setHealthData({
@@ -261,7 +261,7 @@ export function Header() {
         setLoadingHealth(false);
         return;
       }
-      
+
       console.log('Mengirim health check request dengan shopIds:', shopIds);
       const response = await fetch('/api/health', {
         method: 'POST',
@@ -270,11 +270,11 @@ export function Header() {
         },
         body: JSON.stringify({ shopIds })
       });
-      
+
       console.log('Response status dari /api/health:', response.status);
       const responseData = await response.json();
       console.log('Response data dari /api/health:', responseData);
-      
+
       // Tambahkan delay kecil sebelum menghilangkan loading state
       // untuk memastikan UI loading muncul dengan benar
       setTimeout(() => {
@@ -318,7 +318,7 @@ export function Header() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notification_ids: [notificationId] })
       })
-      
+
       // Refresh notifications
       fetchNotifications()
     } catch (error) {
@@ -334,7 +334,7 @@ export function Header() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notification_ids: notificationIds })
       })
-      
+
       // Refresh notifications
       fetchNotifications()
     } catch (error) {
@@ -356,7 +356,7 @@ export function Header() {
           'Content-Type': 'application/json',
         }
       });
-      
+
       if (response.ok) {
         // Redirect ke halaman login setelah berhasil logout
         window.location.href = "/login"
@@ -377,14 +377,14 @@ export function Header() {
         setUserEmail(user.email);
       }
     };
-    
+
     fetchUserInfo();
   }, []);
 
   return (
     <header className="flex h-[53px] items-center justify-between gap-4 border-b bg-muted/40 px-4 lg:px-6">
       <div className="w-[60px]">
-        {isMobile && <MobileSidebar onNavigate={() => {}} />}
+        {isMobile && <MobileSidebar onNavigate={() => { }} />}
       </div>
       <div className="flex-1 flex justify-center">
         <Link href="/">
@@ -393,16 +393,16 @@ export function Header() {
             alt="Logo Perusahaan"
             width={120}
             height={40}
-            className="w-auto h-auto"
+            className="w-[120px] h-auto"
           />
         </Link>
       </div>
       <div className="flex items-center gap-4 w-auto min-w-[60px]">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="rounded-full relative hover:bg-muted"
             >
               <Bell className="h-5 w-5" />
@@ -414,8 +414,8 @@ export function Header() {
               <span className="sr-only">Notifikasi</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent 
-            align="end" 
+          <DropdownMenuContent
+            align="end"
             className="w-[320px] md:w-[380px] md:right-0 translate-x-[10%]"
           >
             <Tabs defaultValue="notifications" className="w-full">
@@ -436,12 +436,12 @@ export function Header() {
                     <span className="flex items-center gap-2">
                       <Activity className="h-4 w-4" />
                       <span className="text-xs">Health Check</span>
-                      {healthData?.data?.shop_health?.summary?.totalIssues !== undefined && 
-                      healthData?.data?.shop_health?.summary?.totalIssues > 0 && (
-                        <span className="bg-yellow-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
-                          {healthData?.data?.shop_health?.summary?.totalIssues}
-                        </span>
-                      )}
+                      {healthData?.data?.shop_health?.summary?.totalIssues !== undefined &&
+                        healthData?.data?.shop_health?.summary?.totalIssues > 0 && (
+                          <span className="bg-yellow-500 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+                            {healthData?.data?.shop_health?.summary?.totalIssues}
+                          </span>
+                        )}
                     </span>
                   </TabsTrigger>
                 )}
@@ -451,9 +451,9 @@ export function Header() {
                 <DropdownMenuLabel className="flex justify-between items-center border-b pb-2">
                   <span className="font-semibold">Notifikasi</span>
                   {notifications.length > 0 && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={markAllAsRead}
                       className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                     >
@@ -465,7 +465,7 @@ export function Header() {
                 {notifications.length > 0 ? (
                   <div className="max-h-[400px] overflow-y-auto">
                     {notifications.map((notification) => (
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         key={notification.id}
                         onClick={() => handleNotificationClick(notification.id)}
                         className="cursor-pointer p-4 hover:bg-muted/50 border-b last:border-b-0"
@@ -496,7 +496,7 @@ export function Header() {
                                   {notification?.content?.replace(/<\/?[^>]+(>|$)/g, "")}
                                 </p>
                                 {notification?.url && (
-                                  <a 
+                                  <a
                                     href={notification.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -575,9 +575,9 @@ export function Header() {
                 <TabsContent value="health">
                   <DropdownMenuLabel className="flex justify-between items-center border-b pb-2">
                     <span className="text-xs font-medium">Status Sistem</span>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={handleRefreshClick}
                       className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                       disabled={loadingHealth}
@@ -626,7 +626,7 @@ export function Header() {
                                     // Cari nama toko dari shop_id jika tersedia
                                     const shopInfo = userShops.find(shop => shop.shop_id === returnIssue.shop_id);
                                     const shopName = shopInfo ? shopInfo.shop_name : returnIssue.user?.username || `Toko ${returnIssue.shop_id}`;
-                                    
+
                                     return (
                                       <div key={index} className="text-xs space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
                                         <div className="flex justify-between">
@@ -662,10 +662,10 @@ export function Header() {
                               // Cari nama toko yang sebenarnya berdasarkan shop_id
                               const shopInfo = userShops.find(s => s.shop_id === shop.shop_id);
                               const shopName = shopInfo ? shopInfo.shop_name : `Toko ${shop.shop_id}`;
-                              
+
                               return (
-                                <div 
-                                  key={index} 
+                                <div
+                                  key={index}
                                   className="p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
                                   onClick={() => setExpandedShop(expandedShop === shop.shop_id ? null : shop.shop_id)}
                                 >
@@ -693,7 +693,7 @@ export function Header() {
                                             }
                                           </div>
                                         )}
-                                        
+
                                         {/* Tambahkan tampilan untuk expired without ongoing */}
                                         {issue === 'Diskon telah kedaluwarsa tanpa pengganti' && expandedShop === shop.shop_id && (
                                           <div className="mt-1 ml-3 space-y-1">
@@ -708,22 +708,22 @@ export function Header() {
                                             }
                                           </div>
                                         )}
-                                        
-                                        {(issue.includes('Flash Sale aktif tidak memiliki produk') || 
-                                          issue.includes('Flash Sale mendatang tidak memiliki produk')) && 
-                                         expandedShop === shop.shop_id && (
-                                          <div className="mt-1 ml-3 space-y-1">
-                                            <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
-                                            {shop.details
-                                              .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
-                                              .map((detail, j) => (
-                                                <p key={j} className="text-[11px] text-muted-foreground ml-2">
-                                                  • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
-                                                </p>
-                                              ))
-                                            }
-                                          </div>
-                                        )}
+
+                                        {(issue.includes('Flash Sale aktif tidak memiliki produk') ||
+                                          issue.includes('Flash Sale mendatang tidak memiliki produk')) &&
+                                          expandedShop === shop.shop_id && (
+                                            <div className="mt-1 ml-3 space-y-1">
+                                              <p className="font-medium text-xs text-muted-foreground">Detail Flash Sale:</p>
+                                              {shop.details
+                                                .filter(d => d.type === (issue.includes('aktif') ? 'current_inactive' : 'upcoming_inactive'))
+                                                .map((detail, j) => (
+                                                  <p key={j} className="text-[11px] text-muted-foreground ml-2">
+                                                    • Flash Sale ID: {detail.flash_sale_id} ({new Date(detail.start_time * 1000).toLocaleString('id-ID')} - {new Date(detail.end_time * 1000).toLocaleString('id-ID')})
+                                                  </p>
+                                                ))
+                                              }
+                                            </div>
+                                          )}
                                       </li>
                                     ))}
                                   </ul>
@@ -754,21 +754,21 @@ export function Header() {
         </DropdownMenu>
 
         {!isMobile && (
-          <Button 
-            onClick={toggleTheme} 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            onClick={toggleTheme}
+            variant="ghost"
+            size="icon"
             className="rounded-full hover:bg-muted"
           >
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
         )}
-        
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="rounded-full hover:bg-muted"
             >
               <CircleUser className="h-5 w-5" />
@@ -798,7 +798,7 @@ export function Header() {
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={handleLogout}
               className="text-red-600 focus:text-red-600 cursor-pointer"
             >

@@ -201,7 +201,7 @@ export async function cancelOrder(
         const sdk = getShopeeSDK(shopId);
         const response: any = await sdk.order.cancelOrder({
             order_sn: orderSn,
-            cancel_reason: 'CUSTOMER_REQUEST',
+            cancel_reason: 'OUT_OF_STOCK',
             item_list: itemList,
         });
 
