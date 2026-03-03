@@ -8,12 +8,13 @@
     "start": "next start -p 10000",
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "npx tsx db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
-    "worker:webhook": "npx tsx workers/webhook/index.ts"
+    "worker:webhook": "npx tsx workers/webhook/index.ts",
+    "start:prod": "npm run db:migrate && node server.js"
   },
   "dependencies": {
     "@congminh1254/shopee-sdk": "^1.5.3",
