@@ -4,7 +4,7 @@ import { Order } from '@/app/hooks/useDashboard'
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 // Impor ikon-ikon yang diperlukan
-import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info, X, AlertTriangle } from 'lucide-react'
+import { Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw, Search, Filter, Printer, PrinterCheck, CheckSquare, CheckCircle, Send, MessageSquare, Download, Info, X, AlertTriangle, ScanLine } from 'lucide-react'
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { OrderDetails } from './OrderDetails'
@@ -41,6 +41,7 @@ import {
 // Import OrderTable
 import { OrderTable } from './components/Table';
 import { SkuListDialog } from './components/SkuListDialog';
+import { ContinuousScanner } from './components/ContinuousScanner';
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleString('id-ID', {
@@ -1369,6 +1370,27 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
   // Tambahkan state yang diperlukan
   const [selectedOrderSn, setSelectedOrderSn] = useState<string>('');
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannedOrder, setScannedOrder] = useState<Order | null>(null);
+
+  const handleScanResult = useCallback((decodedText: string) => {
+    // Cari pesanan berdasarkan SKU, nomor pesanan, atau nomor resi
+    const textLower = decodedText.toLowerCase();
+    const matchingOrder = orders.find(order =>
+      order.order_sn.toLowerCase() === textLower ||
+      order.tracking_number?.toLowerCase() === textLower ||
+      order.items?.some(item => item.item_sku?.toLowerCase() === textLower)
+    );
+
+    if (matchingOrder) {
+      setSearchInput(decodedText);
+      setScannedOrder(matchingOrder); // Cukup set di scanner, tidak perlu buka detail
+      toast.success(`Pesanan ditemukan: ${matchingOrder.order_sn}`);
+    } else {
+      setScannedOrder(null);
+      toast.error(`Scan: ${decodedText} - Pesanan tidak ada`);
+    }
+  }, [orders]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isUnprintedConfirmOpen, setIsUnprintedConfirmOpen] = useState(false);
   const [selectedAction, setSelectedAction] = useState<{
@@ -1854,7 +1876,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
               </Button>
 
               {/* Input Pencarian untuk Mobile */}
-              <div className="relative flex-1 min-w-[200px]">
+              <div className="relative flex-1 min-w-[150px]">
                 <Input
                   type="text"
                   placeholder="Cari username, kurir, no. pesanan, atau SKU"
@@ -1870,6 +1892,18 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                 />
                 <Search size={16} className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
               </div>
+
+              {/* Botton Scan untuk Mobile */}
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 shrink-0 p-0 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => setIsScannerOpen(true)}
+                title="Scan Barcode / Resi"
+                type="button"
+              >
+                <ScanLine size={14} className="text-zinc-600 dark:text-zinc-400" />
+              </Button>
 
               {/* Tombol Filter untuk Mobile */}
               <Popover>
@@ -1950,32 +1984,45 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
 
             {/* Pencarian dan Filter - Kanan */}
             <div className="flex items-center gap-2">
-              <div className="relative w-[300px]">
-                <Input
-                  type="text"
-                  placeholder="Cari username, no pesanan, no resi, atau SKU..."
-                  value={searchInput}
-                  onChange={(e) => handleSearchInput(e.target.value)}
-                  className="h-8 text-xs pl-8 pr-8"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck="false"
-                  data-form-type="other"
-                  name="search-input-desktop"
-                />
-                <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <div className="flex items-center gap-2">
+                <div className="relative w-[260px]">
+                  <Input
+                    type="text"
+                    placeholder="Cari username, no pesanan, no resi, atau SKU..."
+                    value={searchInput}
+                    onChange={(e) => handleSearchInput(e.target.value)}
+                    className="h-8 text-xs pl-8 pr-8"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    data-form-type="other"
+                    name="search-input-desktop"
+                  />
+                  <Search size={16} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
 
-                {/* Tombol X untuk clear input */}
-                {searchInput && (
-                  <button
-                    onClick={clearSearch}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    aria-label="Hapus pencarian"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
+                  {/* Tombol X untuk clear input */}
+                  {searchInput && (
+                    <button
+                      onClick={clearSearch}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      aria-label="Hapus pencarian"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  onClick={() => setIsScannerOpen(true)}
+                  title="Scan Barcode / Resi"
+                  type="button"
+                >
+                  <ScanLine size={16} className="text-zinc-600 dark:text-zinc-400" />
+                </Button>
               </div>
               <Popover>
                 <PopoverTrigger asChild>
@@ -2175,6 +2222,17 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         orderSn={selectedOrderSn}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
+      />
+
+      <ContinuousScanner
+        isOpen={isScannerOpen}
+        onClose={() => {
+          setIsScannerOpen(false);
+          setScannedOrder(null);
+        }}
+        onScan={handleScanResult}
+        isPaused={isDetailOpen}
+        scannedOrder={scannedOrder}
       />
 
       <CancellationConfirmDialog

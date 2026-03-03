@@ -46,6 +46,7 @@
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "framer-motion": "latest",
+    "html5-qrcode": "^2.3.8",
     "immer": "^10.1.1",
     "ioredis": "^5.4.1",
     "json-stable-stringify": "^1.1.1",
