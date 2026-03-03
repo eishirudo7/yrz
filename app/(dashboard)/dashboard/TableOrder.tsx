@@ -542,6 +542,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         order.buyer_username?.toLowerCase().includes(searchLower) ||
         order.shipping_carrier?.toLowerCase().includes(searchLower) ||
         order.order_sn.toLowerCase().includes(searchLower) ||
+        order.tracking_number?.toLowerCase().includes(searchLower) ||
         order.items?.some(item => {
           if (hasComma && searchParts.length >= 2) {
             // Pencarian SKU,Varisi (misal: SAHARA,Burgundy)

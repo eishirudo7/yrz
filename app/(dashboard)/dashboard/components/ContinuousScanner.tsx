@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Button } from '@/components/ui/button';
-import { X, Camera, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, Camera, RefreshCw, AlertTriangle, Package, Clock, Truck, XCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Order } from '@/app/hooks/useDashboard';
@@ -14,6 +14,30 @@ interface ContinuousScannerProps {
     isPaused?: boolean;
     scannedOrder?: Order | null;
 }
+
+const getStatusColor = (status: string): string => {
+    switch (status) {
+        case "READY_TO_SHIP": return "bg-green-600 text-white";
+        case "PROCESSED": return "bg-blue-600 text-white";
+        case "SHIPPED": return "bg-indigo-600 text-white";
+        case "CANCELLED": return "bg-red-600 text-white";
+        case "IN_CANCEL": return "bg-yellow-600 text-white";
+        case "TO_RETURN": return "bg-purple-600 text-white";
+        default: return "bg-gray-600 text-white";
+    }
+};
+
+const getStatusIcon = (status: string) => {
+    switch (status) {
+        case "READY_TO_SHIP": return <Package size={14} className="inline-block mr-1" />;
+        case "PROCESSED": return <Clock size={14} className="inline-block mr-1" />;
+        case "SHIPPED": return <Truck size={14} className="inline-block mr-1" />;
+        case "CANCELLED": return <XCircle size={14} className="inline-block mr-1" />;
+        case "IN_CANCEL": return <AlertCircle size={14} className="inline-block mr-1" />;
+        case "TO_RETURN": return <RefreshCcw size={14} className="inline-block mr-1" />;
+        default: return null;
+    }
+};
 
 export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, scannedOrder }: ContinuousScannerProps) {
     const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -69,7 +93,18 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
 
         try {
             if (!scannerRef.current) {
-                scannerRef.current = new Html5Qrcode(containerId);
+                // Focus on common 1D/2D shipping label barcodes (Code128, QR Code, DataMatrix, PDF417). 
+                // Restricting formats significantly speeds up scan FPS and reduces heat/CPU on mobile.
+                scannerRef.current = new Html5Qrcode(containerId, {
+                    formatsToSupport: [
+                        Html5QrcodeSupportedFormats.CODE_128,
+                        Html5QrcodeSupportedFormats.QR_CODE,
+                        Html5QrcodeSupportedFormats.DATA_MATRIX,
+                        Html5QrcodeSupportedFormats.ITF,
+                        Html5QrcodeSupportedFormats.CODE_39,
+                    ],
+                    verbose: false,
+                });
             }
 
             const existingState = scannerRef.current.getState();
@@ -81,8 +116,17 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
                 selectedCameraId,
                 {
                     fps: 10,
-                    qrbox: { width: 250, height: 250 },
+                    // Fix: Set width directly relative to viewfinderWidth to be wide
+                    qrbox: (viewfinderWidth, viewfinderHeight) => {
+                        const width = Math.floor(viewfinderWidth * 0.6); // Ambil 90% lebar layar
+                        const height = Math.floor(viewfinderHeight * 0.7); // Ambil 60% tinggi layar
+                        return {
+                            width: viewfinderWidth > 500 ? 400 : width,
+                            height: viewfinderHeight > 500 ? 250 : height
+                        };
+                    },
                     aspectRatio: 1.0,
+                    disableFlip: true, // Meningkatkan performa, tak perlu flip vertikal kecuali kamera selfie
                 },
                 (decodedText) => {
                     if (isPaused) return;
@@ -183,75 +227,78 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-            <div className="relative w-full max-w-md bg-white dark:bg-zinc-900 rounded-xl overflow-hidden flex flex-col items-center">
-                {/* Header */}
-                <div className="w-full flex justify-between items-center p-4 border-b dark:border-zinc-800">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                        <Camera size={20} />
-                        Scanner Kamera
-                    </h3>
-                    <Button variant="ghost" size="icon" onClick={onClose}>
-                        <X size={20} />
-                    </Button>
-                </div>
+            <div className="relative w-full max-w-md max-h-[95vh] bg-white dark:bg-zinc-900 rounded-xl overflow-hidden flex flex-col pt-3">
+                {/* Floating Close Button */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onClose}
+                    className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm"
+                >
+                    <X size={16} />
+                </Button>
 
                 {/* Scanner Body */}
-                <div className="w-full p-4 flex flex-col items-center justify-center gap-4 relative">
+                <div className="w-full p-3 flex flex-col items-center gap-3 overflow-y-auto">
 
                     {permissionError ? (
-                        <div className="w-full p-6 flex flex-col items-center text-center gap-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-900/50">
-                            <AlertTriangle size={32} />
-                            <p className="text-sm">{permissionError}</p>
-                            <Button variant="outline" size="sm" onClick={() => getCameras()} className="mt-2">
+                        <div className="w-full p-4 flex flex-col items-center text-center gap-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-900/50">
+                            <AlertTriangle size={28} />
+                            <p className="text-xs">{permissionError}</p>
+                            <Button variant="outline" size="sm" onClick={() => getCameras()} className="mt-2 h-8 text-xs">
                                 Coba Lagi
                             </Button>
                         </div>
                     ) : (
                         <div
                             id={containerId}
-                            className="w-full h-auto overflow-hidden rounded-lg border-2 border-dashed border-zinc-300 dark:border-zinc-700"
-                            style={{ minHeight: '300px' }}
+                            className="w-full h-auto overflow-hidden rounded-lg border-2 border-dashed border-zinc-300 dark:border-zinc-700 aspect-square max-h-[300px]"
                         ></div>
                     )}
 
-                    {!permissionError && (
-                        <div className="text-sm text-center text-zinc-500 dark:text-zinc-400">
-                            Arahkan kamera ke resi (QR / Barcode).<br />
-                            Pesanan akan ditampilkan di bawah ini.
+                    {!permissionError && !scannedOrder && (
+                        <div className="text-xs text-center text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800/50 p-2 rounded-lg w-full">
+                            Arahkan kamera ke resi (QR / Barcode).
                         </div>
                     )}
 
                     {scannedOrder && (
-                        <div className="w-full mt-2 p-4 border rounded-lg bg-zinc-50 dark:bg-zinc-800/50 flex flex-col gap-2 shadow-sm animate-in fade-in slide-in-from-bottom-4">
-                            <h4 className="font-semibold text-zinc-900 dark:text-zinc-50 border-b pb-2 mb-1">Detail Pesanan</h4>
-                            <div className="grid grid-cols-[100px_1fr] gap-x-2 gap-y-1 text-sm">
-                                <span className="text-zinc-500">Toko:</span>
-                                <span className="font-medium">{scannedOrder.shop_name}</span>
+                        <div className="w-full p-3 border border-emerald-200 dark:border-emerald-900/50 rounded-lg bg-emerald-50/50 dark:bg-emerald-900/10 flex flex-col gap-1.5 shadow-sm animate-in fade-in zoom-in-95">
+                            <div className="flex items-center justify-between border-b border-emerald-100 dark:border-emerald-800/50 pb-1.5 mb-0.5">
+                                <span className="font-semibold text-emerald-900 dark:text-emerald-100 text-xs flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    {scannedOrder.shop_name}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center ${getStatusColor(scannedOrder.order_status)}`}>
+                                    {getStatusIcon(scannedOrder.order_status)}
+                                    {scannedOrder.order_status.replace(/_/g, ' ')}
+                                </span>
+                            </div>
 
-                                <span className="text-zinc-500">Order SN:</span>
-                                <span className="font-mono">{scannedOrder.order_sn}</span>
+                            <div className="grid grid-cols-[60px_1fr] gap-x-2 gap-y-1 text-xs items-center">
+                                <span className="text-zinc-500">Order SN</span>
+                                <span className="font-mono font-medium">{scannedOrder.order_sn}</span>
 
-                                <span className="text-zinc-500">Resi:</span>
-                                <span className="font-mono">{scannedOrder.tracking_number || '-'}</span>
+                                <span className="text-zinc-500">Resi</span>
+                                <span className="font-mono font-medium">{scannedOrder.tracking_number || '-'}</span>
+                            </div>
 
-                                <span className="text-zinc-500">Status:</span>
-                                <span>{scannedOrder.order_status}</span>
-
-                                <span className="text-zinc-500">SKU:</span>
-                                <div className="flex flex-col">
-                                    {scannedOrder.items?.map((item, idx) => (
-                                        <span key={idx} className="text-xs">
-                                            {item.item_sku} {item.model_name ? `(${item.model_name})` : ''} x{item.model_quantity_purchased}
+                            <div className="mt-1 flex flex-col gap-1 bg-white dark:bg-zinc-900 rounded p-1.5 border border-zinc-100 dark:border-zinc-800">
+                                {scannedOrder.items?.map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-start text-[11px]">
+                                        <span className="text-zinc-700 dark:text-zinc-300 line-clamp-1 flex-1 pr-2">
+                                            {item.item_sku} {item.model_name ? `(${item.model_name})` : ''}
                                         </span>
-                                    ))}
-                                </div>
+                                        <span className="font-medium shrink-0">x{item.model_quantity_purchased}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )}
 
                     {cameras.length > 1 && (
-                        <Button variant="outline" onClick={switchCamera} className="mt-2" disabled={!isReady}>
-                            <RefreshCw size={16} className="mr-2" />
+                        <Button variant="outline" size="sm" onClick={switchCamera} disabled={!isReady} className="w-full h-8 text-xs">
+                            <RefreshCw size={14} className="mr-2" />
                             Ganti Kamera
                         </Button>
                     )}
