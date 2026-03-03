@@ -50,6 +50,7 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
     const lastScanned = useRef<{ text: string; time: number }>({ text: '', time: 0 });
 
     const [permissionError, setPermissionError] = useState<string>('');
+    const [scanSessionCount, setScanSessionCount] = useState<number>(0);
 
     const getCameras = async () => {
         try {
@@ -85,6 +86,7 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
     useEffect(() => {
         if (isOpen) {
             getCameras();
+            setScanSessionCount(0); // Reset counter ketika kamera dibuka
         }
     }, [isOpen]);
 
@@ -138,6 +140,7 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
                     }
 
                     lastScanned.current = { text: decodedText, time: now };
+                    setScanSessionCount(prev => prev + 1); // Tambah counter scan sukses
                     onScan(decodedText);
 
                     // Optional beep sound on successful scan
@@ -168,12 +171,16 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
         if (scannerRef.current) {
             try {
                 const state = scannerRef.current.getState();
-                if (state === 2) { // SCANNING
+                if (state === 2 || state === 3) { // SCANNING or PAUSED
                     await scannerRef.current.stop();
                 }
                 scannerRef.current.clear();
             } catch (err) {
                 console.error('Error stopping scanner', err);
+            } finally {
+                // Sangat penting untuk diset ke null agar instance baru bisa dibuat saat modal dibuka lagi
+                scannerRef.current = null;
+                setIsReady(false);
             }
         }
     };
@@ -183,15 +190,11 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
         if (isOpen && selectedCameraId && !isPaused) {
             startScanner();
         } else if (isPaused || !isOpen) {
-            // Only pause the *processing*, we might want to keep the stream alive visually if possible.
-            // But html5-qrcode's stop() actually turns off the camera light.
-            // Actually, HTML5-Qrcode provides `pause()` and `resume()`, let's check
-            // Yes! 
             if (scannerRef.current) {
                 try {
                     const state = scannerRef.current.getState();
                     if (!isOpen) {
-                        stopScanner().then(() => { setIsReady(false); });
+                        stopScanner();
                     } else if (isPaused && state === 2) {
                         scannerRef.current.pause(true); // pause video as well
                     } else if (!isPaused && state === 3) { // 3 = PAUSED
@@ -202,13 +205,25 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
         }
 
         return () => {
-            // Don't stop on unmount if we just paused, wait no, if it unmounts we MUST stop
+            // Kita tidak memanggil stopScanner() di sini pada dependency [isOpen, ...] 
+            // karena akan mematikan stream saat isPaused berubah.
+            // Cleanup utama dilakukan di !isOpen bloks di atas, dan di unmount effect di bawah.
         };
     }, [isOpen, selectedCameraId, isPaused, startScanner]);
 
+    // Cleanup mutlak saat komponen ContinuousScanner benar-benar di-unmount dari DOM
     useEffect(() => {
         return () => {
-            stopScanner();
+            if (scannerRef.current) {
+                try {
+                    const state = scannerRef.current.getState();
+                    if (state === 2 || state === 3) {
+                        scannerRef.current.stop().then(() => {
+                            if (scannerRef.current) scannerRef.current.clear();
+                        }).catch(e => console.error(e));
+                    }
+                } catch (e) { }
+            }
         };
     }, []);
 
@@ -228,12 +243,18 @@ export function ContinuousScanner({ onScan, isOpen, onClose, isPaused = false, s
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
             <div className="relative w-full max-w-md max-h-[95vh] bg-white dark:bg-zinc-900 rounded-xl overflow-hidden flex flex-col pt-3">
+                {/* Floating Scan Counter */}
+                <div className="absolute top-3 left-3 z-10 bg-black/50 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm flex items-center gap-1.5 font-semibold shadow-md">
+                    <Package size={14} className="opacity-90" />
+                    <span>{scanSessionCount} di-scan</span>
+                </div>
+
                 {/* Floating Close Button */}
                 <Button
                     variant="ghost"
                     size="icon"
                     onClick={onClose}
-                    className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm"
+                    className="absolute top-2 right-2 z-10 h-8 w-8 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-sm"
                 >
                     <X size={16} />
                 </Button>
