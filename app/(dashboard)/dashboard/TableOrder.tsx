@@ -533,11 +533,27 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     // 6. Filter berdasarkan pencarian (biasanya paling mahal)
     if (tableState.searchTerm) {
       const searchLower = tableState.searchTerm.toLowerCase();
+      // Periksa apakah input mengandung koma untuk pencarian kombinasi SKU dan variasi
+      const hasComma = searchLower.includes(',');
+      const searchParts = hasComma ? searchLower.split(',').map(s => s.trim()) : [searchLower];
+
       result = result.filter(order =>
         order.buyer_username?.toLowerCase().includes(searchLower) ||
         order.shipping_carrier?.toLowerCase().includes(searchLower) ||
         order.order_sn.toLowerCase().includes(searchLower) ||
-        order.items?.some(item => item.item_sku?.toLowerCase().includes(searchLower))
+        order.items?.some(item => {
+          if (hasComma && searchParts.length >= 2) {
+            // Pencarian SKU,Varisi (misal: SAHARA,Burgundy)
+            const searchSku = searchParts[0];
+            const searchVariation = searchParts[1];
+
+            return item.item_sku?.toLowerCase().includes(searchSku) &&
+              item.model_name?.toLowerCase().includes(searchVariation);
+          } else {
+            // Pencarian normal (tidak mencakup model_name)
+            return item.item_sku?.toLowerCase().includes(searchLower);
+          }
+        })
       );
     }
 
