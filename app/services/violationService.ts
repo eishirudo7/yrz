@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { shopeeNotifications } from '@/db/schema';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 
 // Types
@@ -72,23 +73,17 @@ export class ViolationService {
 
   private static async sendViolationNotification(data: ViolationItemWebhook & { shop_name: string }) {
     try {
-      // Simpan ke database dan dapatkan ID
-      const { data: insertedData, error } = await supabase
-        .from('shopee_notifications')
-        .insert({
-          notification_type: 'item_violation',
-          shop_id: data.shop_id,
-          shop_name: data.shop_name,
+      const [insertedData] = await db.insert(shopeeNotifications)
+        .values({
+          notificationType: 'item_violation',
+          shopId: data.shop_id,
+          shopName: data.shop_name,
           data: data,
           processed: true,
-          read: false
+          read: false,
         })
-        .select('id')
-        .single();
+        .returning({ id: shopeeNotifications.id });
 
-      if (error) throw error;
-
-      // Buat notifikasi dengan ID dari database
       const notification = this.createViolationNotification(data);
       const notificationWithId = {
         ...notification,
@@ -104,7 +99,7 @@ export class ViolationService {
   }
 
   public static createViolationNotification(data: ViolationItemWebhook): ViolationNotification {
-    const violations = data.data.deboost 
+    const violations = data.data.deboost
       ? data.data.deboosted_details
       : data.data.item_status_details;
 

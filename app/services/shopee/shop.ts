@@ -3,7 +3,9 @@
  * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { shopeeTokens } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { createClient } from '@/utils/supabase/server';
@@ -15,16 +17,10 @@ export async function getShopInfo(shopId: number): Promise<any> {
             throw new Error('ID Toko diperlukan');
         }
 
-        const { data, error } = await supabase
-            .from('shopee_tokens')
-            .select('*')
-            .eq('shop_id', shopId)
-            .single();
-
-        if (error) {
-            console.error('Gagal mengambil informasi toko:', error);
-            throw error;
-        }
+        const [data] = await db.select()
+            .from(shopeeTokens)
+            .where(eq(shopeeTokens.shopId, shopId))
+            .limit(1);
 
         if (!data) {
             throw new Error('Toko tidak ditemukan');
@@ -47,18 +43,14 @@ export async function getAllShops(): Promise<any[]> {
             return [];
         }
 
-        const { data, error } = await supabase
-            .from('shopee_tokens')
-            .select('*')
-            .eq('is_active', true)
-            .eq('user_id', user.id);
+        const data = await db.select()
+            .from(shopeeTokens)
+            .where(and(
+                eq(shopeeTokens.isActive, true),
+                eq(shopeeTokens.userId, user.id),
+            ));
 
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            return [];
-        }
-
-        return data;
+        return data || [];
     } catch (error) {
         console.error('Gagal mengambil daftar toko:', error);
         throw new Error('Gagal mengambil daftar toko aktif dari database');
@@ -78,7 +70,7 @@ export async function getRefreshCount(shopId: number): Promise<number> {
 export function generateAuthUrl(): string {
     try {
         const sdk = getShopeeSDK();
-        const redirectUrl = `https://yorozuya.me/api/callback`;
+        const redirectUrl = `https://zavena.net/api/callback`;
         const authUrl = sdk.getAuthorizationUrl(redirectUrl);
         console.info(`URL otentikasi berhasil dibuat: ${authUrl}`);
         return authUrl;

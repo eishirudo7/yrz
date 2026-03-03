@@ -1,0 +1,19 @@
+# ==========================================
+# Webhook Worker Dockerfile
+# ==========================================
+FROM node:20-alpine
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy source code needed by Worker
+COPY tsconfig.json ./
+COPY workers/ ./workers/
+COPY lib/ ./lib/
+COPY db/ ./db/
+COPY app/services/ ./app/services/
+
+CMD ["npx", "tsx", "workers/webhook/index.ts"]

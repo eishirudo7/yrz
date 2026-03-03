@@ -1,4 +1,6 @@
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { bookingOrders, shopeeTokens } from '@/db/schema';
+import { eq, and, desc, gte, lte, inArray, ilike, or, sql, count } from 'drizzle-orm';
 import { createClient } from "@/utils/supabase/server";
 
 interface BookingOrderData {
@@ -25,13 +27,37 @@ interface BookingOrderData {
 }
 
 /**
+ * Helper: validasi user authentication dan akses toko
+ */
+async function validateShopAccess(shopId: number): Promise<{ success: boolean; message?: string; userId?: string }> {
+  const supabaseServer = await createClient();
+  const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
+
+  if (userError || !user) {
+    return { success: false, message: 'User tidak terautentikasi' };
+  }
+
+  const [shopData] = await db.select({ shopId: shopeeTokens.shopId })
+    .from(shopeeTokens)
+    .where(and(
+      eq(shopeeTokens.shopId, shopId),
+      eq(shopeeTokens.userId, user.id),
+      eq(shopeeTokens.isActive, true),
+    ))
+    .limit(1);
+
+  if (!shopData) {
+    return { success: false, message: 'Toko tidak ditemukan atau tidak memiliki akses' };
+  }
+
+  return { success: true, userId: user.id };
+}
+
+/**
  * Menyimpan data booking orders ke database
- * @param bookings Array booking orders dari Shopee API response
- * @param shopId ID toko
- * @returns Hasil operasi penyimpanan
  */
 export async function saveBookingOrders(
-  bookings: any[], 
+  bookings: any[],
   shopId: number
 ): Promise<{
   success: boolean;
@@ -41,58 +67,50 @@ export async function saveBookingOrders(
 }> {
   try {
     if (!bookings || bookings.length === 0) {
-      return {
-        success: false,
-        message: 'Data booking kosong'
-      };
+      return { success: false, message: 'Data booking kosong' };
     }
 
-    const bookingData: BookingOrderData[] = bookings.map(booking => ({
-      shop_id: shopId,
-      booking_sn: booking.booking_sn,
-      order_sn: booking.order_sn || null,
-      region: booking.region || null,
-      booking_status: booking.booking_status || null,
-      match_status: booking.match_status || null,
-      shipping_carrier: booking.shipping_carrier || null,
-      create_time: booking.create_time || null,
-      update_time: booking.update_time || null,
-      recipient_address: booking.recipient_address || null,
-      item_list: booking.item_list || null,
-      dropshipper: booking.dropshipper || null,
-      dropshipper_phone: booking.dropshipper_phone || null,
-      cancel_by: booking.cancel_by || null,
-      cancel_reason: booking.cancel_reason || null,
-      fulfillment_flag: booking.fulfillment_flag || null,
-      pickup_done_time: booking.pickup_done_time || null,
-      tracking_number: booking.tracking_number || null,
-      is_printed: booking.is_printed || false,
-      document_status: booking.document_status || 'PENDING'
-    }));
+    let savedCount = 0;
 
-    // Upsert data (insert atau update jika sudah ada)
-    const { data, error } = await supabase
-      .from('booking_orders')
-      .upsert(bookingData, {
-        onConflict: 'shop_id,booking_sn',
-        ignoreDuplicates: false
-      })
-      .select();
-
-    if (error) {
-      console.error('Error menyimpan booking orders:', error);
-      return {
-        success: false,
-        message: `Gagal menyimpan data booking: ${error.message}`,
-        errors: [error]
+    for (const booking of bookings) {
+      const data = {
+        shopId: shopId,
+        bookingSn: booking.booking_sn,
+        orderSn: booking.order_sn || null,
+        region: booking.region || null,
+        bookingStatus: booking.booking_status || null,
+        matchStatus: booking.match_status || null,
+        shippingCarrier: booking.shipping_carrier || null,
+        createTime: booking.create_time || null,
+        updateTime: booking.update_time || null,
+        recipientAddress: booking.recipient_address || null,
+        itemList: booking.item_list || null,
+        dropshipper: booking.dropshipper || null,
+        dropshipperPhone: booking.dropshipper_phone || null,
+        cancelBy: booking.cancel_by || null,
+        cancelReason: booking.cancel_reason || null,
+        fulfillmentFlag: booking.fulfillment_flag || null,
+        pickupDoneTime: booking.pickup_done_time || null,
+        trackingNumber: booking.tracking_number || null,
+        isPrinted: booking.is_printed || false,
+        documentStatus: booking.document_status || 'PENDING',
       };
+
+      await db.insert(bookingOrders)
+        .values(data)
+        .onConflictDoUpdate({
+          target: [bookingOrders.shopId, bookingOrders.bookingSn],
+          set: data,
+        });
+
+      savedCount++;
     }
 
-    console.info(`Berhasil menyimpan ${data?.length || 0} booking orders untuk toko ${shopId}`);
+    console.info(`Berhasil menyimpan ${savedCount} booking orders untuk toko ${shopId}`);
     return {
       success: true,
-      message: `Berhasil menyimpan ${data?.length || 0} booking orders`,
-      savedCount: data?.length || 0
+      message: `Berhasil menyimpan ${savedCount} booking orders`,
+      savedCount,
     };
 
   } catch (error) {
@@ -100,16 +118,13 @@ export async function saveBookingOrders(
     return {
       success: false,
       message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
-      errors: [error]
+      errors: [error],
     };
   }
 }
 
 /**
  * Mengambil booking orders dari database berdasarkan filter
- * @param shopId ID toko
- * @param filters Filter pencarian
- * @returns Data booking orders
  */
 export async function getBookingOrdersFromDB(
   shopId: number,
@@ -132,111 +147,73 @@ export async function getBookingOrdersFromDB(
   total?: number;
 }> {
   try {
-    // Validasi user authentication
-    const supabaseServer = await createClient();
-    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-    
-    if (userError || !user) {
-      return {
-        success: false,
-        message: 'User tidak terautentikasi'
-      };
+    const validation = await validateShopAccess(shopId);
+    if (!validation.success) {
+      return { success: false, message: validation.message };
     }
 
-    // Validasi akses toko
-    const { data: shopData, error: shopError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('shop_id', shopId)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .single();
+    // Build where conditions
+    const conditions = [eq(bookingOrders.shopId, shopId)];
 
-    if (shopError || !shopData) {
-      return {
-        success: false,
-        message: 'Toko tidak ditemukan atau tidak memiliki akses'
-      };
-    }
-
-    let query = supabase
-      .from('booking_orders')
-      .select('*', { count: 'exact' })
-      .eq('shop_id', shopId)
-      .order('update_time', { ascending: false });
-
-    // Apply filters
     if (filters.booking_status) {
-      query = query.eq('booking_status', filters.booking_status);
+      conditions.push(eq(bookingOrders.bookingStatus, filters.booking_status));
     }
-
     if (filters.booking_sn) {
-      query = query.eq('booking_sn', filters.booking_sn);
+      conditions.push(eq(bookingOrders.bookingSn, filters.booking_sn));
     }
-
     if (filters.order_sn) {
-      query = query.eq('order_sn', filters.order_sn);
+      conditions.push(eq(bookingOrders.orderSn, filters.order_sn));
     }
-
     if (filters.tracking_number) {
-      query = query.eq('tracking_number', filters.tracking_number);
+      conditions.push(eq(bookingOrders.trackingNumber, filters.tracking_number));
     }
-
     if (filters.is_printed !== undefined) {
-      query = query.eq('is_printed', filters.is_printed);
+      conditions.push(eq(bookingOrders.isPrinted, filters.is_printed));
     }
-
     if (filters.document_status) {
-      query = query.eq('document_status', filters.document_status);
+      conditions.push(eq(bookingOrders.documentStatus, filters.document_status));
     }
-
     if (filters.date_from && filters.date_to) {
       const fromTimestamp = Math.floor(new Date(filters.date_from).getTime() / 1000);
       const toTimestamp = Math.floor(new Date(filters.date_to).getTime() / 1000);
-      query = query
-        .gte('create_time', fromTimestamp)
-        .lte('create_time', toTimestamp);
+      conditions.push(gte(bookingOrders.createTime, fromTimestamp));
+      conditions.push(lte(bookingOrders.createTime, toTimestamp));
     }
 
-    // Apply pagination
-    if (filters.limit) {
-      query = query.limit(filters.limit);
-    }
+    const whereClause = and(...conditions);
+    const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
 
-    if (filters.offset) {
-      query = query.range(filters.offset, (filters.offset + (filters.limit || 50)) - 1);
-    }
+    // Get data
+    const data = await db.select()
+      .from(bookingOrders)
+      .where(whereClause)
+      .orderBy(desc(bookingOrders.updateTime))
+      .limit(limit)
+      .offset(offset);
 
-    const { data, error, count } = await query;
-
-    if (error) {
-      console.error('Error mengambil booking orders:', error);
-      return {
-        success: false,
-        message: `Gagal mengambil data booking: ${error.message}`
-      };
-    }
+    // Get total count
+    const [{ total }] = await db.select({ total: count() })
+      .from(bookingOrders)
+      .where(whereClause);
 
     return {
       success: true,
       data: data || [],
-      total: count || 0
+      total: total || 0,
     };
 
   } catch (error) {
     console.error('Kesalahan saat mengambil booking orders:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
  * Menghapus booking orders dari database
- * @param shopId ID toko
- * @param bookingSnList Array booking SN yang akan dihapus
- * @returns Hasil operasi penghapusan
  */
 export async function deleteBookingOrders(
   shopId: number,
@@ -248,76 +225,39 @@ export async function deleteBookingOrders(
 }> {
   try {
     if (!bookingSnList || bookingSnList.length === 0) {
-      return {
-        success: false,
-        message: 'Daftar booking SN tidak boleh kosong'
-      };
+      return { success: false, message: 'Daftar booking SN tidak boleh kosong' };
     }
 
-    // Validasi user authentication
-    const supabaseServer = await createClient();
-    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-    
-    if (userError || !user) {
-      return {
-        success: false,
-        message: 'User tidak terautentikasi'
-      };
+    const validation = await validateShopAccess(shopId);
+    if (!validation.success) {
+      return { success: false, message: validation.message! };
     }
 
-    // Validasi akses toko
-    const { data: shopData, error: shopError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('shop_id', shopId)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .single();
+    const deleted = await db.delete(bookingOrders)
+      .where(and(
+        eq(bookingOrders.shopId, shopId),
+        inArray(bookingOrders.bookingSn, bookingSnList),
+      ))
+      .returning();
 
-    if (shopError || !shopData) {
-      return {
-        success: false,
-        message: 'Toko tidak ditemukan atau tidak memiliki akses'
-      };
-    }
-
-    const { data, error } = await supabase
-      .from('booking_orders')
-      .delete()
-      .eq('shop_id', shopId)
-      .in('booking_sn', bookingSnList)
-      .select();
-
-    if (error) {
-      console.error('Error menghapus booking orders:', error);
-      return {
-        success: false,
-        message: `Gagal menghapus data booking: ${error.message}`
-      };
-    }
-
-    console.info(`Berhasil menghapus ${data?.length || 0} booking orders untuk toko ${shopId}`);
+    console.info(`Berhasil menghapus ${deleted.length} booking orders untuk toko ${shopId}`);
     return {
       success: true,
-      message: `Berhasil menghapus ${data?.length || 0} booking orders`,
-      deletedCount: data?.length || 0
+      message: `Berhasil menghapus ${deleted.length} booking orders`,
+      deletedCount: deleted.length,
     };
 
   } catch (error) {
     console.error('Kesalahan saat menghapus booking orders:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
- * Mengupdate status booking order
- * @param shopId ID toko
- * @param bookingSn Booking SN
- * @param updateData Data yang akan diupdate
- * @returns Hasil operasi update
+ * Mengupdate status booking order (dengan auth check)
  */
 export async function updateBookingOrder(
   shopId: number,
@@ -329,74 +269,58 @@ export async function updateBookingOrder(
   data?: any;
 }> {
   try {
-    // Validasi user authentication
-    const supabaseServer = await createClient();
-    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-    
-    if (userError || !user) {
-      return {
-        success: false,
-        message: 'User tidak terautentikasi'
-      };
+    const validation = await validateShopAccess(shopId);
+    if (!validation.success) {
+      return { success: false, message: validation.message! };
     }
 
-    // Validasi akses toko
-    const { data: shopData, error: shopError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('shop_id', shopId)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .single();
+    // Map snake_case fields to camelCase for Drizzle
+    const setData: Record<string, any> = { updatedAt: new Date() };
+    if (updateData.tracking_number !== undefined) setData.trackingNumber = updateData.tracking_number;
+    if (updateData.booking_status !== undefined) setData.bookingStatus = updateData.booking_status;
+    if (updateData.match_status !== undefined) setData.matchStatus = updateData.match_status;
+    if (updateData.order_sn !== undefined) setData.orderSn = updateData.order_sn;
+    if (updateData.is_printed !== undefined) setData.isPrinted = updateData.is_printed;
+    if (updateData.document_status !== undefined) setData.documentStatus = updateData.document_status;
+    if (updateData.update_time !== undefined) setData.updateTime = updateData.update_time;
+    if (updateData.pickup_done_time !== undefined) setData.pickupDoneTime = updateData.pickup_done_time;
+    if (updateData.cancel_by !== undefined) setData.cancelBy = updateData.cancel_by;
+    if (updateData.cancel_reason !== undefined) setData.cancelReason = updateData.cancel_reason;
+    if (updateData.fulfillment_flag !== undefined) setData.fulfillmentFlag = updateData.fulfillment_flag;
+    if (updateData.shipping_carrier !== undefined) setData.shippingCarrier = updateData.shipping_carrier;
+    if (updateData.recipient_address !== undefined) setData.recipientAddress = updateData.recipient_address;
+    if (updateData.item_list !== undefined) setData.itemList = updateData.item_list;
 
-    if (shopError || !shopData) {
-      return {
-        success: false,
-        message: 'Toko tidak ditemukan atau tidak memiliki akses'
-      };
-    }
+    const [updated] = await db.update(bookingOrders)
+      .set(setData)
+      .where(and(
+        eq(bookingOrders.shopId, shopId),
+        eq(bookingOrders.bookingSn, bookingSn),
+      ))
+      .returning();
 
-    const { data, error } = await supabase
-      .from('booking_orders')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString()
-      })
-      .eq('shop_id', shopId)
-      .eq('booking_sn', bookingSn)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error mengupdate booking order:', error);
-      return {
-        success: false,
-        message: `Gagal mengupdate booking order: ${error.message}`
-      };
+    if (!updated) {
+      return { success: false, message: 'Booking order tidak ditemukan' };
     }
 
     console.info(`Berhasil mengupdate booking order ${bookingSn} untuk toko ${shopId}`);
     return {
       success: true,
       message: 'Berhasil mengupdate booking order',
-      data: data
+      data: updated,
     };
 
   } catch (error) {
     console.error('Kesalahan saat mengupdate booking order:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
  * Mencari booking orders berdasarkan teks
- * @param shopId ID toko
- * @param searchText Teks pencarian
- * @param searchFields Field yang akan dicari
- * @returns Hasil pencarian
  */
 export async function searchBookingOrders(
   shopId: number,
@@ -408,141 +332,75 @@ export async function searchBookingOrders(
   message?: string;
 }> {
   try {
-    // Validasi user authentication
-    const supabaseServer = await createClient();
-    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-    
-    if (userError || !user) {
-      return {
-        success: false,
-        message: 'User tidak terautentikasi'
-      };
+    const validation = await validateShopAccess(shopId);
+    if (!validation.success) {
+      return { success: false, message: validation.message };
     }
 
-    // Validasi akses toko
-    const { data: shopData, error: shopError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('shop_id', shopId)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .single();
+    // Build search OR conditions
+    const searchConditions = [];
 
-    if (shopError || !shopData) {
-      return {
-        success: false,
-        message: 'Toko tidak ditemukan atau tidak memiliki akses'
-      };
-    }
-
-    let query = supabase
-      .from('booking_orders')
-      .select('*')
-      .eq('shop_id', shopId);
-
-    // Build search conditions
-    const conditions = [];
-    
     if (searchFields.includes('booking_sn')) {
-      conditions.push(`booking_sn.ilike.%${searchText}%`);
+      searchConditions.push(ilike(bookingOrders.bookingSn, `%${searchText}%`));
     }
-    
     if (searchFields.includes('order_sn')) {
-      conditions.push(`order_sn.ilike.%${searchText}%`);
+      searchConditions.push(ilike(bookingOrders.orderSn, `%${searchText}%`));
     }
-
     if (searchFields.includes('tracking_number')) {
-      conditions.push(`tracking_number.ilike.%${searchText}%`);
+      searchConditions.push(ilike(bookingOrders.trackingNumber, `%${searchText}%`));
     }
-    
     if (searchFields.includes('recipient_name')) {
-      conditions.push(`recipient_address->>name.ilike.%${searchText}%`);
+      searchConditions.push(sql`${bookingOrders.recipientAddress}->>'name' ILIKE ${'%' + searchText + '%'}`);
     }
-    
     if (searchFields.includes('item_name')) {
-      // Search dalam array item_list untuk item_name
-      query = query.or(`item_list.cs.[{"item_name": "${searchText}"}]`);
+      searchConditions.push(sql`${bookingOrders.itemList}::text ILIKE ${'%' + searchText + '%'}`);
     }
 
-    // Apply OR condition untuk field lainnya
-    if (conditions.length > 0 && !searchFields.includes('item_name')) {
-      query = query.or(conditions.join(','));
-    }
+    const whereClause = searchConditions.length > 0
+      ? and(eq(bookingOrders.shopId, shopId), or(...searchConditions))
+      : eq(bookingOrders.shopId, shopId);
 
-    const { data, error } = await query
-      .order('update_time', { ascending: false })
+    const data = await db.select()
+      .from(bookingOrders)
+      .where(whereClause)
+      .orderBy(desc(bookingOrders.updateTime))
       .limit(100);
 
-    if (error) {
-      console.error('Error mencari booking orders:', error);
-      return {
-        success: false,
-        message: `Gagal mencari booking orders: ${error.message}`
-      };
-    }
-
-    return {
-      success: true,
-      data: data || []
-    };
+    return { success: true, data: data || [] };
 
   } catch (error) {
     console.error('Kesalahan saat mencari booking orders:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
- * Update tracking number untuk booking order
- * @param shopId ID toko
- * @param bookingSn Booking SN
- * @param trackingNumber Nomor tracking
- * @returns Hasil operasi update
+ * Update tracking number
  */
 export async function updateTrackingNumber(
   shopId: number,
   bookingSn: string,
   trackingNumber: string
-): Promise<{
-  success: boolean;
-  message: string;
-  data?: any;
-}> {
-  return updateBookingOrder(shopId, bookingSn, {
-    tracking_number: trackingNumber
-  });
+): Promise<{ success: boolean; message: string; data?: any }> {
+  return updateBookingOrder(shopId, bookingSn, { tracking_number: trackingNumber });
 }
 
 /**
- * Update tracking number untuk booking order (khusus untuk webhook)
- * @param shopId ID toko
- * @param bookingSn Booking SN
- * @param trackingNumber Nomor tracking
- * @returns Hasil operasi update
+ * Update tracking number (khusus webhook - tanpa auth)
  */
 export async function updateTrackingNumberForWebhook(
   shopId: number,
   bookingSn: string,
   trackingNumber: string
-): Promise<{
-  success: boolean;
-  message: string;
-  data?: any;
-}> {
-  return updateBookingOrderForWebhook(shopId, bookingSn, {
-    tracking_number: trackingNumber
-  });
+): Promise<{ success: boolean; message: string; data?: any }> {
+  return updateBookingOrderForWebhook(shopId, bookingSn, { tracking_number: trackingNumber });
 }
 
 /**
- * Mengupdate status booking order (khusus untuk webhook - tanpa autentikasi user)
- * @param shopId ID toko
- * @param bookingSn Booking SN
- * @param updateData Data yang akan diupdate
- * @returns Hasil operasi update
+ * Update booking order (khusus webhook - tanpa auth)
  */
 export async function updateBookingOrderForWebhook(
   shopId: number,
@@ -554,47 +412,50 @@ export async function updateBookingOrderForWebhook(
   data?: any;
 }> {
   try {
-    // Langsung update tanpa validasi user authentication untuk webhook
-    const { data, error } = await supabase
-      .from('booking_orders')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString()
-      })
-      .eq('shop_id', shopId)
-      .eq('booking_sn', bookingSn)
-      .select()
-      .single();
+    const setData: Record<string, any> = { updatedAt: new Date() };
+    if (updateData.tracking_number !== undefined) setData.trackingNumber = updateData.tracking_number;
+    if (updateData.booking_status !== undefined) setData.bookingStatus = updateData.booking_status;
+    if (updateData.match_status !== undefined) setData.matchStatus = updateData.match_status;
+    if (updateData.order_sn !== undefined) setData.orderSn = updateData.order_sn;
+    if (updateData.is_printed !== undefined) setData.isPrinted = updateData.is_printed;
+    if (updateData.document_status !== undefined) setData.documentStatus = updateData.document_status;
+    if (updateData.update_time !== undefined) setData.updateTime = updateData.update_time;
+    if (updateData.pickup_done_time !== undefined) setData.pickupDoneTime = updateData.pickup_done_time;
+    if (updateData.cancel_by !== undefined) setData.cancelBy = updateData.cancel_by;
+    if (updateData.cancel_reason !== undefined) setData.cancelReason = updateData.cancel_reason;
+    if (updateData.fulfillment_flag !== undefined) setData.fulfillmentFlag = updateData.fulfillment_flag;
+    if (updateData.shipping_carrier !== undefined) setData.shippingCarrier = updateData.shipping_carrier;
 
-    if (error) {
-      console.error('Error mengupdate booking order via webhook:', error);
-      return {
-        success: false,
-        message: `Gagal mengupdate booking order: ${error.message}`
-      };
+    const [updated] = await db.update(bookingOrders)
+      .set(setData)
+      .where(and(
+        eq(bookingOrders.shopId, shopId),
+        eq(bookingOrders.bookingSn, bookingSn),
+      ))
+      .returning();
+
+    if (!updated) {
+      return { success: false, message: 'Booking order tidak ditemukan' };
     }
 
     console.info(`Berhasil mengupdate booking order ${bookingSn} untuk toko ${shopId} via webhook`);
     return {
       success: true,
       message: 'Berhasil mengupdate booking order',
-      data: data
+      data: updated,
     };
 
   } catch (error) {
     console.error('Kesalahan saat mengupdate booking order via webhook:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
  * Mark dokumen sebagai sudah dicetak
- * @param shopId ID toko
- * @param bookingSnList Array booking SN yang dokumennya sudah dicetak
- * @returns Hasil operasi update
  */
 export async function markDocumentsAsPrinted(
   shopId: number,
@@ -606,78 +467,44 @@ export async function markDocumentsAsPrinted(
 }> {
   try {
     if (!bookingSnList || bookingSnList.length === 0) {
-      return {
-        success: false,
-        message: 'Daftar booking SN tidak boleh kosong'
-      };
+      return { success: false, message: 'Daftar booking SN tidak boleh kosong' };
     }
 
-    // Validasi user authentication
-    const supabaseServer = await createClient();
-    const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-    
-    if (userError || !user) {
-      return {
-        success: false,
-        message: 'User tidak terautentikasi'
-      };
+    const validation = await validateShopAccess(shopId);
+    if (!validation.success) {
+      return { success: false, message: validation.message! };
     }
 
-    // Validasi akses toko
-    const { data: shopData, error: shopError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('shop_id', shopId)
-      .eq('user_id', user.id)
-      .eq('is_active', true)
-      .single();
-
-    if (shopError || !shopData) {
-      return {
-        success: false,
-        message: 'Toko tidak ditemukan atau tidak memiliki akses'
-      };
-    }
-
-    const { data, error } = await supabase
-      .from('booking_orders')
-      .update({
-        is_printed: true,
-        document_status: 'PRINTED',
-        updated_at: new Date().toISOString()
+    const updated = await db.update(bookingOrders)
+      .set({
+        isPrinted: true,
+        documentStatus: 'PRINTED',
+        updatedAt: new Date(),
       })
-      .eq('shop_id', shopId)
-      .in('booking_sn', bookingSnList)
-      .select();
+      .where(and(
+        eq(bookingOrders.shopId, shopId),
+        inArray(bookingOrders.bookingSn, bookingSnList),
+      ))
+      .returning();
 
-    if (error) {
-      console.error('Error mengupdate status cetak:', error);
-      return {
-        success: false,
-        message: `Gagal mengupdate status cetak: ${error.message}`
-      };
-    }
-
-    console.info(`Berhasil mengupdate status cetak untuk ${data?.length || 0} booking orders`);
+    console.info(`Berhasil mengupdate status cetak untuk ${updated.length} booking orders`);
     return {
       success: true,
-      message: `Berhasil mengupdate status cetak untuk ${data?.length || 0} booking orders`,
-      updatedCount: data?.length || 0
+      message: `Berhasil mengupdate status cetak untuk ${updated.length} booking orders`,
+      updatedCount: updated.length,
     };
 
   } catch (error) {
     console.error('Kesalahan saat mengupdate status cetak:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui'
+      message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui',
     };
   }
 }
 
 /**
  * Mendapatkan booking orders yang siap untuk dicetak
- * @param shopId ID toko
- * @returns Booking orders yang siap dicetak
  */
 export async function getBookingsReadyToPrint(
   shopId: number
@@ -689,6 +516,6 @@ export async function getBookingsReadyToPrint(
 }> {
   return getBookingOrdersFromDB(shopId, {
     is_printed: false,
-    document_status: 'READY'
+    document_status: 'READY',
   });
-} 
+}

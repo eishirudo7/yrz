@@ -1,20 +1,17 @@
 import { getShopeeSDK } from '@/lib/shopee-sdk';
-import { supabase } from '@/lib/supabase';
-
-
+import { db } from '@/db';
+import { shopeeTokens } from '@/db/schema';
 
 export async function refreshAllTokens() {
   console.log("Memulai proses refresh token");
 
   try {
-    const { data: shops, error } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id, refresh_token, shop_name, user_id');
-
-    if (error) {
-      console.error('Error fetching tokens:', error);
-      return;
-    }
+    const shops = await db.select({
+      shopId: shopeeTokens.shopId,
+      refreshToken: shopeeTokens.refreshToken,
+      shopName: shopeeTokens.shopName,
+      userId: shopeeTokens.userId,
+    }).from(shopeeTokens);
 
     console.log(`Berhasil mengambil ${shops.length} toko dari database`);
 
@@ -22,24 +19,24 @@ export async function refreshAllTokens() {
     const results = await Promise.all(
       shops.map(async (shop) => {
         try {
-          const sdk = getShopeeSDK(shop.shop_id, {
-            userId: shop.user_id,
-            shopName: shop.shop_name,
+          const sdk = getShopeeSDK(shop.shopId, {
+            userId: shop.userId || undefined,
+            shopName: shop.shopName,
           });
 
           // SDK handles: get old token → refresh → store new token (via SupabaseTokenStorage)
-          const newToken = await sdk.refreshToken(shop.shop_id);
+          const newToken = await sdk.refreshToken(shop.shopId);
 
           if (!newToken) {
             throw new Error('Token refresh returned null');
           }
           // Redis is automatically updated by SupabaseTokenStorage.store() inside sdk.refreshToken()
 
-          console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shop_id}`);
-          return { success: true, shop_id: shop.shop_id };
+          console.log(`Berhasil me-refresh token untuk shop_id: ${shop.shopId}`);
+          return { success: true, shop_id: shop.shopId };
         } catch (error) {
-          console.error(`Gagal me-refresh token untuk shop_id ${shop.shop_id}:`, error);
-          return { success: false, shop_id: shop.shop_id };
+          console.error(`Gagal me-refresh token untuk shop_id ${shop.shopId}:`, error);
+          return { success: false, shop_id: shop.shopId };
         }
       })
     );

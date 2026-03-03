@@ -1,5 +1,6 @@
-import { supabase } from '@/lib/supabase';
-import { cookies } from 'next/headers';
+import { db } from '@/db';
+import { items } from '@/db/schema';
+import { eq, inArray, and } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -8,7 +9,6 @@ export async function GET(request: Request) {
     const shopId = searchParams.get('shop_id');
     const itemIds = searchParams.get('item_ids')?.split(',');
 
-    // Validasi parameter
     if (!itemIds?.length) {
       return NextResponse.json(
         { error: 'item_ids diperlukan' },
@@ -16,25 +16,22 @@ export async function GET(request: Request) {
       );
     }
 
-    // Query ke database untuk multiple items
-    let query = supabase
-      .from('items')
-      .select('item_id, item_sku, item_name, image')
-      .in('item_id', itemIds);
+    const conditions = [
+      inArray(items.itemId, itemIds.map(Number)),
+    ];
 
-    // Tambahkan filter shop_id hanya jika disediakan
     if (shopId) {
-      query = query.eq('shop_id', shopId);
+      conditions.push(eq(items.shopId, Number(shopId)));
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      return NextResponse.json(
-        { error: 'Gagal mengambil data' },
-        { status: 500 }
-      );
-    }
+    const data = await db.select({
+      item_id: items.itemId,
+      item_sku: items.itemSku,
+      item_name: items.itemName,
+      image: items.image,
+    })
+      .from(items)
+      .where(and(...conditions));
 
     return NextResponse.json({ items: data });
 
@@ -44,4 +41,4 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
-} 
+}

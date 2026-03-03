@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   reactStrictMode: false,
   turbopack: {},
   webpack: (config, { isServer }) => {
@@ -22,7 +23,7 @@ const nextConfig = {
   env: {
     // Gunakan RENDER_EXTERNAL_URL untuk environment production
     // dan fallback ke localhost untuk development
-    NEXT_PUBLIC_BASE_URL: 'https://yorozuya.me' || 'http://localhost:10000',
+    NEXT_PUBLIC_BASE_URL: 'https://zavena.net' || 'http://localhost:10000',
   },
 };
 

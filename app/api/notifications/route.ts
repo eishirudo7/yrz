@@ -1,4 +1,6 @@
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { shopeeNotifications } from '@/db/schema';
+import { eq, inArray, desc } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { PenaltyService } from '@/app/services/penaltyService';
 import { UpdateService } from '@/app/services/updateService';
@@ -11,73 +13,68 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const shop_id = searchParams.get('shop_id');
     const unread_only = searchParams.get('unread_only') === 'true';
-    
-    // Ambil semua toko yang dimiliki user saat ini
+
     const shops = await getAllShops();
-    
+
     if (shops.length === 0) {
       return NextResponse.json([]);
     }
-    
-    // Ambil shop_ids dari toko yang dimiliki user
-    const shop_ids = shops.map(shop => shop.id);
-    
-    let query = supabase
-      .from('shopee_notifications')
-      .select('*')
-      .in('notification_type', ['shop_penalty', 'shopee_update', 'item_violation'])
-      .in('shop_id', shop_ids)
-      .order('created_at', { ascending: false });
 
-    // Kalau ada shop_id spesifik yang diminta dan ada dalam daftar yang dimiliki user
+    const shop_ids = shops.map(shop => shop.id);
+
+    // Build where conditions
+    const conditions = [
+      inArray(shopeeNotifications.notificationType, ['shop_penalty', 'shopee_update', 'item_violation']),
+      inArray(shopeeNotifications.shopId, shop_ids.map(Number)),
+    ];
+
     if (shop_id && shop_ids.includes(shop_id)) {
-      query = query.eq('shop_id', shop_id);
+      conditions.push(eq(shopeeNotifications.shopId, Number(shop_id)));
     }
 
     if (unread_only) {
-      query = query.eq('read', false);
+      conditions.push(eq(shopeeNotifications.read, false));
     }
 
-    const { data: notifications, error } = await query;
-    
-    if (error) {
-      console.error('Error fetching notifications:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const { and } = await import('drizzle-orm');
+    const notifications = await db.select()
+      .from(shopeeNotifications)
+      .where(and(...conditions))
+      .orderBy(desc(shopeeNotifications.createdAt));
 
     // Transform notifications berdasarkan tipenya
     const transformedNotifications = notifications.map(notification => {
-      switch (notification.notification_type) {
+      switch (notification.notificationType) {
         case 'shop_penalty':
           return {
             id: notification.id,
-            ...PenaltyService.createPenaltyNotification(notification.data),
-            shop_name: notification.shop_name
+            ...PenaltyService.createPenaltyNotification(notification.data as any),
+            shop_name: notification.shopName
           };
         case 'shopee_update':
           return {
             ...UpdateService.createUpdateNotification({
               ...notification,
               id: notification.id
-            }),
-            shop_name: notification.shop_name
+            } as any),
+            shop_name: notification.shopName
           };
         case 'item_violation':
           return {
             id: notification.id,
-            ...ViolationService.createViolationNotification(notification.data),
-            shop_name: notification.shop_name
+            ...ViolationService.createViolationNotification(notification.data as any),
+            shop_name: notification.shopName
           };
         default:
           return null;
       }
     }).filter(Boolean);
-    
+
     return NextResponse.json(transformedNotifications);
   } catch (error) {
     console.error('Error in GET notifications:', error);
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -91,34 +88,28 @@ export async function POST(req: Request) {
 
     if (!notification_ids || !Array.isArray(notification_ids)) {
       return NextResponse.json(
-        { error: 'notification_ids harus berupa array' }, 
+        { error: 'notification_ids harus berupa array' },
         { status: 400 }
       );
     }
 
-    const { error } = await supabase
-      .from('shopee_notifications')
-      .update({ 
+    await db.update(shopeeNotifications)
+      .set({
         read: true,
-        updated_at: new Date().toISOString()
+        updatedAt: new Date(),
       })
-      .in('id', notification_ids);
+      .where(inArray(shopeeNotifications.id, notification_ids));
 
-    if (error) {
-      console.error('Error updating notifications:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ 
-      success: true, 
-      message: `${notification_ids.length} notifikasi ditandai telah dibaca` 
+    return NextResponse.json({
+      success: true,
+      message: `${notification_ids.length} notifikasi ditandai telah dibaca`
     });
-    
+
   } catch (error) {
     console.error('Error in POST notifications:', error);
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
-} 
+}

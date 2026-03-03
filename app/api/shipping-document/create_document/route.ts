@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createShippingDocument, getTrackingNumber } from '@/app/services/shopeeService';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { orders } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export async function POST(request: Request) {
     try {
-        // Cek query parameter
         const { searchParams } = new URL(request.url);
         const isGetTrackingOnly = searchParams.get('get_tracking') === 'true';
 
         const body = await request.json();
         const { shopId, order_sn, tracking_number } = body;
 
-        // Validasi input
         if (!shopId || !order_sn) {
             return NextResponse.json({
                 success: false,
@@ -19,13 +19,12 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Jika tracking number tidak ada, coba dapatkan
         if (!tracking_number) {
             console.log('Mencoba mendapatkan tracking number untuk:', { shopId, order_sn });
             const trackingResult = await getTrackingNumber(shopId, order_sn);
             console.log('Hasil getTrackingNumber:', JSON.stringify(trackingResult, null, 2));
-            
-            if (trackingResult.error || 
+
+            if (trackingResult.error ||
                 (trackingResult.response && !trackingResult.response.tracking_number)) {
                 console.error('Error saat mendapatkan tracking number:', trackingResult.error);
                 return NextResponse.json({
@@ -35,20 +34,18 @@ export async function POST(request: Request) {
                     details: trackingResult
                 }, { status: 400 });
             }
-            
+
             const finalTrackingNumber = trackingResult.response.tracking_number;
-            
+
             // Update tracking number di database
-            const { error: updateError } = await supabase
-                .from('orders')
-                .update({ tracking_number: finalTrackingNumber })
-                .eq('order_sn', order_sn);
-                
-            if (updateError) {
+            try {
+                await db.update(orders)
+                    .set({ trackingNumber: finalTrackingNumber })
+                    .where(eq(orders.orderSn, order_sn));
+            } catch (updateError) {
                 console.error('Gagal mengupdate tracking number di database:', updateError);
             }
 
-            // Jika hanya ingin mendapatkan tracking number, return di sini
             if (isGetTrackingOnly) {
                 return NextResponse.json({
                     success: true,
@@ -56,11 +53,9 @@ export async function POST(request: Request) {
                 });
             }
 
-            // Lanjutkan dengan pembuatan dokumen menggunakan tracking number yang baru didapat
             return await createDocument(shopId, order_sn, finalTrackingNumber);
         }
 
-        // Jika hanya ingin mendapatkan tracking number dan sudah tersedia
         if (isGetTrackingOnly) {
             return NextResponse.json({
                 success: true,
@@ -68,7 +63,6 @@ export async function POST(request: Request) {
             });
         }
 
-        // Lanjutkan dengan pembuatan dokumen
         return await createDocument(shopId, order_sn, tracking_number);
 
     } catch (error) {
@@ -81,7 +75,6 @@ export async function POST(request: Request) {
     }
 }
 
-// Helper function untuk membuat dokumen
 async function createDocument(shopId: number, order_sn: string, tracking_number: string) {
     const orderList = [{
         order_sn,
@@ -101,14 +94,12 @@ async function createDocument(shopId: number, order_sn: string, tracking_number:
     }
 
     // Update status dokumen menjadi READY
-    const { error: updateError } = await supabase
-        .from('orders')
-        .update({ document_status: 'READY' })
-        .eq('order_sn', order_sn);
-
-    if (updateError) {
+    try {
+        await db.update(orders)
+            .set({ documentStatus: 'READY' })
+            .where(eq(orders.orderSn, order_sn));
+    } catch (updateError) {
         console.error('Gagal mengupdate status dokumen:', updateError);
-        // Tetap lanjutkan karena dokumen sudah berhasil dibuat
     }
 
     return NextResponse.json({

@@ -1,4 +1,5 @@
-import { supabase } from '@/lib/supabase';
+import { db } from '@/db';
+import { shopeeNotifications } from '@/db/schema';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
 
 // Types
@@ -35,7 +36,7 @@ export class UpdateService {
   static async handleUpdate(webhookData: any & { shop_name: string }) {
     try {
       let actionsToProcess = [];
-      
+
       // Cek struktur data dan sesuaikan
       if (Array.isArray(webhookData.data)) {
         // Struktur pertama: data langsung berupa array
@@ -58,7 +59,7 @@ export class UpdateService {
   }
 
   private static async sendUpdateNotification(
-    shop_id: number, 
+    shop_id: number,
     action: ShopeeUpdateWebhook['data']['actions'][0],
     shop_name: string
   ) {
@@ -67,31 +68,23 @@ export class UpdateService {
       console.log('[UpdateService] Data action yang diterima:', JSON.stringify(action, null, 2));
 
       // Simpan ke database dulu dan dapatkan ID-nya
-      const { data: insertedData, error } = await supabase
-        .from('shopee_notifications')
-        .insert({
-          notification_type: 'shopee_update',
-          shop_id: shop_id,
-          shop_name: shop_name,
+      const [insertedData] = await db.insert(shopeeNotifications)
+        .values({
+          notificationType: 'shopee_update',
+          shopId: shop_id,
+          shopName: shop_name,
           data: {
             shop_id,
             shop_name,
             data: { actions: [action] }
           },
           processed: false,
-          read: false
+          read: false,
         })
-        .select('id')
-        .single();
-
-      if (error) {
-        console.error('[UpdateService] Error saat menyimpan ke database:', error);
-        throw error;
-      }
+        .returning({ id: shopeeNotifications.id });
 
       console.log('[UpdateService] Berhasil menyimpan ke database dengan ID:', insertedData?.id);
 
-      // Buat notifikasi dengan ID dari database
       const notification: UpdateNotification = {
         id: insertedData.id,
         type: 'shopee_update',

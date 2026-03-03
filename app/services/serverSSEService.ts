@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import Redis from 'ioredis';
 
 // Simpan semua koneksi SSE aktif dengan informasi toko yang dimiliki user
 const clients = new Map<ReadableStreamDefaultController, {
@@ -9,26 +10,64 @@ const clients = new Map<ReadableStreamDefaultController, {
 // Batasi koneksi untuk mencegah overload
 const connectionAttempts = new Map<string, { count: number, firstAttempt: number }>();
 
+// ============================================================
+// Redis Pub/Sub Subscriber — Bridge from Worker → SSE Clients
+// ============================================================
+
+const REDIS_URL = process.env.REDIS_URL;
+
+if (REDIS_URL && typeof window === 'undefined') {
+  // Only subscribe server-side, not during client-side rendering
+  const subscriber = new Redis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+
+  subscriber.subscribe('sse:events', (err) => {
+    if (err) {
+      console.error('[SSE Pub/Sub] Failed to subscribe:', err);
+    } else {
+      console.log('[SSE Pub/Sub] Subscribed to sse:events channel');
+    }
+  });
+
+  subscriber.on('message', (channel, message) => {
+    if (channel === 'sse:events') {
+      try {
+        const data = JSON.parse(message);
+        // Forward to connected browser clients via in-memory Map
+        sendEventToShopOwners(data);
+      } catch (error) {
+        console.error('[SSE Pub/Sub] Error processing message:', error);
+      }
+    }
+  });
+
+  subscriber.on('error', (err) => {
+    console.error('[SSE Pub/Sub] Redis error:', err);
+  });
+}
+
 /**
  * Memeriksa apakah sebuah IP diperbolehkan untuk membuat koneksi baru
  * berdasarkan batasan 10 koneksi per menit
  */
 export function checkRateLimit(ip: string): { allowed: boolean, attempts?: { count: number, firstAttempt: number } } {
   const now = Date.now();
-  
+
   // Cek dan update connection attempts
   const attempts = connectionAttempts.get(ip) || { count: 0, firstAttempt: now };
-  
+
   if (now - attempts.firstAttempt < 60000) { // Window 1 menit
     if (attempts.count > 10) { // Maksimal 10 koneksi per menit
       return { allowed: false, attempts };
     }
-    
+
     const updatedAttempts = {
       count: attempts.count + 1,
       firstAttempt: attempts.firstAttempt
     };
-    
+
     connectionAttempts.set(ip, updatedAttempts);
     return { allowed: true, attempts: updatedAttempts };
   } else {
@@ -49,7 +88,7 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
         // Simpan controller dengan userId dan shopIds
         clients.set(controller, { userId, shopIds });
         console.log(`Koneksi SSE baru. Total koneksi aktif: ${clients.size}`);
-        
+
         // Kirim data inisial ketika koneksi terbentuk
         const initialData = {
           type: 'connection_established',
@@ -58,13 +97,13 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
           user_id: userId, // Tambahkan informasi user
           shop_ids: shopIds // Tambahkan informasi toko
         };
-        
+
         const event = [
           `id: ${Date.now()}`,
           `data: ${JSON.stringify(initialData)}`,
           '\n'
         ].join('\n');
-        
+
         controller.enqueue(event);
 
         // Set up heartbeat
@@ -73,18 +112,18 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
             clearInterval(heartbeatInterval);
             return;
           }
-          
+
           const heartbeat = {
             type: 'heartbeat',
             timestamp: Date.now()
           };
-          
+
           const heartbeatEvent = [
             `id: ${Date.now()}`,
             `data: ${JSON.stringify(heartbeat)}`,
             '\n'
           ].join('\n');
-          
+
           try {
             controller.enqueue(heartbeatEvent);
           } catch (error) {
@@ -118,15 +157,15 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
  */
 export function sendEventToShopOwners(data: any) {
   const eventId = Date.now().toString();
-  
+
   // Ambil shop_id dari data
   const shopId = data.shop_id;
-  
+
   if (!shopId) {
     console.error('Data tidak memiliki shop_id, tidak dapat mengirim notifikasi');
     return;
   }
-  
+
   const event = [
     `id: ${eventId}`,
     `retry: 10000`,
@@ -178,6 +217,6 @@ export function sendEventToAll(data: any) {
       clients.delete(controller);
     }
   });
-  
+
   console.log(`Notifikasi sistem dikirim ke ${successCount}/${totalClients} klien`);
 } 
