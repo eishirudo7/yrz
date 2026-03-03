@@ -24,7 +24,6 @@ Dockerfile*
 # Dev tools
 .env.local
 .env.development
-drizzle.config.ts
 
 # Docs
 README.md
