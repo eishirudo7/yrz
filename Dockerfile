@@ -19,7 +19,8 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 
 # Build Next.js (standalone output)
-RUN npm run build
+# We need to mock REDIS_URL during build because Next.js tries to evaluate API routes
+RUN REDIS_URL=redis://localhost:6379 npm run build
 
 # ==========================================
 # Stage 3: Production
