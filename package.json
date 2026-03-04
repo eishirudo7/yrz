@@ -14,8 +14,6 @@
     "db:migrate": "npx tsx db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:up": "docker compose -f docker-compose.dev.yml up -d",
-    "db:down": "docker compose -f docker-compose.dev.yml down",
     "worker:webhook": "npx tsx workers/webhook/index.ts",
     "start:prod": "npm run db:migrate && next start -p 10000"
   },
