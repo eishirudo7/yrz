@@ -14,7 +14,7 @@
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "worker:webhook": "npx tsx workers/webhook/index.ts",
-    "start:prod": "npm run db:migrate && node server.js"
+    "start:prod": "npm run db:migrate && next start -p 10000"
   },
   "dependencies": {
     "@congminh1254/shopee-sdk": "^1.5.3",
