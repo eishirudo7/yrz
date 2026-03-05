@@ -81,14 +81,20 @@ export function useOrders(dateRange?: DateRange | undefined) {
       setLastDateRange(dateRangeToUse)
 
       // Konversi tanggal ke UNIX timestamp (dalam detik)
+      // PENTING: Gunakan UTC eksplisit agar konsisten antara lokal (WIB) dan server production (UTC)
+      // setHours() bergantung pada timezone lokal sehingga hasilnya beda di server yang beda timezone
       const startDate = dateRangeToUse.from
       const endDate = dateRangeToUse.to || dateRangeToUse.from
 
-      startDate.setHours(0, 0, 0, 0)
-      endDate.setHours(23, 59, 59, 999)
-
-      const startTimestamp = Math.floor(startDate.getTime() / 1000)
-      const endTimestamp = Math.floor(endDate.getTime() / 1000)
+      // Ambil komponen tanggal dari local date (sesuai yang dipilih user di UI)
+      const startTimestamp = Math.floor(Date.UTC(
+        startDate.getFullYear(), startDate.getMonth(), startDate.getDate(),
+        0, 0, 0, 0
+      ) / 1000)
+      const endTimestamp = Math.floor(Date.UTC(
+        endDate.getFullYear(), endDate.getMonth(), endDate.getDate(),
+        23, 59, 59, 999
+      ) / 1000)
 
       // Gunakan API endpoint - hanya kirim tanggal awal dan akhir
       const response = await fetch(
