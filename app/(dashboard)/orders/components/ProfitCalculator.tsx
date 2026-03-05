@@ -193,19 +193,17 @@ export default function ProfitCalculator({
       }
 
       // Query hpp_master (include canonical_sku for alias resolution)
-      const { data, error } = await createClient()
-        .from('hpp_master')
-        .select('item_sku, tier1_variation, cost_price, canonical_sku')
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching HPP data:', error);
+      const res = await fetch('/api/data/hpp')
+      if (!res.ok) {
+        console.error('Error fetching HPP data');
         return;
       }
 
+      const { data } = await res.json();
+
       // Build alias map: alias SKU → canonical SKU
       const aliasMap: { [alias: string]: string } = {};
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         if (item.canonical_sku) {
           aliasMap[item.item_sku.toUpperCase()] = item.canonical_sku.toUpperCase();
         }
@@ -216,13 +214,13 @@ export default function ProfitCalculator({
       const skuMap: { [key: string]: { cost_price: number | null } } = {};
 
       // First pass: add all direct entries
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         const key = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
         skuMap[key] = { cost_price: item.cost_price };
       });
 
       // Second pass: resolve aliases (canonical_sku points to another SKU's HPP)
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         if (item.canonical_sku) {
           const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
           const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
@@ -298,20 +296,17 @@ export default function ProfitCalculator({
         if (result.inserted > 0) {
           console.log(`Synced ${result.inserted} new SKU variations`);
           // Refetch HPP data after sync (with canonical_sku)
-          const { data: newData } = await createClient()
-            .from('hpp_master')
-            .select('item_sku, tier1_variation, cost_price, canonical_sku')
-            .eq('user_id', userId);
-
-          if (newData) {
+          const res = await fetch('/api/data/hpp');
+          if (res.ok) {
+            const { data: newData } = await res.json();
             const newMap: { [key: string]: { cost_price: number | null } } = {};
             // First pass
-            newData.forEach(item => {
+            newData.forEach((item: any) => {
               const k = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
               newMap[k] = { cost_price: item.cost_price };
             });
             // Resolve aliases
-            newData.forEach(item => {
+            newData.forEach((item: any) => {
               if (item.canonical_sku) {
                 const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
                 const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;

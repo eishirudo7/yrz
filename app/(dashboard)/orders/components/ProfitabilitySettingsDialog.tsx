@@ -103,24 +103,22 @@ export default function ProfitabilitySettingsDialog({
       const { data: { user } } = await createClient().auth.getUser()
       if (!user) { toast.error('Anda harus login'); return }
 
-      let query = createClient()
-        .from('hpp_master')
-        .select('id, user_id, item_sku, tier1_variation, cost_price, canonical_sku, created_at, updated_at')
-        .eq('user_id', user.id)
-        .order('item_sku', { ascending: true })
-        .order('tier1_variation', { ascending: true })
-
+      const url = new URL('/api/data/hpp', window.location.origin)
       if (searchTerm) {
-        query = query.or(`item_sku.ilike.%${searchTerm}%,tier1_variation.ilike.%${searchTerm}%`)
+        url.searchParams.append('q', searchTerm)
       }
 
-      const { data, error } = await query.limit(500)
-      if (error) throw error
+      const res = await fetch(url.toString())
+      if (!res.ok) {
+        throw new Error('Gagal mengambil data HPP')
+      }
+
+      const { data } = await res.json()
 
       setHppData(data || [])
       // Snapshot original prices for stable tab filtering
       const priceMap: { [id: number]: number | null } = {}
-        ; (data || []).forEach(d => { priceMap[d.id] = d.cost_price })
+        ; (data || []).forEach((d: HppItem) => { priceMap[d.id] = d.cost_price })
       setOriginalPrices(priceMap)
       setSelectedIds(new Set())
       setDirtyIds(new Set())
@@ -194,63 +192,28 @@ export default function ProfitabilitySettingsDialog({
       const { data: { user } } = await createClient().auth.getUser()
       if (!user) { toast.error('Anda harus login'); return }
 
-      // Get user's shop IDs first
-      const { data: userShops, error: shopError } = await createClient()
-        .from('shopee_tokens')
-        .select('shop_id')
-        .eq('user_id', user.id)
+      const scanRes = await fetch('/api/data/hpp/scan')
+      if (!scanRes.ok) {
+        throw new Error('Gagal memindai SKU')
+      }
 
-      if (shopError || !userShops || userShops.length === 0) {
-        toast.error('Tidak ada toko terhubung')
+      const { success, skus, message } = await scanRes.json()
+      if (!success) {
+        toast.info(message || 'Gagal memulai sinkronisasi')
         setSyncing(false)
         return
       }
 
-      const userShopIds = userShops.map(s => s.shop_id)
-
-      // Get orders only from user's shops
-      const { data: userOrders, error: ordError } = await createClient()
-        .from('orders')
-        .select('order_sn, shop_id')
-        .in('shop_id', userShopIds)
-        .limit(2000)
-
-      if (ordError || !userOrders || userOrders.length === 0) {
-        toast.info('Tidak ada pesanan ditemukan')
+      if (!skus || skus.length === 0) {
+        toast.info('Tidak ada SKU baru')
         setSyncing(false)
         return
       }
 
-      const userOrderSns = userOrders.map(o => o.order_sn)
-      const orderShopMap: { [k: string]: number } = {}
-      userOrders.forEach(o => { orderShopMap[o.order_sn] = o.shop_id })
-
-      // Get order_items only from user's orders
-      const { data: orderItems, error: oiError } = await createClient()
-        .from('order_items')
-        .select('item_sku, model_sku, model_name, item_id, order_sn')
-        .in('order_sn', userOrderSns.slice(0, 1000))
-
-      if (oiError || !orderItems) { toast.error('Gagal mengambil data pesanan'); setSyncing(false); return }
-
-      const skuMap = new Map<string, { sku: string, shop_id: number, item_id: number }>()
-      orderItems.forEach(oi => {
-        const sku = (oi.item_sku && oi.item_sku.trim() !== '' && oi.item_sku !== 'EMPTY') ? oi.item_sku : oi.model_sku
-        if (!sku || !oi.item_id) return
-        const shopId = orderShopMap[oi.order_sn]
-        if (!shopId) return
-        if (!skuMap.has(sku.toUpperCase())) {
-          skuMap.set(sku.toUpperCase(), { sku, shop_id: shopId, item_id: oi.item_id })
-        }
-      })
-
-      if (skuMap.size === 0) { toast.info('Tidak ada SKU baru'); setSyncing(false); return }
-
-      const allSkus = Array.from(skuMap.values())
       let totalInserted = 0
 
-      for (let i = 0; i < allSkus.length; i += 10) {
-        const batch = allSkus.slice(i, i + 10)
+      for (let i = 0; i < skus.length; i += 10) {
+        const batch = skus.slice(i, i + 10)
         const res = await fetch('/api/hpp/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -278,17 +241,20 @@ export default function ProfitabilitySettingsDialog({
       if (!user) return
 
       const dirtyItems = hppData.filter(h => dirtyIds.has(h.id))
-      let successCount = 0
 
-      for (const item of dirtyItems) {
-        const { error } = await createClient()
-          .from('hpp_master')
-          .update({ cost_price: item.cost_price, updated_at: new Date().toISOString() })
-          .eq('id', item.id).eq('user_id', user.id)
-        if (!error) successCount++
+      const payload = {
+        items: dirtyItems.map(item => ({ id: item.id, cost_price: item.cost_price }))
       }
 
-      toast.success(`${successCount} HPP berhasil disimpan`)
+      const res = await fetch('/api/data/hpp', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!res.ok) throw new Error('Gagal menyimpan')
+
+      toast.success(`${payload.items.length} HPP berhasil disimpan`)
       setDirtyIds(new Set())
       onSettingsChange?.()
     } catch (error) {
@@ -308,11 +274,18 @@ export default function ProfitabilitySettingsDialog({
       if (isNaN(costPrice) || costPrice < 0) { toast.error('Masukkan harga yang valid'); return }
 
       const ids = Array.from(selectedIds)
-      const { error } = await createClient()
-        .from('hpp_master')
-        .update({ cost_price: costPrice, updated_at: new Date().toISOString() })
-        .in('id', ids).eq('user_id', user.id)
-      if (error) throw error
+
+      const payload = {
+        items: ids.map(id => ({ id, cost_price: costPrice }))
+      }
+
+      const res = await fetch('/api/data/hpp', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!res.ok) throw new Error('Gagal memperbarui')
 
       toast.success(`${ids.length} variasi diperbarui`)
       setHppData(prev => prev.map(h => selectedIds.has(h.id) ? { ...h, cost_price: costPrice } : h))
@@ -377,16 +350,23 @@ export default function ProfitabilitySettingsDialog({
       const canonicalItem = hppData.find(h => h.item_sku.toUpperCase() === canonicalSku.toUpperCase())
       const canonicalName = canonicalItem?.item_sku || canonicalSku
 
+      const itemsToUpdate: { id: number, canonical_sku: string }[] = []
+
       // Update all alias SKU rows to point to canonical
       for (const aliasGroup of aliasGroups) {
         const aliasItems = hppData.filter(h => h.item_sku.toUpperCase() === aliasGroup)
         for (const item of aliasItems) {
-          await createClient()
-            .from('hpp_master')
-            .update({ canonical_sku: canonicalName, updated_at: new Date().toISOString() })
-            .eq('id', item.id)
-            .eq('user_id', user.id)
+          itemsToUpdate.push({ id: item.id, canonical_sku: canonicalName })
         }
+      }
+
+      if (itemsToUpdate.length > 0) {
+        const res = await fetch('/api/data/hpp', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: itemsToUpdate })
+        })
+        if (!res.ok) throw new Error('Gagal menggabungkan SKU')
       }
 
       toast.success(`${aliasGroups.length} SKU digabungkan ke ${canonicalName}`)
@@ -408,12 +388,19 @@ export default function ProfitabilitySettingsDialog({
 
       // Find all alias items that point to this canonical group
       const aliasItems = hppData.filter(h => h.canonical_sku?.toUpperCase() === canonicalGroup)
-      for (const item of aliasItems) {
-        await createClient()
-          .from('hpp_master')
-          .update({ canonical_sku: null, updated_at: new Date().toISOString() })
-          .eq('id', item.id)
-          .eq('user_id', user.id)
+
+      if (aliasItems.length > 0) {
+        const payload = {
+          items: aliasItems.map(item => ({ id: item.id, canonical_sku: null }))
+        }
+
+        const res = await fetch('/api/data/hpp', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+
+        if (!res.ok) throw new Error('Gagal memisahkan SKU')
       }
 
       toast.success(`${aliasItems.length} SKU berhasil dipisahkan`)

@@ -1,5 +1,8 @@
 import { redis } from '@/app/services/redis';
 import { createClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { shopeeTokens } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export interface Shop {
   shop_id: number;
@@ -31,22 +34,22 @@ export interface UserSettings {
   openai_model?: string;
   openai_temperature?: number;
   openai_prompt?: string;
-  
+
   // Pengaturan Auto Ship
   auto_ship?: boolean;
   auto_ship_interval?: number;
   in_cancel_msg?: string | null;
   in_cancel_status?: boolean;
-  
+
   // Informasi langganan
   subscription?: Subscription;
-  
+
   // Daftar toko pengguna
   shops: Shop[];
-  
+
   // User ID
   user_id?: string;
-  
+
   // New properties
   in_return_msg?: string;
   in_return_status?: boolean;
@@ -56,15 +59,15 @@ export class UserSettingsService {
   private static getSettingsKey(userId: string): string {
     return `user_settings:${userId}`;
   }
-  
+
   private static getShopToUserKey(shopId: number): string {
     return `shop_to_user:${shopId}`;
   }
-  
+
   private static getShopTokenKey(shopId: number): string {
     return `shopee:token:${shopId}`;
   }
-  
+
   /**
    * Mendapatkan pengaturan user dari Redis
    */
@@ -76,14 +79,14 @@ export class UserSettingsService {
           shops: []
         };
       }
-      
+
       const parsedData = JSON.parse(data) as UserSettings;
-      
+
       // Pastikan shops selalu ada
       if (!parsedData.shops) {
         parsedData.shops = [];
       }
-      
+
       return parsedData;
     } catch (error) {
       console.error(`Error getting user settings for ${userId}:`, error);
@@ -92,7 +95,7 @@ export class UserSettingsService {
       };
     }
   }
-  
+
   /**
    * Mendapatkan informasi toko dari Redis
    */
@@ -108,7 +111,7 @@ export class UserSettingsService {
       return null;
     }
   }
-  
+
   /**
    * Menyimpan pengaturan user ke Redis
    */
@@ -118,23 +121,23 @@ export class UserSettingsService {
       if (!settings.shops) {
         settings.shops = [];
       }
-      
+
       await redis.set(this.getSettingsKey(userId), JSON.stringify(settings));
-      
+
       // Update shop_to_user mapping for each shop
       for (const shop of settings.shops) {
         if (shop.shop_id) {
           await redis.set(this.getShopToUserKey(shop.shop_id), userId);
         }
       }
-      
+
       return true;
     } catch (error) {
       console.error(`Error saving user settings for ${userId}:`, error);
       return false;
     }
   }
-  
+
   /**
    * Update sebagian pengaturan user
    */
@@ -148,7 +151,7 @@ export class UserSettingsService {
       return false;
     }
   }
-  
+
   /**
    * Mendapatkan pengaturan toko berdasarkan shop_id dan user_id
    */
@@ -162,19 +165,19 @@ export class UserSettingsService {
       return null;
     }
   }
-  
+
   /**
    * Mendapatkan pengaturan toko hanya berdasarkan shop_id
    * Useful untuk webhook handlers yang tidak memiliki user_id
    */
-  static async getShopSettingsByShopId(shopId: number): Promise<{shop: Shop | null, userId: string | null}> {
+  static async getShopSettingsByShopId(shopId: number): Promise<{ shop: Shop | null, userId: string | null }> {
     try {
       // Dapatkan user_id dari shopId
       const userId = await this.getUserIdFromShopId(shopId);
       if (!userId) {
         return { shop: null, userId: null };
       }
-      
+
       const shop = await this.getShopSettings(userId, shopId);
       return { shop, userId };
     } catch (error) {
@@ -182,7 +185,7 @@ export class UserSettingsService {
       return { shop: null, userId: null };
     }
   }
-  
+
   /**
    * Mengupdate pengaturan untuk satu toko
    */
@@ -191,7 +194,7 @@ export class UserSettingsService {
       const settings = await this.getUserSettings(userId);
       // Konversi shopId ke string untuk pencocokan
       const shopIndex = settings.shops.findIndex(shop => shop.shop_id.toString() === shopId.toString());
-      
+
       if (shopIndex === -1) {
         // Toko belum ada, tambahkan sebagai toko baru
         settings.shops.push({
@@ -207,14 +210,14 @@ export class UserSettingsService {
           ...shopSettings
         };
       }
-      
+
       return await this.saveUserSettings(userId, settings);
     } catch (error) {
       console.error(`Error updating shop settings for shop ${shopId}:`, error);
       return false;
     }
   }
-  
+
   /**
    * Mendapatkan daftar toko premium dari pengguna tertentu
    */
@@ -222,18 +225,18 @@ export class UserSettingsService {
     try {
       const settings = await this.getUserSettings(userId);
       const isPremium = settings.subscription?.plan?.name === 'Admin';
-      
+
       if (!isPremium) {
         return [];
       }
-      
+
       return settings.shops;
     } catch (error) {
       console.error(`Error getting premium shops for ${userId}:`, error);
       return [];
     }
   }
-  
+
   /**
    * Mendapatkan userId berdasarkan shopId dari Redis atau database
    */
@@ -242,31 +245,39 @@ export class UserSettingsService {
       // Coba dapatkan dari Redis terlebih dahulu
       const userId = await redis.get(this.getShopToUserKey(shopId));
       if (userId) return userId;
-      
+
       // Jika tidak ada di Redis, cari di database
-      const supabase = await createClient();
-      const { data, error } = await supabase
-        .from('shopee_tokens')
-        .select('user_id')
-        .eq('shop_id', shopId)
-        .eq('is_active', true)
-        .single();
-      
-      if (error || !data) {
+      const tokenData = await db.select({
+        user_id: shopeeTokens.userId
+      })
+        .from(shopeeTokens)
+        .where(
+          and(
+            eq(shopeeTokens.shopId, shopId),
+            eq(shopeeTokens.isActive, true)
+          )
+        )
+        .limit(1);
+
+      const data = tokenData[0];
+
+      if (!data) {
         console.warn(`Tidak menemukan user_id untuk shop_id ${shopId}`);
         return null;
       }
-      
+
       // Simpan ke Redis untuk digunakan selanjutnya
-      await redis.set(this.getShopToUserKey(shopId), data.user_id);
-      
+      if (data.user_id) {
+        await redis.set(this.getShopToUserKey(shopId), data.user_id);
+      }
+
       return data.user_id;
     } catch (error) {
       console.error('Error mendapatkan user_id dari shop_id:', error);
       return null;
     }
   }
-  
+
   /**
    * Hapus data pengaturan dari Redis (untuk logout)
    */

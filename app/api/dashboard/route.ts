@@ -3,6 +3,9 @@ import { createClient } from '@/utils/supabase/server';
 import { getAllShops } from '@/app/services/shopeeService';
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
+import { db } from '@/db';
+import { orders, orderItems } from '@/db/schema';
+import { inArray, and, gte, lte, eq, desc } from 'drizzle-orm';
 
 // Pastikan fungsi GET diekspor dengan benar
 export async function GET(req: NextRequest) {
@@ -48,81 +51,95 @@ export async function GET(req: NextRequest) {
     const startTimestamp = Math.floor(startOfDay(jakartaDate).getTime() / 1000);
     const endTimestamp = Math.floor(endOfDay(jakartaDate).getTime() / 1000);
 
-    const fetchPaginatedOrders = async (queryBuilder: any, pageSize: number = 800) => {
-      let allData: any[] = [];
-      let page = 0;
-      let hasMore = true;
+    console.time('fetch_orders_dashboard_drizzle');
 
-      while (hasMore) {
-        // range bersifat inklusif di Supabase, contoh: baris 0 s/d 799
-        const { data, error } = await queryBuilder.range(page * pageSize, (page + 1) * pageSize - 1);
+    // Drizzle Queries don't require manual pagination because we query local postgres
+    const normalOrdersData = await db.select({
+      order_sn: orders.orderSn,
+      shop_id: orders.shopId,
+      order_status: orders.orderStatus,
+      buyer_user_id: orders.buyerUserId,
+      create_time: orders.createTime,
+      update_time: orders.updateTime,
+      pay_time: orders.payTime,
+      buyer_username: orders.buyerUsername,
+      escrow_amount_after_adjustment: orders.escrowAmountAfterAdjustment,
+      shipping_carrier: orders.shippingCarrier,
+      cod: orders.cod,
+      tracking_number: orders.trackingNumber,
+      document_status: orders.documentStatus,
+      is_printed: orders.isPrinted
+    })
+      .from(orders)
+      .where(
+        and(
+          inArray(orders.shopId, shopIds),
+          inArray(orders.orderStatus, ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
+        )
+      )
+      .orderBy(desc(orders.payTime));
 
-        if (error) {
-          throw error;
-        }
+    const cancelledOrdersData = await db.select({
+      order_sn: orders.orderSn,
+      shop_id: orders.shopId,
+      order_status: orders.orderStatus,
+      buyer_user_id: orders.buyerUserId,
+      create_time: orders.createTime,
+      update_time: orders.updateTime,
+      pay_time: orders.payTime,
+      buyer_username: orders.buyerUsername,
+      escrow_amount_after_adjustment: orders.escrowAmountAfterAdjustment,
+      shipping_carrier: orders.shippingCarrier,
+      cod: orders.cod,
+      tracking_number: orders.trackingNumber,
+      document_status: orders.documentStatus,
+      is_printed: orders.isPrinted
+    })
+      .from(orders)
+      .where(
+        and(
+          inArray(orders.shopId, shopIds),
+          eq(orders.orderStatus, 'CANCELLED'),
+          gte(orders.payTime, startTimestamp),
+          lte(orders.payTime, endTimestamp)
+        )
+      )
+      .orderBy(desc(orders.payTime));
 
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          page++;
-          // Jika jumlah baris yang kembali < pageSize, artinya kita sudah di halaman terakhir
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
-        }
-      }
+    const shippedOrdersData = await db.select({
+      order_sn: orders.orderSn,
+      shop_id: orders.shopId,
+      order_status: orders.orderStatus,
+      buyer_user_id: orders.buyerUserId,
+      create_time: orders.createTime,
+      update_time: orders.updateTime,
+      pay_time: orders.payTime,
+      buyer_username: orders.buyerUsername,
+      escrow_amount_after_adjustment: orders.escrowAmountAfterAdjustment,
+      shipping_carrier: orders.shippingCarrier,
+      cod: orders.cod,
+      tracking_number: orders.trackingNumber,
+      document_status: orders.documentStatus,
+      is_printed: orders.isPrinted
+    })
+      .from(orders)
+      .where(
+        and(
+          inArray(orders.shopId, shopIds),
+          eq(orders.orderStatus, 'SHIPPED'),
+          gte(orders.pickupDoneTime, startTimestamp),
+          lte(orders.pickupDoneTime, endTimestamp)
+        )
+      )
+      .orderBy(desc(orders.pickupDoneTime));
 
-      return allData;
-    };
-
-    const normalOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
-        `)
-      .in('shop_id', shopIds)
-      .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
-      .order('pay_time', { ascending: false });
-
-    const cancelledOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
-        `)
-      .in('shop_id', shopIds)
-      .eq('order_status', 'CANCELLED')
-      .gte('pay_time', startTimestamp)
-      .lte('pay_time', endTimestamp)
-      .order('pay_time', { ascending: false });
-
-    const shippedOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
-        `)
-      .in('shop_id', shopIds)
-      .eq('order_status', 'SHIPPED')
-      .gte('pickup_done_time', startTimestamp)
-      .lte('pickup_done_time', endTimestamp)
-      .order('pickup_done_time', { ascending: false });
-
-    console.time('fetch_orders_dashboard');
-
-    const [normalOrdersData, cancelledOrdersData, shippedOrdersData] = await Promise.all([
-      fetchPaginatedOrders(normalOrdersQuery),
-      fetchPaginatedOrders(cancelledOrdersQuery),
-      fetchPaginatedOrders(shippedOrdersQuery)
-    ]);
-
-    console.timeEnd('fetch_orders_dashboard');
+    console.timeEnd('fetch_orders_dashboard_drizzle');
 
     // Gabungkan hasil ketiga query
     const ordersData = [
-      ...(normalOrdersData || []),
-      ...(cancelledOrdersData || []),
-      ...(shippedOrdersData || [])
+      ...(normalOrdersData as any[]),
+      ...(cancelledOrdersData as any[]),
+      ...(shippedOrdersData as any[])
     ];
 
 
@@ -161,18 +178,23 @@ export async function GET(req: NextRequest) {
     // Batch processing untuk order_items
     for (let i = 0; i < orderSns.length; i += batchSize) {
       const batchOrderSns = orderSns.slice(i, i + batchSize);
-      const { data: itemsBatchData, error: itemsBatchError } = await supabase
-        .from('order_items')
-        .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku, model_name')
-        .in('order_sn', batchOrderSns);
 
-      if (itemsBatchError) {
+      try {
+        const itemsBatchData = await db.select({
+          order_sn: orderItems.orderSn,
+          model_quantity_purchased: orderItems.modelQuantityPurchased,
+          model_discounted_price: orderItems.modelDiscountedPrice,
+          item_sku: orderItems.itemSku,
+          model_name: orderItems.modelName
+        })
+          .from(orderItems)
+          .where(inArray(orderItems.orderSn, batchOrderSns));
+
+        if (itemsBatchData) {
+          allOrderItemsData = [...allOrderItemsData, ...(itemsBatchData as any[])];
+        }
+      } catch (itemsBatchError) {
         console.error(`Gagal mengambil batch order items ${i}:`, itemsBatchError);
-        continue;
-      }
-
-      if (itemsBatchData) {
-        allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
       }
     }
 

@@ -9,7 +9,9 @@ import {
   endDiscount,
   getModelList
 } from '@/app/services/shopeeService';
-import { createClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { items as itemsSchema } from '@/db/schema';
+import { inArray, eq, and } from 'drizzle-orm';
 
 export async function GET(
   req: NextRequest,
@@ -89,15 +91,25 @@ export async function GET(
         // Ambil data gambar dari Supabase
         const itemIds = result.data.item_list.map((item: any) => item.item_id);
 
-        // Buat koneksi ke Supabase
-        const supabase = await createClient();
-
-        // Query untuk mengambil data item berdasarkan item_id
-        const { data, error } = await supabase
-          .from('items')
-          .select('item_id, image')
-          .eq('shop_id', shopId)
-          .in('item_id', itemIds);
+        // Query untuk mengambil data item berdasarkan item_id menggunakan drizzle
+        let data: any[] = [];
+        let error = null;
+        try {
+          data = await db.select({
+            item_id: itemsSchema.itemId,
+            image: itemsSchema.image
+          })
+            .from(itemsSchema)
+            .where(
+              and(
+                eq(itemsSchema.shopId, shopId),
+                inArray(itemsSchema.itemId, itemIds)
+              )
+            );
+        } catch (dbError) {
+          console.error("Drizzle query err in discount items:", dbError);
+          error = dbError;
+        }
 
         if (!error && data) {
           // Tambahkan data gambar ke item_list

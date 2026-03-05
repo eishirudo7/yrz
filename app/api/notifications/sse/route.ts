@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { checkRateLimit, createSSEConnection } from '@/app/services/serverSSEService';
 import { createClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { shopeeTokens } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
@@ -26,11 +29,16 @@ export async function GET(req: NextRequest) {
     const userId = user.id;
 
     // Ambil daftar toko yang dimiliki user
-    const { data: shops } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id')
-      .eq('user_id', userId)
-      .eq('is_active', true);
+    const shops = await db.select({
+      shop_id: shopeeTokens.shopId
+    })
+      .from(shopeeTokens)
+      .where(
+        and(
+          eq(shopeeTokens.userId, userId),
+          eq(shopeeTokens.isActive, true)
+        )
+      );
 
     const shopIds = shops ? shops.map(shop => shop.shop_id) : [];
 

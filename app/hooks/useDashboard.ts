@@ -79,39 +79,6 @@ const processOrder = (order: Order, summary: DashboardSummary) => {
   }
 };
 
-async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): Promise<any | null> {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      // Hanya perlu ambil order_items, data tracking sudah ada di response API
-      const { data: itemsData, error: itemsError } = await createClient()
-        .from('order_items')
-        .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
-        .eq('order_sn', order_sn);
-
-      if (itemsError) throw itemsError;
-
-      if (!itemsData || itemsData.length === 0) {
-        return null;
-      }
-
-      return {
-        items: itemsData.map(item => ({
-          model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
-          model_discounted_price: parseFloat(item.model_discounted_price || '0'),
-          item_sku: item.item_sku,
-          model_name: item.model_name
-        }))
-        // Tidak perlu ambil tracking data lagi karena sudah ada di response API
-      };
-    } catch (error) {
-      if (attempt === retries - 1) {
-        return null;
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-    }
-  }
-  return null;
-}
 
 export const useDashboard = () => {
   const FETCH_INTERVAL = 60000;

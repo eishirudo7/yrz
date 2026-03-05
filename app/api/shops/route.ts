@@ -1,37 +1,39 @@
 // pages/api/shops/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { shopeeTokens } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export async function GET(req: NextRequest) {
   try {
     // Inisialisasi Supabase client
     const supabase = await createClient();
-    
+
     // Ambil user dari session
     const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
+
     if (userError || !user) {
       return NextResponse.json({
         success: false,
         message: 'Pengguna tidak terautentikasi'
       }, { status: 401 });
     }
-    
-    // Ambil toko milik user
-    const { data: shops, error: shopsError } = await supabase
-      .from('shopee_tokens')
-      .select('shop_id, shop_name')
-      .eq('user_id', user.id)
-      .eq('is_active', true);
-    
-    if (shopsError) {
-      return NextResponse.json({
-        success: false,
-        message: 'Gagal mengambil data toko',
-        error: shopsError.message
-      }, { status: 500 });
-    }
-    
+
+    // Ambil toko milik user dari internal database (PostgreSQL) menggunakan Drizzle
+    const shops = await db
+      .select({
+        shop_id: shopeeTokens.shopId,
+        shop_name: shopeeTokens.shopName,
+      })
+      .from(shopeeTokens)
+      .where(
+        and(
+          eq(shopeeTokens.userId, user.id),
+          eq(shopeeTokens.isActive, true)
+        )
+      );
+
     return NextResponse.json({
       success: true,
       data: shops || []

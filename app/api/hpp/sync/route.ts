@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { getModelList } from '@/app/services/shopee/products';
+import { db } from '@/db';
+import { hppMaster } from '@/db/schema';
 
 /**
  * POST /api/hpp/sync
@@ -60,33 +62,28 @@ export async function POST(req: NextRequest) {
 
                 // Upsert each unique tier1 into hpp_master
                 const rows = Array.from(tier1Set).map(tier1 => ({
-                    user_id: user.id,
-                    item_sku: sku,
-                    tier1_variation: tier1,
+                    userId: user.id,
+                    itemSku: sku,
+                    tier1Variation: tier1,
                 }));
 
-                const { error: upsertError, count } = await supabase
-                    .from('hpp_master')
-                    .upsert(rows, {
-                        onConflict: 'user_id, UPPER(item_sku), UPPER(tier1_variation)',
-                        ignoreDuplicates: true,
+                try {
+                    await db.insert(hppMaster).values(rows).onConflictDoNothing({
+                        target: [hppMaster.userId, hppMaster.itemSku, hppMaster.tier1Variation]
                     });
-
-                if (upsertError) {
+                    totalInserted += tier1Set.size;
+                } catch (upsertError) {
                     // Fallback: insert one by one, skipping duplicates
                     for (const row of rows) {
-                        const { error: insertError } = await supabase
-                            .from('hpp_master')
-                            .insert(row)
-                            .select();
-
-                        if (!insertError) {
+                        try {
+                            await db.insert(hppMaster).values(row).onConflictDoNothing({
+                                target: [hppMaster.userId, hppMaster.itemSku, hppMaster.tier1Variation]
+                            });
                             totalInserted++;
+                        } catch (insertError) {
+                            // Ignore duplicate errors silently
                         }
-                        // Ignore duplicate errors silently
                     }
-                } else {
-                    totalInserted += tier1Set.size;
                 }
             } catch (err) {
                 errors.push(`Error processing SKU ${sku}: ${err instanceof Error ? err.message : 'Unknown error'}`);

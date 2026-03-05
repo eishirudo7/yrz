@@ -42,7 +42,6 @@ export function useKeluhan() {
   const [isLoadingSend, setIsLoadingSend] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [userShopIds, setUserShopIds] = useState<string[]>([]);
-  const supabase = createClient();
 
   useEffect(() => {
     // Pertama, ambil daftar toko yang dimiliki user
@@ -60,17 +59,17 @@ export function useKeluhan() {
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.message || 'Gagal mengambil daftar toko');
       }
-      
+
       // Simpan ID toko milik user
       const shopIds = result.data.map((shop: any) => shop.shop_id.toString());
       setUserShopIds(shopIds);
-      
+
       return shopIds;
     } catch (error: unknown) {
       console.error('Error fetching user shops:', error);
@@ -82,34 +81,32 @@ export function useKeluhan() {
   async function fetchKeluhan() {
     try {
       setLoading(true);
-      
+
       // Jika belum ada data toko user, ambil dulu
       let shops = userShopIds;
       if (shops.length === 0) {
         shops = await fetchUserShops();
       }
-      
+
       if (shops.length === 0) {
         // Jika tetap tidak ada toko, kembalikan array kosong
         setKeluhan([]);
         setLoading(false);
         return;
       }
-      
-      // Query dengan filter berdasarkan toko milik user
-      const { data, error } = await supabase
-        .from('keluhan')
-        .select('*')
-        .in('shop_id', shops) // Menggunakan kolom yang benar sesuai dengan database
-        .order('create_at', { ascending: false })
-        .limit(20);
-      
-      if (error) throw error;
 
-      setKeluhan(data || []);
+      // Query dengan filter berdasarkan toko milik user via internal API Routes
+      const response = await fetch(`/api/data/keluhan?shops=${shops.join(',')}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Error fetching keluhan from internal API');
+      }
+
+      setKeluhan(result.data || []);
     } catch (error) {
       setError('Terjadi kesalahan saat mengambil data keluhan');
-      console.error('Error:', error);
+      console.error('Error fetching keluhan list:', error);
     } finally {
       setLoading(false);
     }
@@ -117,12 +114,17 @@ export function useKeluhan() {
 
   async function updateStatusPesanan(id: number, newStatus: string) {
     try {
-      const { error } = await supabase
-        .from('keluhan')
-        .update({ status_keluhan: newStatus })
-        .eq('id', id)
-      
-      if (error) throw error
+      const response = await fetch('/api/data/keluhan', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status_keluhan: newStatus })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Update failed');
+      }
 
       // Memperbarui state lokal
       setKeluhan(prevState =>
@@ -132,18 +134,21 @@ export function useKeluhan() {
       )
     } catch (error) {
       setError('Terjadi kesalahan saat memperbarui status keluhan')
-      console.error('Error:', error)
+      console.error('Error updating status pesanan keluhan:', error)
     }
   }
 
   async function hapusPerubahanPesanan(id: number) {
     try {
-      const { error } = await supabase
-        .from('keluhan')
-        .delete()
-        .eq('id', id)
-      
-      if (error) throw error
+      const response = await fetch(`/api/data/keluhan?id=${id}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Delete failed');
+      }
 
       // Memperbarui state lokal dengan menghapus item yang dihapus
       setKeluhan(prevState =>
@@ -151,7 +156,7 @@ export function useKeluhan() {
       )
     } catch (error) {
       setError('Terjadi kesalahan saat menghapus keluhan')
-      console.error('Error:', error)
+      console.error('Error deleting keluhan item:', error)
     }
   }
 
@@ -211,13 +216,13 @@ export function useKeluhan() {
       if (response.status !== 200) {
         throw new Error(response.data.error || 'Terjadi kesalahan saat mengambil pesan');
       }
-      
+
       const formattedChats: Chat[] = response.data.response.messages.map((msg: any) => {
         console.log('msg.from_shop_id:', msg.from_shop_id); // Log from_shop_id untuk setiap pesan
-        
+
         const isSeller = msg.from_shop_id == shopId; // Gunakan == untuk perbandingan longgar
         console.log('isSeller:', isSeller); // Log hasil perbandingan
-        
+
         return {
           id: parseInt(msg.message_id),
           sender: isSeller ? 'seller' : 'buyer',
@@ -228,7 +233,7 @@ export function useKeluhan() {
 
       // Membalikkan urutan chat
       setChats(formattedChats.reverse());
-      
+
       // Simpan informasi halaman berikutnya jika diperlukan
       // const nextOffset = response.data.response.page_result.next_offset;
     } catch (error) {
@@ -237,11 +242,11 @@ export function useKeluhan() {
     }
   }
 
-  return { 
-    keluhan, 
-    loading, 
-    error, 
-    fetchKeluhan, 
+  return {
+    keluhan,
+    loading,
+    error,
+    fetchKeluhan,
     updateStatusPesanan,
     hapusPerubahanPesanan,
     chats,

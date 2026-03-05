@@ -64,8 +64,6 @@ export function useUbahPesanan() {
   const [itemsPerPage, setItemsPerPage] = useState(21)
   const [pageSize, setPageSize] = useState(21)
   const [statusFilter, setStatusFilter] = useState<string>('semua') // Filter status
-  const supabase = createClient()
-
   useEffect(() => {
     // Pertama, ambil daftar toko yang dimiliki user
     fetchUserShops().then((shops) => {
@@ -91,17 +89,17 @@ export function useUbahPesanan() {
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.message || 'Gagal mengambil daftar toko');
       }
-      
+
       // Simpan ID toko milik user
       const shopIds = result.data.map((shop: any) => shop.shop_id.toString());
       setUserShopIds(shopIds);
-      
+
       return shopIds;
     } catch (error: unknown) {
       console.error('Error fetching user shops:', error);
@@ -113,12 +111,12 @@ export function useUbahPesanan() {
   async function fetchPerubahanPesanan(page: number = currentPage, size: number = itemsPerPage) {
     try {
       setLoading(true)
-      
+
       let shops = userShopIds
       if (shops.length === 0) {
         shops = await fetchUserShops()
       }
-      
+
       if (shops.length === 0) {
         setPerubahanPesanan([])
         setLoading(false)
@@ -126,44 +124,38 @@ export function useUbahPesanan() {
       }
 
       const offset = (page - 1) * size
-      
-      // Query dasar dengan filter shop_id
-      let query = supabase
-        .from('perubahan_pesanan')
-        .select('*', { count: 'exact' })
-        .in('shop_id', shops)
 
-      // Tambahkan filter status jika bukan 'semua'
+      // Build API query parameters
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: size.toString(),
+        shops: shops.join(',')
+      });
+
       if (statusFilter !== 'semua') {
-        query = query.eq('status', statusFilter)
+        queryParams.append('statusFilter', statusFilter);
       }
 
-      // Log untuk debugging
-      console.log('Fetching with filter:', statusFilter, 'page:', page)
+      console.log('Fetching with filter:', statusFilter, 'page:', page);
 
-      // Ambil total items dengan filter yang sama
-      const { count } = await query
+      const response = await fetch(`/api/data/perubahan_pesanan?${queryParams.toString()}`);
+      const result = await response.json();
 
-      setTotalItems(count || 0)
-      
-      // Query untuk data dengan pagination dan filter yang sama
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + size - 1)
-      
-      if (error) throw error
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Error fetching data from API');
+      }
 
-      // Log hasil query
-      console.log('Query result:', data?.length, 'items')
+      console.log('Query result:', result.data?.length, 'items');
 
-      setPerubahanPesanan(data || [])
-      setCurrentPage(page)
-      setItemsPerPage(size)
+      setTotalItems(result.count || 0);
+      setPerubahanPesanan(result.data || []);
+      setCurrentPage(page);
+      setItemsPerPage(size);
     } catch (error) {
-      setError('Terjadi kesalahan saat mengambil data perubahan pesanan')
-      console.error('Error:', error)
+      setError('Terjadi kesalahan saat mengambil data perubahan pesanan');
+      console.error('Error fetching data API:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -183,15 +175,16 @@ export function useUbahPesanan() {
   // Fungsi untuk mengubah status pesanan
   async function updateStatusPesanan(id: number, newStatus: string) {
     try {
-      const { error } = await supabase
-        .from('perubahan_pesanan')
-        .update({ 
-          status: newStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
+      const response = await fetch('/api/data/perubahan_pesanan', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus })
+      });
 
-      if (error) throw error
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal mengubah status pesanan via API');
+      }
 
       // Jika ada filter aktif dan status baru tidak sesuai filter
       if (statusFilter !== 'semua' && statusFilter !== newStatus) {
@@ -203,12 +196,12 @@ export function useUbahPesanan() {
         // Update state secara lokal
         setPerubahanPesanan(prevState =>
           prevState.map(order =>
-            order.id === id 
-              ? { 
-                  ...order, 
-                  status: newStatus,
-                  updated_at: new Date().toISOString()
-                } 
+            order.id === id
+              ? {
+                ...order,
+                status: newStatus,
+                updated_at: new Date().toISOString()
+              }
               : order
           )
         )
@@ -227,12 +220,14 @@ export function useUbahPesanan() {
 
   async function hapusPerubahanPesanan(id: number) {
     try {
-      const { error } = await supabase
-        .from('perubahan_pesanan')
-        .delete()
-        .eq('id', id)
-      
-      if (error) throw error
+      const response = await fetch(`/api/data/perubahan_pesanan?id=${id}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal menghapus perubahan pesanan via API');
+      }
 
       // Memperbarui state lokal dengan menghapus item yang dihapus
       setPerubahanPesanan(prevState =>
@@ -304,10 +299,10 @@ export function useUbahPesanan() {
       if (response.status !== 200) {
         throw new Error(response.data.error || 'Terjadi kesalahan saat mengambil pesan');
       }
-      
+
       const formattedChats: Chat[] = response.data.response.messages.map((msg: any) => {
         const isSeller = msg.from_shop_id.toString() === shopId;
-        
+
         return {
           id: msg.message_id.toString(),
           sender: isSeller ? 'seller' : 'buyer',
@@ -333,7 +328,7 @@ export function useUbahPesanan() {
 
       // Membalikkan urutan chat agar yang terbaru di bawah
       setChats(formattedChats.reverse());
-      
+
     } catch (error) {
       console.error('Error fetching chats:', error);
       setError('Gagal mengambil riwayat chat');
@@ -347,11 +342,11 @@ export function useUbahPesanan() {
     // Hapus fetchPerubahanPesanan dari sini karena sudah ditangani oleh useEffect
   }
 
-  return { 
-    perubahanPesanan, 
-    loading, 
-    error, 
-    fetchPerubahanPesanan, 
+  return {
+    perubahanPesanan,
+    loading,
+    error,
+    fetchPerubahanPesanan,
     updateStatusPesanan,
     hapusPerubahanPesanan,
     chats,

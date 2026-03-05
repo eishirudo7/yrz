@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { checkShopHealth, checkOpenAIKey } from '@/app/services/SafeTool';
 import { createClient } from '@/utils/supabase/server';
 import { redis } from "@/app/services/redis";
+import { db } from '@/db';
+import { pengaturan } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 interface SettingsResponse {
   pengaturan: Array<{
@@ -34,12 +37,12 @@ async function getSettings(): Promise<SettingsResponse | null> {
       console.warn('Tidak ada user yang terautentikasi untuk mengambil pengaturan');
       return null;
     }
-    
+
     // Coba dapatkan dari Redis cache terlebih dahulu
     try {
       const redisKey = `user_settings:${userId}`;
       const cachedSettings = await redis.get(redisKey);
-      
+
       if (cachedSettings) {
         const parsedSettings = JSON.parse(cachedSettings);
         return {
@@ -54,20 +57,21 @@ async function getSettings(): Promise<SettingsResponse | null> {
     }
 
     // Jika tidak ada di cache, ambil dari database
-    const supabase = await createClient();
-    const { data: pengaturan, error } = await supabase
-      .from('pengaturan')
-      .select('openai_api')
-      .eq('user_id', userId);
-    
-    if (error) {
-      console.error('Error saat mengambil pengaturan dari database:', error);
+    try {
+      const data = await db.select({
+        openai_api: pengaturan.openaiApi
+      })
+        .from(pengaturan)
+        .where(eq(pengaturan.userId, userId))
+        .limit(1);
+
+      return {
+        pengaturan: data.map(d => ({ openai_api: d.openai_api || '' }))
+      };
+    } catch (error) {
+      console.error('Error saat mengambil pengaturan dari database via Drizzle:', error);
       throw error;
     }
-    
-    return {
-      pengaturan: pengaturan || []
-    };
   } catch (error) {
     console.error('Error getting settings:', error);
     return null;
@@ -77,11 +81,11 @@ async function getSettings(): Promise<SettingsResponse | null> {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
+
     // Handle untuk pengecekan OpenAI API key
     if (body.apiKey) {
       const result = await checkOpenAIKey(body.apiKey);
-    
+
       return NextResponse.json(result, {
         status: result.success ? 200 : 400,
         headers: {
@@ -90,11 +94,11 @@ export async function POST(request: Request) {
         },
       });
     }
-    
+
     // Handle untuk pengecekan kesehatan toko dengan shopIds
     if (body.shopIds && Array.isArray(body.shopIds)) {
       console.log('Melakukan health check dengan shopIds:', body.shopIds);
-      
+
       // Ambil semua data secara parallel dengan shopIds
       const [healthCheck, settings] = await Promise.all([
         checkShopHealth(body.shopIds),
@@ -119,7 +123,7 @@ export async function POST(request: Request) {
             ...(openAICheck.success ? {} : { message: openAICheck.message })
           }
         },
-        message: healthCheck.success && openAICheck.success 
+        message: healthCheck.success && openAICheck.success
           ? 'Semua layanan berjalan normal'
           : 'Beberapa layanan mengalami masalah'
       }, {
@@ -130,7 +134,7 @@ export async function POST(request: Request) {
         },
       });
     }
-    
+
     return NextResponse.json(
       { success: false, message: 'Tidak ada apiKey atau shopIds yang valid dalam request' },
       { status: 400 }
@@ -139,8 +143,8 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Error in health check API:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         message: error instanceof Error ? error.message : 'Terjadi kesalahan internal server',
         data: {
           shop_health: null,
@@ -150,6 +154,6 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-} 
+}
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

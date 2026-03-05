@@ -1432,19 +1432,24 @@ export default function OrdersPage() {
                     const entries = Object.entries(missingHppInputs).filter(([, v]) => v && parseFloat(v) > 0);
                     let saved = 0;
 
+                    const itemsToSave: { sku: string, tier1: string, cost_price: number }[] = [];
+
                     for (const [key, val] of entries) {
                       const [sku, tier1] = key.split('|');
                       const costPrice = parseFloat(val);
-                      const { error } = await createClient()
-                        .from('hpp_master')
-                        .upsert({
-                          user_id: user.id,
-                          item_sku: sku,
-                          tier1_variation: tier1 || '',
-                          cost_price: costPrice,
-                          updated_at: new Date().toISOString()
-                        }, { onConflict: 'user_id,item_sku,tier1_variation' });
-                      if (!error) saved++;
+                      itemsToSave.push({ sku, tier1: tier1 || '', cost_price: costPrice });
+                    }
+
+                    if (itemsToSave.length > 0) {
+                      const res = await fetch('/api/data/hpp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ items: itemsToSave })
+                      });
+
+                      if (!res.ok) throw new Error('Gagal menyimpan ke server');
+                      const data = await res.json();
+                      saved = data.saved || 0;
                     }
 
                     toast.success(`${saved} HPP berhasil disimpan`);

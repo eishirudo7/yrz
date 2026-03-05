@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-// Import fungsi getAllShops dari services
 import { getAllShops } from '@/app/services/shopeeService';
+import { db } from '@/db';
+import { orders, orderItems } from '@/db/schema';
+import { inArray, and, or, gte, lte, eq, desc } from 'drizzle-orm';
 
 // Definisikan type Order yang sama dengan yang ada di useOrders.ts
 interface Order {
@@ -104,35 +106,58 @@ export async function GET(req: NextRequest) {
     const pageSize = 800;
     let hasMore = true;
 
-    // 1. Query dasar untuk data pesanan dengan paginasi
+    // 1. Query dasar untuk data pesanan dengan paginasi (menggunakan Drizzle)
     while (hasMore) {
-      const { data: ordersPageData, error: ordersPageError } = await supabase
-        .from('orders')
-        .select(`
-          order_sn, shop_id, order_status, cod, buyer_user_id,
-          total_amount, create_time, update_time, pay_time,
-          buyer_username, shipping_carrier, escrow_amount_after_adjustment,
-          cancel_reason, tracking_number, document_status, is_printed
-        `)
-        .or(`and(cod.eq.true,create_time.gte.${startTimestampValue},create_time.lte.${endTimestamp}),and(cod.eq.false,pay_time.gte.${startTimestampValue},pay_time.lte.${endTimestamp})`)
-        .in('shop_id', userShopIds)
-        .order('create_time', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1);
-
-      if (ordersPageError) {
-        console.error('Error fetching orders page:', ordersPageError);
-        return NextResponse.json({
-          success: false,
-          message: ordersPageError.message
-        }, { status: 500 });
-      }
+      const ordersPageData = await db.select({
+        order_sn: orders.orderSn,
+        shop_id: orders.shopId,
+        order_status: orders.orderStatus,
+        cod: orders.cod,
+        buyer_user_id: orders.buyerUserId,
+        total_amount: orders.totalAmount,
+        create_time: orders.createTime,
+        update_time: orders.updateTime,
+        pay_time: orders.payTime,
+        buyer_username: orders.buyerUsername,
+        shipping_carrier: orders.shippingCarrier,
+        escrow_amount_after_adjustment: orders.escrowAmountAfterAdjustment,
+        cancel_reason: orders.cancelReason,
+        tracking_number: orders.trackingNumber,
+        document_status: orders.documentStatus,
+        is_printed: orders.isPrinted
+      })
+        .from(orders)
+        .where(
+          and(
+            inArray(orders.shopId, userShopIds),
+            or(
+              and(
+                eq(orders.cod, true),
+                gte(orders.createTime, startTimestampValue),
+                lte(orders.createTime, endTimestampValue)
+              ),
+              and(
+                eq(orders.cod, false),
+                gte(orders.payTime, startTimestampValue),
+                lte(orders.payTime, endTimestampValue)
+              )
+            )
+          )
+        )
+        .orderBy(desc(orders.createTime))
+        .limit(pageSize)
+        .offset(page * pageSize);
 
       if (ordersPageData && ordersPageData.length > 0) {
-        allOrdersData = [...allOrdersData, ...ordersPageData];
+        allOrdersData = [...allOrdersData, ...(ordersPageData as any[])];
         page++;
+      } else {
+        hasMore = false;
       }
 
-      hasMore = ordersPageData && ordersPageData.length === pageSize;
+      if (ordersPageData && ordersPageData.length < pageSize) {
+        hasMore = false;
+      }
     }
 
     console.log(`Total orders loaded: ${allOrdersData.length} in ${page} pages`);
@@ -158,22 +183,31 @@ export async function GET(req: NextRequest) {
 
     // Data tracking sekarang sudah tersedia dalam allOrdersData, tidak perlu query terpisah
 
-    // Query untuk data order_items dengan batching
+    // Query untuk data order_items dengan batching (menggunakan Drizzle)
     let allOrderItemsData: any[] = [];
     const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
 
     for (let i = 0; i < orderSns.length; i += batchSize) {
       const batchOrderSns = orderSns.slice(i, i + batchSize);
 
-      const { data: itemsBatchData, error: itemsBatchError } = await supabase
-        .from('order_items')
-        .select('order_sn, item_sku, model_sku, model_name, model_quantity_purchased, model_discounted_price, item_id')
-        .in('order_sn', batchOrderSns);
+      try {
+        const itemsBatchData = await db.select({
+          order_sn: orderItems.orderSn,
+          item_sku: orderItems.itemSku,
+          model_sku: orderItems.modelSku,
+          model_name: orderItems.modelName,
+          model_quantity_purchased: orderItems.modelQuantityPurchased,
+          model_discounted_price: orderItems.modelDiscountedPrice,
+          item_id: orderItems.itemId
+        })
+          .from(orderItems)
+          .where(inArray(orderItems.orderSn, batchOrderSns));
 
-      if (itemsBatchError) {
+        if (itemsBatchData) {
+          allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
+        }
+      } catch (itemsBatchError) {
         console.error(`Error fetching order items batch ${i}:`, itemsBatchError);
-      } else if (itemsBatchData) {
-        allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
       }
     }
 
@@ -261,4 +295,39 @@ export async function GET(req: NextRequest) {
       message: error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil data orders'
     }, { status: 500 });
   }
-} 
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { order_sn, update_data } = await req.json();
+
+    if (!order_sn || !update_data) {
+      return NextResponse.json({ success: false, message: 'Invalid payload' }, { status: 400 });
+    }
+
+    // Mapping update_data (snake_case) to Schema definition (camelCase)
+    const updatePayload: any = {};
+    if (update_data.is_printed !== undefined) {
+      updatePayload.isPrinted = update_data.is_printed;
+    }
+    // Add other fields mapped here later as needed
+
+    if (Object.keys(updatePayload).length > 0) {
+      await db.update(orders)
+        .set(updatePayload)
+        .where(eq(orders.orderSn, order_sn));
+    }
+
+    return NextResponse.json({ success: true, message: 'Order updated' });
+  } catch (error) {
+    console.error('Error updating order:', error);
+    return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
+  }
+}

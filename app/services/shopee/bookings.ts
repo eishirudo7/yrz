@@ -6,6 +6,9 @@
 import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { getValidAccessToken } from '@/app/services/tokenManager';
 import { createClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { bookingOrders } from '@/db/schema';
+import { eq, inArray, and } from 'drizzle-orm';
 import { BookingListOptions, retryOperation } from './utils';
 
 export async function getBookingList(shopId: number, options: BookingListOptions = {}) {
@@ -337,14 +340,16 @@ export async function createBookingShippingDocument(
 
         // Update database
         try {
-            const supabaseClient = await createClient();
             const bookingSns = bookingList.map(b => b.booking_sn);
 
-            await supabaseClient
-                .from('booking_orders')
-                .update({ document_status: 'READY', updated_at: new Date().toISOString() })
-                .eq('shop_id', shopId)
-                .in('booking_sn', bookingSns);
+            await db.update(bookingOrders)
+                .set({ documentStatus: 'READY', updatedAt: new Date() })
+                .where(
+                    and(
+                        eq(bookingOrders.shopId, shopId),
+                        inArray(bookingOrders.bookingSn, bookingSns)
+                    )
+                );
         } catch (dbError) {
             console.error('Database update error:', dbError);
         }

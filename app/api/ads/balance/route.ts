@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getShopeeSDK } from '@/lib/shopee-sdk'
+import { db } from '@/db'
+import { shopeeTokens } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
 
 /**
  * GET /api/ads/balance
@@ -23,17 +26,27 @@ export async function GET(request: NextRequest) {
         const shopIdParam = searchParams.get('shop_id')
 
         // Get user's shops
-        let query = supabase
-            .from('shopee_tokens')
-            .select('shop_id, shop_name')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
+        const userFilters = [
+            eq(shopeeTokens.userId, user.id),
+            eq(shopeeTokens.isActive, true)
+        ]
 
         if (shopIdParam) {
-            query = query.eq('shop_id', parseInt(shopIdParam))
+            userFilters.push(eq(shopeeTokens.shopId, parseInt(shopIdParam)))
         }
 
-        const { data: shops, error: shopsError } = await query
+        let shopsError = null;
+        let shops: any[] = [];
+        try {
+            shops = await db.select({
+                shop_id: shopeeTokens.shopId,
+                shop_name: shopeeTokens.shopName
+            })
+                .from(shopeeTokens)
+                .where(and(...userFilters))
+        } catch (err) {
+            shopsError = err;
+        }
 
         if (shopsError) {
             return NextResponse.json({ error: 'Failed to fetch shops' }, { status: 500 })

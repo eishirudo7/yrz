@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getShopeeSDK } from '@/lib/shopee-sdk'
+import { db } from '@/db'
+import { shopeeTokens } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
 
 interface ShopPerformance {
     shop_id: number
@@ -60,11 +63,23 @@ export async function GET(request: NextRequest) {
         const endDate = endDateParam || startDate
 
         // Get all shops for this user
-        const { data: shops, error: shopsError } = await supabase
-            .from('shopee_tokens')
-            .select('shop_id, shop_name')
-            .eq('user_id', user.id)
-            .eq('is_active', true)
+        let shopsError = null;
+        let shops: any[] = [];
+        try {
+            shops = await db.select({
+                shop_id: shopeeTokens.shopId,
+                shop_name: shopeeTokens.shopName
+            })
+                .from(shopeeTokens)
+                .where(
+                    and(
+                        eq(shopeeTokens.userId, user.id),
+                        eq(shopeeTokens.isActive, true)
+                    )
+                )
+        } catch (error) {
+            shopsError = error;
+        }
 
         if (shopsError || !shops || shops.length === 0) {
             return NextResponse.json({

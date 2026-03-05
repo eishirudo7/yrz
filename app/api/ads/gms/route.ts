@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { getShopeeSDK } from '@/lib/shopee-sdk'
+import { db } from '@/db'
+import { shopeeTokens } from '@/db/schema'
+import { eq, and } from 'drizzle-orm'
 
 /**
  * POST /api/ads/gms
@@ -24,14 +27,21 @@ export async function POST(request: NextRequest) {
             }, { status: 400 })
         }
 
-        const { data: shop, error: shopError } = await supabase
-            .from('shopee_tokens')
-            .select('shop_id')
-            .eq('shop_id', shop_id)
-            .eq('user_id', user.id)
-            .single()
+        const shopData = await db.select({
+            shop_id: shopeeTokens.shopId
+        })
+            .from(shopeeTokens)
+            .where(
+                and(
+                    eq(shopeeTokens.shopId, parseInt(shop_id)),
+                    eq(shopeeTokens.userId, user.id)
+                )
+            )
+            .limit(1)
 
-        if (shopError || !shop) {
+        const shop = shopData[0]
+
+        if (!shop) {
             return NextResponse.json({ error: 'Shop not found' }, { status: 404 })
         }
 
@@ -79,14 +89,21 @@ export async function PUT(request: NextRequest) {
             }, { status: 400 })
         }
 
-        const { data: shop, error: shopError } = await supabase
-            .from('shopee_tokens')
-            .select('shop_id')
-            .eq('shop_id', shop_id)
-            .eq('user_id', user.id)
-            .single()
+        const shopData = await db.select({
+            shop_id: shopeeTokens.shopId
+        })
+            .from(shopeeTokens)
+            .where(
+                and(
+                    eq(shopeeTokens.shopId, parseInt(shop_id)),
+                    eq(shopeeTokens.userId, user.id)
+                )
+            )
+            .limit(1)
 
-        if (shopError || !shop) {
+        const shop = shopData[0]
+
+        if (!shop) {
             return NextResponse.json({ error: 'Shop not found' }, { status: 404 })
         }
 
