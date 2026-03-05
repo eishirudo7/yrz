@@ -14,7 +14,7 @@
     "db:migrate": "npx tsx db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "worker:webhook": "npx tsx workers/webhook/index.ts",
+    "worker:webhook": "npx esbuild workers/webhook/index.ts --bundle --platform=node --target=node20 --outfile=dist/worker.js && node dist/worker.js",
     "start:prod": "npm run db:migrate && next start -p 10000"
   },
   "dependencies": {
