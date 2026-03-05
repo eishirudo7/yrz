@@ -51,7 +51,7 @@ interface OrderTableProps {
 const TableHeadWrapper = forwardRef<HTMLTableCellElement, React.ComponentPropsWithoutRef<'th'>>(
   ({ className, ...props }, ref) => {
     return (
-      <th 
+      <th
         ref={ref}
         className={`p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap font-medium uppercase bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 ${className}`}
         style={{
@@ -69,7 +69,7 @@ TableHeadWrapper.displayName = 'TableHeadWrapper';
 const EllipsisCell = forwardRef<HTMLTableCellElement, React.ComponentPropsWithoutRef<'td'> & { tooltip?: string }>(
   ({ className, children, tooltip, style, onClick, ...props }, ref) => {
     return (
-      <TableCell 
+      <TableCell
         ref={ref}
         className={`p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap ${className}`}
         style={{
@@ -114,7 +114,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   const checkboxRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tableHeight, setTableHeight] = useState(600);
-  
+
   // Efek untuk mengatur tinggi tabel secara dinamis
   useEffect(() => {
     const calculateHeight = () => {
@@ -122,17 +122,17 @@ export const OrderTable: React.FC<OrderTableProps> = ({
         // Gunakan pendekatan yang lebih modern dan akurat
         // Mendapatkan bounding rect container untuk posisinya dari atas
         const containerTop = containerRef.current.getBoundingClientRect().top;
-        
+
         // Hitung tinggi menggunakan pendekatan visual viewport
         // yang lebih akurat untuk perangkat mobile
         const visualViewportHeight = window.visualViewport?.height || window.innerHeight;
-        
+
         // Padding bawah minimal
         const bottomPadding = 16;
-        
+
         // Hitung tinggi yang tersedia
         const availableHeight = visualViewportHeight - containerTop - bottomPadding;
-        
+
         // Pastikan minimal 300px
         const minHeight = 300;
         setTableHeight(Math.max(availableHeight, minHeight));
@@ -141,7 +141,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
 
     // Hitung segera saat komponen dimount
     calculateHeight();
-    
+
     // Gunakan visualViewport API jika tersedia untuk deteksi yang lebih akurat
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', calculateHeight);
@@ -150,10 +150,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       // Fallback ke window resize
       window.addEventListener('resize', calculateHeight);
     }
-    
+
     // Event handler untuk rotasi perangkat
     window.addEventListener('orientationchange', calculateHeight);
-    
+
     // Tambahkan penundaan setelah scroll untuk menangani keyboard yang muncul/hilang
     let scrollTimeout: number;
     const handleScroll = () => {
@@ -161,7 +161,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
       scrollTimeout = window.setTimeout(calculateHeight, 100);
     };
     window.addEventListener('scroll', handleScroll);
-    
+
     // Cleanup
     return () => {
       if (window.visualViewport) {
@@ -182,7 +182,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
     checkbox: { width: '1.5%', minWidth: '40px' },
     number: { width: '2%', minWidth: '40px' },
     shop: { width: '12%', minWidth: '150px' },
-    date: { width: '6%', minWidth: '120px' },
+    date: { width: '9%', minWidth: '190px' },
     orderNumber: { width: '12%', minWidth: '170px' },
     username: { width: '11%', minWidth: '150px' },
     price: { width: '6%', minWidth: '110px' },
@@ -199,13 +199,13 @@ export const OrderTable: React.FC<OrderTableProps> = ({
   return (
     <div className="rounded-md border overflow-x-auto mt-2 relative" ref={containerRef}>
       {/* Indikator scroll (opsional) untuk mobile yang dihapus */}
-      
+
       {isLoading ? (
         <div className="w-full" style={{ height: `${tableHeight}px`, overflowY: 'auto' }}>
           <table className="w-full table-fixed border-collapse" style={{ minWidth: tableMinWidth }}>
             <thead className="sticky top-0 z-10 bg-white dark:bg-gray-950">
               <tr>
-                <TableHeadWrapper 
+                <TableHeadWrapper
                   className={`${!tableState.showCheckbox && 'hidden'} p-0`}
                   style={{
                     width: columnWidths.checkbox.width,
@@ -220,35 +220,35 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                     />
                   </div>
                 </TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.number.width}} className="text-center">#</TableHeadWrapper>
-                <TableHeadWrapper 
+                <TableHeadWrapper style={{ width: columnWidths.number.width }} className="text-center">#</TableHeadWrapper>
+                <TableHeadWrapper
                   style={{
-                    width: columnWidths.shop.width, 
+                    width: columnWidths.shop.width,
                     minWidth: columnWidths.shop.minWidth
-                  }} 
+                  }}
                   className='text-left'
                 >
                   Toko
                 </TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.date.width}} className='text-left'>Tanggal</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.orderNumber.width}} className='text-left'>No. Pesanan</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.username.width}} className='text-left'>Username</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.price.width}} className='text-left'>Harga</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.escrow.width}} className='text-left'>Escrow Final</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.sku.width}} className='text-left'>SKU (Qty)</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.courier.width}} className='text-left'>Kurir</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.status.width}}>Status</TableHeadWrapper>
-                <TableHeadWrapper style={{width: columnWidths.print.width}} className="text-center">Cetak</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.date.width }} className='text-left'>Tanggal</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.orderNumber.width }} className='text-left'>No. Pesanan</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.username.width }} className='text-left'>Username</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.price.width }} className='text-left'>Harga</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.escrow.width }} className='text-left'>Escrow Final</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.sku.width }} className='text-left'>SKU (Qty)</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.courier.width }} className='text-left'>Kurir</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.status.width }}>Status</TableHeadWrapper>
+                <TableHeadWrapper style={{ width: columnWidths.print.width }} className="text-center">Cetak</TableHeadWrapper>
               </tr>
             </thead>
             <tbody>
               {Array(10).fill(0).map((_, i) => (
-                <tr 
-                  key={i} 
+                <tr
+                  key={i}
                   className={`h-[32px] ${i % 2 === 0 ? 'bg-muted dark:bg-gray-800/50' : 'bg-gray-100/20 dark:bg-gray-900'}`}
                 >
                   {Object.entries(columnWidths).map(([key, value]) => (
-                    <td 
+                    <td
                       key={key}
                       className="p-1 h-[32px]"
                       style={{
@@ -273,25 +273,25 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           fixedItemHeight={32}
           components={{
             Table: (props) => (
-              <table 
-                {...props} 
-                className="w-full dark:bg-gray-900 table-fixed" 
-                style={{ 
+              <table
+                {...props}
+                className="w-full dark:bg-gray-900 table-fixed"
+                style={{
                   borderCollapse: 'collapse',
                   minWidth: tableMinWidth // Memastikan tabel memiliki lebar minimum
-                }} 
+                }}
               />
             ),
             TableHead: (props) => <thead {...props} className="sticky top-0 z-10 bg-white dark:bg-gray-950" />,
             TableRow: ({ item: order, ...props }) => {
               const index = props['data-item-index'];
               const rowClass = `
-                ${order?.order_status === "IN_CANCEL" 
-                  ? 'bg-red-100 dark:bg-red-900/50' 
+                ${order?.order_status === "IN_CANCEL"
+                  ? 'bg-red-100 dark:bg-red-900/50'
                   : order?.order_status === "CANCELLED"
-                    ? 'bg-gray-300 dark:bg-gray-800' 
-                    : index % 2 === 0 
-                      ? 'bg-muted dark:bg-gray-800/50' 
+                    ? 'bg-gray-300 dark:bg-gray-800'
+                    : index % 2 === 0
+                      ? 'bg-muted dark:bg-gray-800/50'
                       : 'bg-gray-100/20 dark:bg-gray-900'
                 }
                 hover:bg-primary/10 dark:hover:bg-primary/20 hover:shadow-sm transition-colors
@@ -302,7 +302,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
           }}
           fixedHeaderContent={() => (
             <tr>
-              <TableHeadWrapper 
+              <TableHeadWrapper
                 className={`${!tableState.showCheckbox && 'hidden'} p-0`}
                 style={{
                   width: columnWidths.checkbox.width,
@@ -314,7 +314,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   <Checkbox
                     ref={checkboxRef}
                     checked={
-                      filteredOrders.filter(order => derivedData.isOrderCheckable(order)).length > 0 && 
+                      filteredOrders.filter(order => derivedData.isOrderCheckable(order)).length > 0 &&
                       filteredOrders
                         .filter(order => derivedData.isOrderCheckable(order))
                         .every(order => tableState.selectedOrders.includes(order.order_sn))
@@ -324,30 +324,30 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   />
                 </div>
               </TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.number.width}} className="text-center">#</TableHeadWrapper>
-              <TableHeadWrapper 
+              <TableHeadWrapper style={{ width: columnWidths.number.width }} className="text-center">#</TableHeadWrapper>
+              <TableHeadWrapper
                 style={{
-                  width: columnWidths.shop.width, 
+                  width: columnWidths.shop.width,
                   minWidth: columnWidths.shop.minWidth
-                }} 
+                }}
                 className='text-left'
               >
                 Toko
               </TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.date.width}} className='text-left'>Tanggal</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.orderNumber.width}} className='text-left'>No. Pesanan</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.username.width}} className='text-left'>Username</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.price.width}} className='text-left'>Harga</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.escrow.width}} className='text-left'>Escrow Final</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.sku.width}} className='text-left'>SKU (Qty)</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.courier.width}} className='text-left'>Kurir</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.status.width}}>Status</TableHeadWrapper>
-              <TableHeadWrapper style={{width: columnWidths.print.width}} className="text-center">Cetak</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.date.width }} className='text-left'>Tanggal</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.orderNumber.width }} className='text-left'>No. Pesanan</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.username.width }} className='text-left'>Username</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.price.width }} className='text-left'>Harga</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.escrow.width }} className='text-left'>Escrow Final</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.sku.width }} className='text-left'>SKU (Qty)</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.courier.width }} className='text-left'>Kurir</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.status.width }}>Status</TableHeadWrapper>
+              <TableHeadWrapper style={{ width: columnWidths.print.width }} className="text-center">Cetak</TableHeadWrapper>
             </tr>
           )}
           itemContent={(index, order) => (
             <>
-              <TableCell 
+              <TableCell
                 className={`p-0 h-[32px] ${!tableState.showCheckbox && 'hidden'}`}
                 style={{
                   width: columnWidths.checkbox.width,
@@ -359,23 +359,23 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   <Checkbox
                     checked={tableState.selectedOrders.includes(order.order_sn)}
                     disabled={!derivedData.isOrderCheckable(order)}
-                    onCheckedChange={(checked) => 
+                    onCheckedChange={(checked) =>
                       handleSelectOrder(order.order_sn, checked as boolean)
                     }
                     className="h-4 w-4"
                   />
                 </div>
               </TableCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white text-center whitespace-nowrap"
-                style={{width: columnWidths.number.width}}
+                style={{ width: columnWidths.number.width }}
               >
                 {index + 1}
               </TableCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap"
                 style={{
-                  width: columnWidths.shop.width, 
+                  width: columnWidths.shop.width,
                   minWidth: columnWidths.shop.minWidth,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis'
@@ -384,13 +384,25 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               >
                 {order.shop_name}
               </TableCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap"
-                style={{width: columnWidths.date.width}}
+                style={{ width: columnWidths.date.width }}
               >
-                {formatDate(order.pay_time)}
+                <div className="flex items-center gap-1 flex-nowrap">
+                  <span>{formatDate(order.pay_time)}</span>
+                  {['READY_TO_SHIP', 'PROCESSED'].includes(order.order_status) && order.ship_by_date > 0 && (
+                    isOverdue(order.ship_by_date)
+                      ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300 border border-red-200 dark:border-red-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⚠ Telat</span>
+                      : isToday(order.ship_by_date)
+                        ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-200 dark:border-amber-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⏰ Hari Ini</span>
+                        : null
+                  )}
+                  {['READY_TO_SHIP', 'PROCESSED'].includes(order.order_status) && order.days_to_ship > 2 && (
+                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 border border-purple-200 dark:border-purple-700 leading-none" title={`SLA ${order.days_to_ship} hari (Pre-Order)`}>PO</span>
+                  )}
+                </div>
               </TableCell>
-              <EllipsisCell 
+              <EllipsisCell
                 className="text-xs font-medium"
                 tooltip={order.order_sn}
                 onClick={() => {
@@ -409,9 +421,9 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   )}
                 </div>
               </EllipsisCell>
-              <EllipsisCell 
+              <EllipsisCell
                 className=""
-                style={{width: columnWidths.username.width}}
+                style={{ width: columnWidths.username.width }}
                 tooltip={order.buyer_username}
               >
                 <div className="flex items-center">
@@ -422,22 +434,22 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                     >
                       {order.buyer_username}
                     </button>
-                    
+
                     <ChatButton
                       shopId={order.shop_id}
                       toId={order.buyer_user_id}
                       toName={order.buyer_username || "Pembeli"}
-                      toAvatar={""} 
+                      toAvatar={""}
                       shopName={order.shop_name}
                       iconSize={14}
                       iconOnly={true}
                       orderId={order.order_sn}
-                      orderStatus={order.order_status} 
+                      orderStatus={order.order_status}
                     />
                   </div>
                   <div className="flex-shrink-0">
                     {order.buyer_username && derivedData.usernameCounts[order.buyer_username] > 1 && (
-                      <span 
+                      <span
                         className="inline-flex items-center justify-center w-4 h-4 bg-blue-100 text-blue-800 text-[10px] font-medium rounded-full dark:bg-blue-900 dark:text-blue-300"
                         title={`Pembeli ini memiliki ${derivedData.usernameCounts[order.buyer_username]} pesanan`}
                       >
@@ -447,20 +459,20 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   </div>
                 </div>
               </EllipsisCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap"
-                style={{width: columnWidths.price.width}}
+                style={{ width: columnWidths.price.width }}
               >
                 Rp {calculateOrderTotal(order).toLocaleString('id-ID')}
               </TableCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap"
-                style={{width: columnWidths.escrow.width}}
+                style={{ width: columnWidths.escrow.width }}
               >
                 Rp {(order.escrow_amount_after_adjustment || 0).toLocaleString('id-ID')}
               </TableCell>
-              <EllipsisCell 
-                style={{width: columnWidths.sku.width}}
+              <EllipsisCell
+                style={{ width: columnWidths.sku.width }}
                 tooltip={getSkuSummary(order.items)}
               >
                 <Popover>
@@ -469,7 +481,7 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       {getSkuSummary(order.items)}
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent 
+                  <PopoverContent
                     className="w-[90vw] max-w-[280px] sm:w-80 p-0 shadow-xl dark:shadow-lg dark:shadow-gray-900/50"
                     align="center"
                     side="top"
@@ -481,11 +493,10 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                       </div>
                       <div className="max-h-[300px] overflow-y-auto">
                         {Object.entries(groupItemsBySku(order.items)).map(([sku, items], index, array) => (
-                          <div 
+                          <div
                             key={sku}
-                            className={`flex flex-col ${
-                              index !== array.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : ''
-                            }`}
+                            className={`flex flex-col ${index !== array.length - 1 ? 'border-b border-gray-100 dark:border-gray-800' : ''
+                              }`}
                           >
                             <div className="px-3 bg-gray-50/50 dark:bg-gray-800/30">
                               <span className="font-medium text-[11px] text-gray-700 dark:text-gray-300">
@@ -518,26 +529,26 @@ export const OrderTable: React.FC<OrderTableProps> = ({
                   </PopoverContent>
                 </Popover>
               </EllipsisCell>
-              <EllipsisCell 
-                style={{width: columnWidths.courier.width}}
+              <EllipsisCell
+                style={{ width: columnWidths.courier.width }}
                 tooltip={`${order.shipping_carrier || '-'} (${order.tracking_number || '-'})`}
               >
                 {order.shipping_carrier || '-'} ({order.tracking_number || '-'})
               </EllipsisCell>
-              <TableCell 
+              <TableCell
                 className="p-1 h-[32px] text-xs text-gray-600 dark:text-white whitespace-nowrap"
-                style={{width: columnWidths.status.width}}
+                style={{ width: columnWidths.status.width }}
               >
-                <StatusBadge 
-                  status={order.order_status as OrderStatus} 
+                <StatusBadge
+                  status={order.order_status as OrderStatus}
                   order={order}
                   onProcess={handleProcessOrder}
                   onCancellationAction={handleCancellationAction}
                 />
               </TableCell>
-              <TableCell 
+              <TableCell
                 className="text-center p-1 h-[32px] text-xs text-gray-600 dark:text-white"
-                style={{width: columnWidths.print.width}}
+                style={{ width: columnWidths.print.width }}
               >
                 <Button
                   onClick={() => handleDownloadDocument(order)}

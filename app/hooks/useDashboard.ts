@@ -22,6 +22,7 @@ export type Order = {
   create_time: number;
   update_time: number;
   ship_by_date: number;
+  days_to_ship: number;
   pay_time: number;
   buyer_username: string;
   escrow_amount_after_adjustment: number;
@@ -59,9 +60,9 @@ const timeZone = 'Asia/Jakarta';
 const status_yang_dihitung = ['IN_CANCEL', 'PROCESSED', 'READY_TO_SHIP', 'SHIPPED'];
 
 const calculateOrderTotal = (order: Order): number => {
-  return order.items?.reduce((total, item) => 
-    total + (item.model_quantity_purchased * item.model_discounted_price), 
-  0) || 0;
+  return order.items?.reduce((total, item) =>
+    total + (item.model_quantity_purchased * item.model_discounted_price),
+    0) || 0;
 };
 
 const processOrder = (order: Order, summary: DashboardSummary) => {
@@ -87,9 +88,9 @@ async function getOrderDetails(order_sn: string, shop_id: string, retries = 3): 
         .from('order_items')
         .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
         .eq('order_sn', order_sn);
-      
+
       if (itemsError) throw itemsError;
-      
+
       if (!itemsData || itemsData.length === 0) {
         return null;
       }
@@ -134,7 +135,7 @@ export const useDashboard = () => {
     },
     orders: [],
     shops: []
-  }); 
+  });
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -143,18 +144,18 @@ export const useDashboard = () => {
   const createOrderSubscription = () => {
     // Mendapatkan daftar shop_id dari daftar toko user
     const userShopIds = shops.map(shop => shop.shop_id.toString());
-    
+
     // Jika tidak ada toko, jangan buat subscription
     if (userShopIds.length === 0) {
       console.log('Tidak ada toko yang ditemukan, subscription tidak dibuat');
       return createClient().channel('orders-empty');
     }
-    
+
     // Filter untuk shop_id in.(user shop ids) dan order_status in.(tracked statuses)
     // Format filter Supabase: "column=in.(val1,val2,val3)"
     const shopFilter = `shop_id=in.(${userShopIds.join(',')})`;
-    
-    
+
+
     return createClient()
       .channel('orders')
       .on('postgres_changes', {
@@ -164,19 +165,19 @@ export const useDashboard = () => {
         filter: `${shopFilter}`,
       }, async (payload) => {
         const newOrder = payload.new as Order;
-        
+
         // Verifikasi additional filter secara manual karena Supabase hanya mendukung
         // satu filter pada saat ini
         if (!trackedStatuses.includes(newOrder.order_status)) {
           return; // Lewati jika status tidak dalam daftar yang dipantau
         }
-        
+
         // Tambahkan shop_name dari UserDataContext
         const shop = shops.find(s => s.shop_id === newOrder.shop_id);
         if (shop) {
           newOrder.shop_name = shop.shop_name;
         }
-        
+
         if (newOrder.order_status === 'READY_TO_SHIP') {
           setDashboardData(prevData => {
             const existingOrderIndex = prevData.orders.findIndex(
@@ -211,20 +212,20 @@ export const useDashboard = () => {
           try {
             const orderDetails = await getOrderDetails(newOrder.order_sn, newOrder.shop_id.toString());
             console.log('Detail pesanan diterima:', orderDetails);
-            
+
             if (orderDetails) {
               setDashboardData(prevData => {
-                const updatedOrders = prevData.orders.map(order => 
-                  order.order_sn === newOrder.order_sn 
-                    ? { 
-                        ...order, 
-                        ...newOrder, 
-                        items: orderDetails.items
-                        // Tidak lagi mengambil tracking_number, document_status, dan is_printed dari orderDetails
-                      }
+                const updatedOrders = prevData.orders.map(order =>
+                  order.order_sn === newOrder.order_sn
+                    ? {
+                      ...order,
+                      ...newOrder,
+                      items: orderDetails.items
+                      // Tidak lagi mengambil tracking_number, document_status, dan is_printed dari orderDetails
+                    }
                     : order
                 );
-                
+
                 const newSummary = {
                   pesananPerToko: {},
                   omsetPerToko: {},
@@ -247,14 +248,14 @@ export const useDashboard = () => {
           }
         } else {
           setDashboardData(prevData => {
-            const existingOrderIndex = prevData.orders.findIndex(order => 
+            const existingOrderIndex = prevData.orders.findIndex(order =>
               order.order_sn === newOrder.order_sn
             );
-            
+
             if (existingOrderIndex !== -1) {
               const updatedOrders = [...prevData.orders];
               const oldOrder = updatedOrders[existingOrderIndex];
-              
+
               // Update order dengan data baru
               updatedOrders[existingOrderIndex] = {
                 ...oldOrder,
@@ -275,7 +276,7 @@ export const useDashboard = () => {
                   totalIklan: prevData.summary.totalIklan,
                   iklanPerToko: prevData.summary.iklanPerToko
                 };
-                
+
                 // Hitung ulang summary untuk semua order
                 updatedOrders.forEach(order => processOrder(order, newSummary));
 
@@ -303,11 +304,11 @@ export const useDashboard = () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     const userId = user?.id || 'anonymous';
-    
+
     // Tambahkan userId ke key untuk memisahkan cache per user
     const USER_LAST_FETCH_KEY = `ads_last_fetch_time_${userId}`;
     const USER_CACHED_ADS_DATA_KEY = `cached_ads_data_${userId}`;
-    
+
     const now = Date.now();
     const lastFetch = Number(localStorage.getItem(USER_LAST_FETCH_KEY)) || 0;
 
@@ -346,7 +347,7 @@ export const useDashboard = () => {
   const processOrders = async (orders: Order[]) => {
     for (const order of orders) {
       if (
-        order.order_status === 'PROCESSED' && 
+        order.order_status === 'PROCESSED' &&
         order.document_status !== 'READY' ||
         order.order_status === 'PROCESSED' &&
         order.tracking_number === null
@@ -357,7 +358,7 @@ export const useDashboard = () => {
           status: order.order_status,
           document: order.document_status
         });
-        
+
         try {
           // Cek tracking number terlebih dahulu
           if (!order.tracking_number) {
@@ -379,12 +380,12 @@ export const useDashboard = () => {
             const trackingData = await trackingResponse.json();
             if (trackingData.success) {
               order.tracking_number = trackingData.data.tracking_number;
-              
+
               // Perbarui state dengan tracking number baru
               setDashboardData(prevData => ({
                 ...prevData,
-                orders: prevData.orders.map(existingOrder => 
-                  existingOrder.order_sn === order.order_sn 
+                orders: prevData.orders.map(existingOrder =>
+                  existingOrder.order_sn === order.order_sn
                     ? { ...existingOrder, tracking_number: trackingData.data.tracking_number }
                     : existingOrder
                 )
@@ -404,7 +405,7 @@ export const useDashboard = () => {
               tracking_number: order.tracking_number
             })
           });
-          
+
           if (!response.ok) {
             const errorData = await response.json();
             console.error('Gagal membuat shipping document:', errorData);
@@ -416,8 +417,8 @@ export const useDashboard = () => {
           if (documentData.success) {
             setDashboardData(prevData => ({
               ...prevData,
-              orders: prevData.orders.map(existingOrder => 
-                existingOrder.order_sn === order.order_sn 
+              orders: prevData.orders.map(existingOrder =>
+                existingOrder.order_sn === order.order_sn
                   ? { ...existingOrder, document_status: 'READY' }
                   : existingOrder
               )
@@ -435,30 +436,30 @@ export const useDashboard = () => {
       try {
         setIsLoading(true);
         setError(null);
-        
+
         console.log('Mengambil data dashboard dari API...');
-        
+
         // 1. Ambil data dashboard dari API
         const dashboardResponse = await fetch('/api/dashboard');
         if (!dashboardResponse.ok) {
           throw new Error(`Error fetching dashboard: ${dashboardResponse.status}`);
         }
-        
+
         const dashboardResult = await dashboardResponse.json();
         if (!dashboardResult.success) {
           throw new Error(dashboardResult.message || 'Gagal mengambil data dashboard');
         }
-        
+
         // 2. Ekstrak data dari respons
         const { orders, shops } = dashboardResult.data;
-        
+
         // Tambahkan shop_name ke setiap order jika belum ada
         const ordersWithShopName = orders.map((order: Order) => {
           // Jika order sudah memiliki shop_name, gunakan yang ada
           if (order.shop_name) {
             return order;
           }
-          
+
           // Cari shop_name dari UserDataContext
           const shop = shops.find((s: Shop) => s.shop_id === order.shop_id);
           if (shop) {
@@ -467,10 +468,10 @@ export const useDashboard = () => {
               shop_name: shop.shop_name
             };
           }
-          
+
           return order;
         });
-        
+
         // 3. Hitung summary dari data mentah
         const newSummary: DashboardSummary = {
           pesananPerToko: {},
@@ -509,27 +510,27 @@ export const useDashboard = () => {
           orders: ordersWithShopName,
           shops: shops
         });
-        
+
         // 5. Ubah menjadi non-blocking: Jalankan proses berikutnya secara asinkronus tanpa menunggu
         setIsLoading(false);
-        
+
         // 6. Proses dokumen dan iklan secara asinkronus di belakang layar
         Promise.all([
           // Proses shipping documents jika diperlukan
           processOrders(ordersWithShopName || []),
-          
+
           // Ambil data iklan dari API terpisah
           (async () => {
             console.log('Mengambil data iklan...');
             const adsData = await fetchAdsData();
-            
+
             if (adsData) {
               console.log('Data iklan berhasil diambil');
-              
+
               // Update dashboard dengan data iklan
               setDashboardData(prevData => {
                 const newSummary = { ...prevData.summary };
-                
+
                 // Parse total cost - hapus desimal
                 if (adsData.raw_total_cost) {
                   // Gunakan raw_total_cost jika tersedia
@@ -539,7 +540,7 @@ export const useDashboard = () => {
                   const parsedValue = parseFloat(adsData.total_cost.replace('Rp. ', '').replace(/\./g, '').replace(',', '.'));
                   newSummary.totalIklan = Math.floor(parsedValue);
                 }
-                
+
                 // Parse data iklan per toko - juga hapus desimal
                 adsData.ads_data.forEach((ad: AdData) => {
                   let cost;
@@ -550,7 +551,7 @@ export const useDashboard = () => {
                   }
                   newSummary.iklanPerToko[ad.shop_name] = cost;
                 });
-                
+
                 return {
                   ...prevData,
                   summary: newSummary
@@ -562,7 +563,7 @@ export const useDashboard = () => {
           console.error('Error saat proses background:', error);
           // Tidak perlu set error state di sini karena data utama sudah dimuat
         });
-        
+
       } catch (error) {
         console.error('Error saat mengambil data dashboard:', error);
         setError(error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui');

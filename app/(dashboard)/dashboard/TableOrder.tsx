@@ -214,6 +214,7 @@ interface TableState {
   printStatus: 'all' | 'printed' | 'unprinted';
   selectedCouriers: string[];
   paymentType: 'all' | 'cod' | 'non_cod';
+  urgencyFilter: 'all' | 'overdue' | 'today' | 'preorder';
 }
 
 
@@ -265,6 +266,7 @@ const FilterContent = React.memo(({
   onCourierFilter,
   onPrintStatusFilter,
   onPaymentTypeFilter,
+  onUrgencyFilter,
   onResetFilter
 }: {
   tableState: TableState;
@@ -275,100 +277,110 @@ const FilterContent = React.memo(({
   onCourierFilter: (courier: string) => void;
   onPrintStatusFilter: (status: 'all' | 'printed' | 'unprinted') => void;
   onPaymentTypeFilter: (type: 'all' | 'cod' | 'non_cod') => void;
+  onUrgencyFilter: (urgency: 'all' | 'overdue' | 'today' | 'preorder') => void;
   onResetFilter: () => void;
 }) => (
-  <div className="grid gap-4">
-    {/* 1. Filter Toko */}
-    <div className="space-y-2">
-      <h4 className="font-medium leading-none">Pilih Toko</h4>
-      <div className="grid gap-2">
+  <div className="flex flex-col gap-3 p-1">
+
+    {/* Urgensi + Reset */}
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Urgensi</p>
+        <button
+          onClick={onResetFilter}
+          className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+        >
+          Reset filter
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {([['all', 'Semua'], ['overdue', '⚠ Telat'], ['today', '⏰ Hari Ini'], ['preorder', 'PO']] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => onUrgencyFilter(val)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.urgencyFilter === val
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{label}</button>
+        ))}
+      </div>
+    </div>
+
+    {/* Toko */}
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Toko</p>
+      <div className="flex flex-wrap gap-1">
         {shops.map((shop) => (
-          <div key={shop} className="flex items-center space-x-2">
-            <Checkbox
-              id={`shop-${shop}`}
-              checked={tableState.selectedShops.includes(shop)}
-              onCheckedChange={() => onShopFilter(shop)}
-            />
-            <label htmlFor={`shop-${shop}`} className="text-sm">
-              {shop}
-            </label>
-          </div>
+          <button
+            key={shop}
+            onClick={() => onShopFilter(shop)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.selectedShops.includes(shop)
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{shop}</button>
         ))}
       </div>
     </div>
 
-    {/* 2. Filter Status Print */}
-    <div className="space-y-2">
-      <h4 className="font-medium leading-none">Status Print</h4>
-      <Select
-        value={tableState.printStatus}
-        onValueChange={(value: typeof tableState.printStatus) =>
-          onPrintStatusFilter(value)
-        }
-      >
-        <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder="Pilih status print" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Semua</SelectItem>
-          <SelectItem value="printed">Sudah Print</SelectItem>
-          <SelectItem value="unprinted">Belum Print</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-
-    {/* 3. Filter Kurir */}
-    <div className="space-y-2">
-      <h4 className="font-medium leading-none">Kurir</h4>
-      <div className="grid gap-2">
+    {/* Kurir */}
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Kurir</p>
+      <div className="flex flex-wrap gap-1">
         {availableCouriers.map((courier) => (
-          <div key={courier} className="flex items-center space-x-2">
-            <Checkbox
-              id={`courier-${courier}`}
-              checked={tableState.selectedCouriers.includes(courier)}
-              onCheckedChange={() => onCourierFilter(courier)}
-            />
-            <label htmlFor={`courier-${courier}`} className="text-sm">
-              {courier}
-            </label>
-          </div>
+          <button
+            key={courier}
+            onClick={() => onCourierFilter(courier)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.selectedCouriers.includes(courier)
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{courier}</button>
         ))}
       </div>
     </div>
 
-    {/* 4. Filter Jenis Pembayaran */}
-    <div className="space-y-2">
-      <h4 className="font-medium leading-none">Jenis Pembayaran</h4>
-      <Select
-        value={tableState.paymentType}
-        onValueChange={(value: typeof tableState.paymentType) =>
-          onPaymentTypeFilter(value)
-        }
-      >
-        <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder="Pilih jenis pembayaran" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Semua</SelectItem>
-          <SelectItem value="cod">COD</SelectItem>
-          <SelectItem value="non_cod">Non-COD</SelectItem>
-        </SelectContent>
-      </Select>
+    {/* Print & Pembayaran */}
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Status Print</p>
+      <div className="flex gap-1">
+        {([['all', 'Semua'], ['printed', 'Sudah'], ['unprinted', 'Belum']] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => onPrintStatusFilter(val)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.printStatus === val
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{label}</button>
+        ))}
+      </div>
     </div>
 
-    {/* 5. Tombol Reset Filter */}
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={onResetFilter}
-      className="mt-2"
-    >
-      Reset Filter
-    </Button>
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Pembayaran</p>
+      <div className="flex gap-1">
+        {([['all', 'Semua'], ['cod', 'COD'], ['non_cod', 'Non-COD']] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => onPaymentTypeFilter(val)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.paymentType === val
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{label}</button>
+        ))}
+      </div>
+    </div>
+
   </div>
 ));
 
 FilterContent.displayName = 'FilterContent';
+
+
+
 
 export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDetailTableProps) {
   // Di awal fungsi OrdersDetailTable
@@ -382,7 +394,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     selectedOrders: [],
     printStatus: 'all',
     selectedCouriers: [],
-    paymentType: 'all'
+    paymentType: 'all',
+    urgencyFilter: 'all'
   });
 
   // Tambahkan state terpisah untuk input pencarian
@@ -528,6 +541,19 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         (tableState.paymentType === 'cod' && order.cod) ||
         (tableState.paymentType === 'non_cod' && !order.cod)
       );
+      if (result.length === 0) return result;
+    }
+
+    // 6. Filter berdasarkan urgensi pengiriman
+    if (tableState.urgencyFilter !== 'all') {
+      result = result.filter(order => {
+        const activeStatuses = ['READY_TO_SHIP', 'PROCESSED'];
+        if (!activeStatuses.includes(order.order_status)) return false;
+        if (tableState.urgencyFilter === 'overdue') return isOverdue(order.ship_by_date);
+        if (tableState.urgencyFilter === 'today') return !isOverdue(order.ship_by_date) && isToday(order.ship_by_date);
+        if (tableState.urgencyFilter === 'preorder') return order.days_to_ship > 2;
+        return true;
+      });
       if (result.length === 0) return result;
     }
 
@@ -1638,13 +1664,21 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     }));
   }, []);
 
+  const handleUrgencyFilter = useCallback((urgency: 'all' | 'overdue' | 'today' | 'preorder') => {
+    setTableState(prev => ({
+      ...prev,
+      urgencyFilter: urgency
+    }));
+  }, []);
+
   const handleResetFilter = useCallback(() => {
     setTableState(prev => ({
       ...prev,
       selectedShops: [],
       printStatus: 'all',
       selectedCouriers: [],
-      paymentType: 'all'
+      paymentType: 'all',
+      urgencyFilter: 'all'
     }));
   }, []);
 
@@ -1933,6 +1967,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                       onCourierFilter={handleCourierFilter}
                       onPrintStatusFilter={handlePrintStatusFilter}
                       onPaymentTypeFilter={handlePaymentTypeFilter}
+                      onUrgencyFilter={handleUrgencyFilter}
                       onResetFilter={handleResetFilter}
                     />
                   </div>
@@ -2047,6 +2082,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                     onCourierFilter={handleCourierFilter}
                     onPrintStatusFilter={handlePrintStatusFilter}
                     onPaymentTypeFilter={handlePaymentTypeFilter}
+                    onUrgencyFilter={handleUrgencyFilter}
                     onResetFilter={handleResetFilter}
                   />
                 </PopoverContent>

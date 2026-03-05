@@ -78,7 +78,8 @@ export async function GET(req: NextRequest) {
       .from('orders')
       .select(`
           order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
+          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed,
+          ship_by_date, days_to_ship
         `)
       .in('shop_id', shopIds)
       .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
