@@ -116,18 +116,15 @@ export function useBookings(dateRange?: DateRange | undefined) {
       setLastDateRange(dateRangeToUse)
 
       // Konversi tanggal ke UNIX timestamp (dalam detik)
-      // PENTING: Gunakan UTC eksplisit agar konsisten antara lokal (WIB) dan server production (UTC)
+      // Hook ini jalan di browser (client-side), jadi setHours() memakai timezone browser (WIB)
       const startDate = new Date(dateRangeToUse.from)
       const endDate = new Date(dateRangeToUse.to || dateRangeToUse.from)
 
-      const startTimestamp = Math.floor(Date.UTC(
-        startDate.getFullYear(), startDate.getMonth(), startDate.getDate(),
-        0, 0, 0, 0
-      ) / 1000)
-      const endTimestamp = Math.floor(Date.UTC(
-        endDate.getFullYear(), endDate.getMonth(), endDate.getDate(),
-        23, 59, 59, 999
-      ) / 1000)
+      startDate.setHours(0, 0, 0, 0)
+      endDate.setHours(23, 59, 59, 999)
+
+      const startTimestamp = Math.floor(startDate.getTime() / 1000)
+      const endTimestamp = Math.floor(endDate.getTime() / 1000)
 
       // Gunakan API database lokal
       const params = new URLSearchParams({

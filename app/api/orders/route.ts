@@ -82,17 +82,15 @@ export async function GET(req: NextRequest) {
     let endTimestampValue = parseInt(endTimestamp);
 
     if (startTimestampValue === endTimestampValue) {
-      // Konversi timestamp ke Date untuk mendapatkan komponen tanggal (tahun, bulan, hari)
+      // Konversi timestamp ke Date untuk mendapatkan tanggal
       const dateObj = new Date(startTimestampValue * 1000);
-      // Gunakan UTC eksplisit agar konsisten dengan frontend yang mengirim timestamp UTC
-      startTimestampValue = Math.floor(Date.UTC(
-        dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate(),
-        0, 0, 0, 0
-      ) / 1000);
-      endTimestampValue = Math.floor(Date.UTC(
-        dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate(),
-        23, 59, 59, 999
-      ) / 1000);
+      // Set waktu ke awal hari (00:00:00)
+      dateObj.setHours(0, 0, 0, 0);
+      startTimestampValue = Math.floor(dateObj.getTime() / 1000);
+
+      // Set waktu ke akhir hari (23:59:59)
+      dateObj.setHours(23, 59, 59, 999);
+      endTimestampValue = Math.floor(dateObj.getTime() / 1000);
 
       console.log(`Mengubah rentang timestamp untuk satu hari penuh: ${startTimestampValue} - ${endTimestampValue}`);
     }
