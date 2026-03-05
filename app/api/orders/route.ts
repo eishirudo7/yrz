@@ -82,17 +82,27 @@ export async function GET(req: NextRequest) {
     let endTimestampValue = parseInt(endTimestamp);
 
     if (startTimestampValue === endTimestampValue) {
-      // Konversi timestamp ke Date untuk mendapatkan tanggal
-      const dateObj = new Date(startTimestampValue * 1000);
-      // Set waktu ke awal hari (00:00:00)
-      dateObj.setHours(0, 0, 0, 0);
-      startTimestampValue = Math.floor(dateObj.getTime() / 1000);
+      // Konversi timestamp ke Date, lalu tentukan batas hari dalam WIB (bukan timezone server)
+      const { toZonedTime } = await import('date-fns-tz');
+      const WIB = 'Asia/Jakarta';
+      const zonedDate = toZonedTime(new Date(startTimestampValue * 1000), WIB);
 
-      // Set waktu ke akhir hari (23:59:59)
-      dateObj.setHours(23, 59, 59, 999);
-      endTimestampValue = Math.floor(dateObj.getTime() / 1000);
+      // Hitung awal hari (00:00:00 WIB) = date - offset jam WIB
+      const wibOffsetMs = 7 * 60 * 60 * 1000; // WIB = UTC+7
+      const dayStartUTC = Date.UTC(
+        zonedDate.getFullYear(), zonedDate.getMonth(), zonedDate.getDate(),
+        0, 0, 0, 0
+      ) - wibOffsetMs;
+      startTimestampValue = Math.floor(dayStartUTC / 1000);
 
-      console.log(`Mengubah rentang timestamp untuk satu hari penuh: ${startTimestampValue} - ${endTimestampValue}`);
+      // Hitung akhir hari (23:59:59.999 WIB)
+      const dayEndUTC = Date.UTC(
+        zonedDate.getFullYear(), zonedDate.getMonth(), zonedDate.getDate(),
+        23, 59, 59, 999
+      ) - wibOffsetMs;
+      endTimestampValue = Math.floor(dayEndUTC / 1000);
+
+      console.log(`Mengubah rentang timestamp untuk satu hari penuh (WIB): ${startTimestampValue} - ${endTimestampValue}`);
     }
 
     // === OPTIMASI: Pisahkan query menjadi beberapa bagian dengan paginasi ===

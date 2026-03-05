@@ -101,7 +101,7 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
         setOrderDetails(null)
         return
       }
-      
+
       setIsLoading(true)
       try {
         const response = await axios.get(`/api/order_details?order_sn=${orderSn}`)
@@ -123,7 +123,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'Asia/Jakarta'
     })
   }
 
@@ -170,9 +171,9 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
 
   const handleConfirmAction = async () => {
     setIsConfirmActionOpen(false);
-    
+
     if (!orderDetails) return;
-    
+
     try {
       toast.promise(
         async () => {
@@ -189,7 +190,7 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
           });
 
           const result = await response.json();
-          
+
           if (!result.success) {
             throw new Error(result.message || 'Gagal memproses pembatalan');
           }
@@ -218,11 +219,11 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
 
   const renderCancelButton = (status: string) => {
     const allowedStatuses = ['UNPAID', 'READY_TO_SHIP', 'PROCESSED'];
-    
+
     if (allowedStatuses.includes(status)) {
       return (
-        <Button 
-          variant="ghost" 
+        <Button
+          variant="ghost"
           size="icon"
           onClick={() => setShowConfirmDialog(true)}
           className="h-6 w-6 dark:hover:bg-gray-700"
@@ -237,8 +238,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
   return (
     <>
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent 
-          className="w-full sm:w-[80%] lg:max-w-[500px] p-2 sm:p-6 overflow-hidden" 
+        <SheetContent
+          className="w-full sm:w-[80%] lg:max-w-[500px] p-2 sm:p-6 overflow-hidden"
           side="right"
         >
           <SheetHeader className="mb-1">
@@ -266,8 +267,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
                       {orderDetails.order_sn}
                     </h3>
                     <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className="text-xs sm:text-sm whitespace-nowrap px-2 py-0.5"
                       >
                         {orderDetails.order_status}
@@ -282,8 +283,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
                       </p>
                       {orderDetails.order_status === 'IN_CANCEL' && (
                         <div className="flex gap-2 mt-2">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="h-7 px-2 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-900/50 dark:hover:text-green-300"
                             onClick={() => handleCancellationAction('ACCEPT')}
@@ -291,8 +292,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
                             <CheckCircle className="h-3.5 w-3.5 mr-1" />
                             Terima Pembatalan
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="h-7 px-2 text-xs bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800 dark:hover:bg-red-900/50 dark:hover:text-red-300"
                             onClick={() => handleCancellationAction('REJECT')}
@@ -405,7 +406,7 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
           <DialogHeader>
             <DialogTitle className="dark:text-white">Konfirmasi Pembatalan</DialogTitle>
             <DialogDescription className="dark:text-gray-300">
-              Apakah Anda yakin ingin membatalkan pesanan ini? 
+              Apakah Anda yakin ingin membatalkan pesanan ini?
               Tindakan ini tidak dapat dibatalkan.
             </DialogDescription>
           </DialogHeader>
@@ -435,8 +436,8 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
               Konfirmasi {selectedAction.action === 'ACCEPT' ? 'Terima' : 'Tolak'} Pembatalan
             </AlertDialogTitle>
             <AlertDialogDescription className="dark:text-gray-300">
-              {selectedAction.action === 'ACCEPT' 
-                ? 'Anda akan menerima permintaan pembatalan pesanan ini. Pesanan akan dibatalkan. Lanjutkan?' 
+              {selectedAction.action === 'ACCEPT'
+                ? 'Anda akan menerima permintaan pembatalan pesanan ini. Pesanan akan dibatalkan. Lanjutkan?'
                 : 'Anda akan menolak permintaan pembatalan pesanan ini. Pesanan akan tetap diproses. Lanjutkan?'}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -444,9 +445,9 @@ export function OrderDetails({ orderSn, isOpen, onClose }: OrderDetailsProps) {
             <AlertDialogCancel className="dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:border-gray-600">
               Batal
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleConfirmAction}
-              className={selectedAction.action === 'ACCEPT' 
+              className={selectedAction.action === 'ACCEPT'
                 ? "bg-green-600 hover:bg-green-700 text-white dark:bg-green-700 dark:hover:bg-green-800"
                 : "bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
               }
