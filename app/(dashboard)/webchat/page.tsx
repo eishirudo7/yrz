@@ -76,8 +76,8 @@ const ConversationItem = React.memo(({ conversation, isSelected, isMobileView, o
     <>
       <div
         className={`grid grid-cols-[auto_1fr] gap-x-2 gap-y-0 p-2 ${isSelected
-            ? 'bg-primary/10 border-l-4 border-primary shadow-sm dark:bg-primary/20 relative'
-            : 'hover:bg-muted/50 cursor-pointer border-l-4 border-transparent'
+          ? 'bg-primary/10 border-l-4 border-primary shadow-sm dark:bg-primary/20 relative'
+          : 'hover:bg-muted/50 cursor-pointer border-l-4 border-transparent'
           } ${isMobileView ? 'text-sm' : ''} transition-all duration-200 ease-in-out mb-1 rounded-sm`}
         onClick={() => {
           // Pada mobile, percakapan yang aktif juga bisa diklik
@@ -299,8 +299,8 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
   return (
     <div className={`flex ${message.sender === 'seller' ? 'justify-end' : 'justify-start'} mb-4 w-full`}>
       <div className={`max-w-[75%] rounded-lg p-3 ${message.sender === 'seller'
-          ? 'bg-primary text-primary-foreground dark:bg-primary/90'
-          : 'bg-muted dark:bg-muted/50 dark:text-foreground'
+        ? 'bg-primary text-primary-foreground dark:bg-primary/90'
+        : 'bg-muted dark:bg-muted/50 dark:text-foreground'
         }`}>
         {message.type === 'text' ? (
           <div>
@@ -329,22 +329,22 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     {orderInfo && orderInfo.order_status && (
                       <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${orderInfo.order_status === 'PAID'
-                          ? 'bg-green-500 text-white dark:bg-green-600'
-                          : orderInfo.order_status === 'UNPAID'
-                            ? 'bg-yellow-500 text-white dark:bg-yellow-600'
-                            : orderInfo.order_status === 'CANCELLED'
-                              ? 'bg-red-500 text-white dark:bg-red-600'
-                              : orderInfo.order_status === 'COMPLETED'
+                        ? 'bg-green-500 text-white dark:bg-green-600'
+                        : orderInfo.order_status === 'UNPAID'
+                          ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                          : orderInfo.order_status === 'CANCELLED'
+                            ? 'bg-red-500 text-white dark:bg-red-600'
+                            : orderInfo.order_status === 'COMPLETED'
+                              ? 'bg-blue-500 text-white dark:bg-blue-600'
+                              : orderInfo.order_status === 'PROCESSED'
                                 ? 'bg-blue-500 text-white dark:bg-blue-600'
-                                : orderInfo.order_status === 'PROCESSED'
+                                : orderInfo.order_status === 'SHIPPED'
                                   ? 'bg-blue-500 text-white dark:bg-blue-600'
-                                  : orderInfo.order_status === 'SHIPPED'
-                                    ? 'bg-blue-500 text-white dark:bg-blue-600'
-                                    : orderInfo.order_status === 'DELIVERED'
-                                      ? 'bg-green-500 text-white dark:bg-green-600'
-                                      : orderInfo.order_status === 'IN_CANCEL'
-                                        ? 'bg-red-500 text-white dark:bg-red-600'
-                                        : 'bg-muted text-white dark:bg-muted/80'
+                                  : orderInfo.order_status === 'DELIVERED'
+                                    ? 'bg-green-500 text-white dark:bg-green-600'
+                                    : orderInfo.order_status === 'IN_CANCEL'
+                                      ? 'bg-red-500 text-white dark:bg-red-600'
+                                      : 'bg-muted text-white dark:bg-muted/80'
                         }`}>
                         {orderInfo.order_status}
                       </span>
@@ -460,22 +460,22 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {orderInfo && orderInfo.order_status && (
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full leading-none ${orderInfo.order_status === 'PAID'
-                      ? 'bg-green-500 text-white dark:bg-green-600'
-                      : orderInfo.order_status === 'UNPAID'
-                        ? 'bg-yellow-500 text-white dark:bg-yellow-600'
-                        : orderInfo.order_status === 'CANCELLED'
-                          ? 'bg-red-500 text-white dark:bg-red-600'
-                          : orderInfo.order_status === 'COMPLETED'
+                    ? 'bg-green-500 text-white dark:bg-green-600'
+                    : orderInfo.order_status === 'UNPAID'
+                      ? 'bg-yellow-500 text-white dark:bg-yellow-600'
+                      : orderInfo.order_status === 'CANCELLED'
+                        ? 'bg-red-500 text-white dark:bg-red-600'
+                        : orderInfo.order_status === 'COMPLETED'
+                          ? 'bg-blue-500 text-white dark:bg-blue-600'
+                          : orderInfo.order_status === 'PROCESSED'
                             ? 'bg-blue-500 text-white dark:bg-blue-600'
-                            : orderInfo.order_status === 'PROCESSED'
+                            : orderInfo.order_status === 'SHIPPED'
                               ? 'bg-blue-500 text-white dark:bg-blue-600'
-                              : orderInfo.order_status === 'SHIPPED'
-                                ? 'bg-blue-500 text-white dark:bg-blue-600'
-                                : orderInfo.order_status === 'DELIVERED'
-                                  ? 'bg-green-500 text-white dark:bg-green-600'
-                                  : orderInfo.order_status === 'IN_CANCEL'
-                                    ? 'bg-red-500 text-white dark:bg-red-600'
-                                    : 'bg-muted text-white dark:bg-muted/80'
+                              : orderInfo.order_status === 'DELIVERED'
+                                ? 'bg-green-500 text-white dark:bg-green-600'
+                                : orderInfo.order_status === 'IN_CANCEL'
+                                  ? 'bg-red-500 text-white dark:bg-red-600'
+                                  : 'bg-muted text-white dark:bg-muted/80'
                     }`}>
                     {orderInfo.order_status}
                   </span>
@@ -753,7 +753,7 @@ const OrderDetail = React.memo(({ order }: OrderDetailProps) => {
 
       {/* Daftar Item */}
       <div className="px-3">
-        {order.order_items.map((item, index) => (
+        {order.order_items?.map((item, index) => (
           <OrderItem key={`${item.item_id}-${index}`} item={item} />
         ))}
       </div>

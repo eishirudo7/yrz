@@ -54,11 +54,11 @@ interface OrderDetail {
 
 export default function UbahPesananPage() {
   // State dan hooks
-  const { 
-    perubahanPesanan, 
-    loading, 
-    error, 
-    updateStatusPesanan, 
+  const {
+    perubahanPesanan,
+    loading,
+    error,
+    updateStatusPesanan,
     hapusPerubahanPesanan,
     chats,
     sendMessage,
@@ -72,7 +72,7 @@ export default function UbahPesananPage() {
     statusFilter,
     handleStatusFilterChange
   } = useUbahPesanan()
-  
+
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState<PerubahanPesanan | null>(null)
   const [chatMessage, setChatMessage] = useState('')
@@ -80,11 +80,11 @@ export default function UbahPesananPage() {
   const [orderDetails, setOrderDetails] = useState<OrderDetail[] | null>(null)
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'orders'>('chat')
-  
+
   // Hook untuk print dokumen
-  const { 
-    downloadDocument, 
-    isLoadingForOrder 
+  const {
+    downloadDocument,
+    isLoadingForOrder
   } = useShippingDocument()
 
   // Hitung total halaman
@@ -101,7 +101,7 @@ export default function UbahPesananPage() {
   const handleStatusClick = async (order: PerubahanPesanan) => {
     const newStatus = order.status === "BARU" ? "DICATAT" : "BARU"
     await updateStatusPesanan(order.id, newStatus)
-    
+
     // Update selectedOrder jika yang diubah adalah order yang sedang dibuka
     if (selectedOrder && selectedOrder.id === order.id) {
       setSelectedOrder({
@@ -158,9 +158,9 @@ export default function UbahPesananPage() {
 
       const { blob } = await downloadDocument(order.shop_id, [params]);
       const url = URL.createObjectURL(blob);
-      
+
       window.open(url, '_blank');
-      
+
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 1000);
@@ -237,7 +237,7 @@ export default function UbahPesananPage() {
           });
 
           const result = await response.json();
-          
+
           if (!result.success) {
             throw new Error(result.message || 'Gagal memproses pembatalan');
           }
@@ -303,16 +303,16 @@ export default function UbahPesananPage() {
             >
               <SelectTrigger className="w-[130px]">
                 <SelectValue>
-                  {statusFilter === 'semua' ? 'Semua' : 
-                   statusFilter === 'BARU' ? (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="destructive" className="h-4 text-[10px] font-medium py-0">Baru</Badge>
-                    </div>
-                   ) : (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="default" className="h-4 text-[10px] font-medium py-0">Dicatat</Badge>
-                    </div>
-                   )}
+                  {statusFilter === 'semua' ? 'Semua' :
+                    statusFilter === 'BARU' ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive" className="h-4 text-[10px] font-medium py-0">Baru</Badge>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default" className="h-4 text-[10px] font-medium py-0">Dicatat</Badge>
+                      </div>
+                    )}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -369,8 +369,8 @@ export default function UbahPesananPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <MessageSquare 
-                    className="h-5 w-5 text-blue-500 hover:text-blue-600 cursor-pointer" 
+                  <MessageSquare
+                    className="h-5 w-5 text-blue-500 hover:text-blue-600 cursor-pointer"
                     onClick={() => handleChatClick(order)}
                   />
                   {order.nomor_invoice && order.shop_id && (
@@ -391,7 +391,7 @@ export default function UbahPesananPage() {
                 </div>
               </CardTitle>
             </CardHeader>
-            
+
             <CardContent className="p-4">
               <div className="flex justify-between items-center mb-3">
                 <div>
@@ -399,7 +399,7 @@ export default function UbahPesananPage() {
                 </div>
                 <p className="text-xs text-gray-500">ID: {order.id_pengguna}</p>
               </div>
-              
+
               <div className="flex space-x-3 mb-3">
                 <div className="bg-gray-100 p-3 rounded-md flex-1">
                   <h3 className="font-semibold text-xs mb-2">Perubahan:</h3>
@@ -446,7 +446,7 @@ export default function UbahPesananPage() {
             </CardContent>
 
             <CardFooter className="p-4 bg-gray-50 flex justify-between items-center">
-              <Button 
+              <Button
                 variant={order.status === "DICATAT" ? "default" : "destructive"}
                 size="sm"
                 onClick={() => handleStatusClick(order)}
@@ -454,8 +454,8 @@ export default function UbahPesananPage() {
                 <FileText className="h-4 w-4 mr-2" />
                 {order.status}
               </Button>
-              <Trash2 
-                className="h-5 w-5 text-red-500 hover:text-red-600 cursor-pointer" 
+              <Trash2
+                className="h-5 w-5 text-red-500 hover:text-red-600 cursor-pointer"
                 onClick={() => handleDeleteClick(order.id)}
               />
             </CardFooter>
@@ -469,7 +469,7 @@ export default function UbahPesananPage() {
           <div className="text-sm text-gray-500">
             Menampilkan {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, totalItems)} dari {totalItems} item
           </div>
-          
+
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -489,7 +489,7 @@ export default function UbahPesananPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            
+
             <div className="flex items-center gap-1 px-2">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let pageNum
@@ -502,7 +502,7 @@ export default function UbahPesananPage() {
                 } else {
                   pageNum = currentPage - 2 + i
                 }
-                
+
                 return (
                   <Button
                     key={pageNum}
@@ -559,21 +559,19 @@ export default function UbahPesananPage() {
           {/* Tab buttons untuk mobile */}
           <div className="sm:hidden flex border-b border-gray-200 shrink-0">
             <button
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'chat'
+              className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'chat'
                   ? 'border-b-2 border-blue-500 text-blue-500'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
               onClick={() => setActiveTab('chat')}
             >
               Chat
             </button>
             <button
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'orders'
+              className={`flex-1 py-2 text-sm font-medium transition-colors ${activeTab === 'orders'
                   ? 'border-b-2 border-blue-500 text-blue-500'
                   : 'text-gray-500 hover:text-gray-700'
-              }`}
+                }`}
               onClick={() => setActiveTab('orders')}
             >
               Detail Pesanan
@@ -588,23 +586,22 @@ export default function UbahPesananPage() {
               w-full
               h-full
             `}>
-              <div 
-                ref={chatContainerRef} 
+              <div
+                ref={chatContainerRef}
                 className="flex-1 overflow-y-auto p-4 space-y-4 bg-white"
               >
                 {chats.map((chat) => (
                   <div key={chat.id} className={`flex ${chat.sender === 'seller' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-lg ${
-                      chat.sender === 'seller' 
-                      ? 'bg-blue-100 text-blue-900' 
-                      : 'bg-gray-100 text-gray-900'
-                    } p-3 shadow-sm`}>
+                    <div className={`max-w-[85%] rounded-lg ${chat.sender === 'seller'
+                        ? 'bg-blue-100 text-blue-900'
+                        : 'bg-gray-100 text-gray-900'
+                      } p-3 shadow-sm`}>
                       {/* Quoted Message jika ada */}
                       {chat.quoted_msg && (
                         <div className="mb-2 p-2 bg-white/50 rounded text-xs border-l-2 border-gray-400">
                           {chat.quoted_msg.image_url && (
-                            <img 
-                              src={chat.quoted_msg.image_url} 
+                            <img
+                              src={chat.quoted_msg.image_url}
                               alt="Quoted image"
                               className="w-16 h-16 object-cover rounded mb-1"
                             />
@@ -622,7 +619,7 @@ export default function UbahPesananPage() {
 
                       {chat.message_type === 'image' && (chat.content.url || chat.content.image_url) && (
                         <div className="space-y-2">
-                          <img 
+                          <img
                             src={chat.content.url || chat.content.image_url}
                             alt="Chat image"
                             className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
@@ -630,8 +627,8 @@ export default function UbahPesananPage() {
                               maxHeight: '300px',
                               width: 'auto',
                               maxWidth: '100%',
-                              aspectRatio: chat.content.thumb_width && chat.content.thumb_height 
-                                ? `${chat.content.thumb_width}/${chat.content.thumb_height}` 
+                              aspectRatio: chat.content.thumb_width && chat.content.thumb_height
+                                ? `${chat.content.thumb_width}/${chat.content.thumb_height}`
                                 : 'auto'
                             }}
                             onClick={() => window.open(chat.content.url || chat.content.image_url, '_blank')}
@@ -658,7 +655,7 @@ export default function UbahPesananPage() {
                   </div>
                 ))}
               </div>
-              
+
               <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 shrink-0 bg-white">
                 <div className="flex gap-2">
                   <Input
@@ -669,9 +666,9 @@ export default function UbahPesananPage() {
                     className="flex-grow bg-white text-gray-900 border-gray-200"
                     disabled={isLoadingSend}
                   />
-                  <Button 
-                    type="submit" 
-                    size="sm" 
+                  <Button
+                    type="submit"
+                    size="sm"
                     disabled={isLoadingSend}
                     className="bg-blue-500 hover:bg-blue-600"
                   >
@@ -694,7 +691,7 @@ export default function UbahPesananPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Status Perubahan:</span>
                     <div className="flex items-center gap-2">
-                      <Button 
+                      <Button
                         variant={selectedOrder.status === "DICATAT" ? "default" : "destructive"}
                         size="sm"
                         onClick={() => handleStatusClick(selectedOrder)}
@@ -715,11 +712,11 @@ export default function UbahPesananPage() {
                 ) : orderDetails && orderDetails.length > 0 ? (
                   <div className="space-y-4">
                     {orderDetails.map((order) => (
-                      <div 
-                        key={order.order_sn} 
+                      <div
+                        key={order.order_sn}
                         className={`bg-white rounded-lg border shadow-sm transition-all duration-300
-                          ${order.order_sn === selectedOrder?.nomor_invoice 
-                            ? 'border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
+                          ${order.order_sn === selectedOrder?.nomor_invoice
+                            ? 'border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.5)]'
                             : 'hover:shadow-md'
                           }
                         `}
@@ -783,10 +780,10 @@ export default function UbahPesananPage() {
 
                         {/* Detail Produk */}
                         <div className="p-3">
-                          {order.order_items.map((item) => (
+                          {order.order_items?.map((item) => (
                             <div key={item.item_id} className="flex gap-3 items-start">
-                              <img 
-                                src={item.image_url} 
+                              <img
+                                src={item.image_url}
                                 alt={item.item_name}
                                 className="w-20 h-20 object-cover rounded-md border"
                               />
