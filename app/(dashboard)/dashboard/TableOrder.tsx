@@ -214,7 +214,8 @@ interface TableState {
   printStatus: 'all' | 'printed' | 'unprinted';
   selectedCouriers: string[];
   paymentType: 'all' | 'cod' | 'non_cod';
-  urgencyFilter: 'all' | 'overdue' | 'today' | 'preorder';
+  urgencyFilter: 'all' | 'overdue' | 'today';
+  orderType: 'all' | 'po' | 'non_po';
 }
 
 
@@ -267,6 +268,7 @@ const FilterContent = React.memo(({
   onPrintStatusFilter,
   onPaymentTypeFilter,
   onUrgencyFilter,
+  onOrderTypeFilter,
   onResetFilter
 }: {
   tableState: TableState;
@@ -277,7 +279,8 @@ const FilterContent = React.memo(({
   onCourierFilter: (courier: string) => void;
   onPrintStatusFilter: (status: 'all' | 'printed' | 'unprinted') => void;
   onPaymentTypeFilter: (type: 'all' | 'cod' | 'non_cod') => void;
-  onUrgencyFilter: (urgency: 'all' | 'overdue' | 'today' | 'preorder') => void;
+  onUrgencyFilter: (urgency: 'all' | 'overdue' | 'today') => void;
+  onOrderTypeFilter: (orderType: 'all' | 'po' | 'non_po') => void;
   onResetFilter: () => void;
 }) => (
   <div className="flex flex-col gap-3 p-1">
@@ -294,11 +297,28 @@ const FilterContent = React.memo(({
         </button>
       </div>
       <div className="flex flex-wrap gap-1">
-        {([['all', 'Semua'], ['overdue', '⚠ Telat'], ['today', '⏰ Hari Ini'], ['preorder', 'PO']] as const).map(([val, label]) => (
+        {([['all', 'Semua'], ['overdue', '⚠ Telat'], ['today', '⏰ Hari Ini']] as const).map(([val, label]) => (
           <button
             key={val}
             onClick={() => onUrgencyFilter(val)}
             className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.urgencyFilter === val
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
+              }`}
+          >{label}</button>
+        ))}
+      </div>
+    </div>
+
+    {/* Tipe Order */}
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Tipe Order</p>
+      <div className="flex flex-wrap gap-1">
+        {([['all', 'Semua'], ['po', 'PO'], ['non_po', 'Non-PO']] as const).map(([val, label]) => (
+          <button
+            key={val}
+            onClick={() => onOrderTypeFilter(val)}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${tableState.orderType === val
               ? 'bg-primary text-primary-foreground border-primary'
               : 'bg-transparent border-border text-muted-foreground hover:border-primary hover:text-primary'
               }`}
@@ -395,7 +415,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     printStatus: 'all',
     selectedCouriers: [],
     paymentType: 'all',
-    urgencyFilter: 'all'
+    urgencyFilter: 'all',
+    orderType: 'all'
   });
 
   // Tambahkan state terpisah untuk input pencarian
@@ -551,7 +572,16 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
         if (!activeStatuses.includes(order.order_status)) return false;
         if (tableState.urgencyFilter === 'overdue') return isOverdue(order.ship_by_date);
         if (tableState.urgencyFilter === 'today') return !isOverdue(order.ship_by_date) && isToday(order.ship_by_date);
-        if (tableState.urgencyFilter === 'preorder') return order.days_to_ship > 2;
+        return true;
+      });
+      if (result.length === 0) return result;
+    }
+
+    // 7. Filter berdasarkan tipe order (PO / Non-PO)
+    if (tableState.orderType !== 'all') {
+      result = result.filter(order => {
+        if (tableState.orderType === 'po') return order.days_to_ship > 2;
+        if (tableState.orderType === 'non_po') return order.days_to_ship <= 2;
         return true;
       });
       if (result.length === 0) return result;
@@ -1664,10 +1694,17 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     }));
   }, []);
 
-  const handleUrgencyFilter = useCallback((urgency: 'all' | 'overdue' | 'today' | 'preorder') => {
+  const handleUrgencyFilter = useCallback((urgency: 'all' | 'overdue' | 'today') => {
     setTableState(prev => ({
       ...prev,
       urgencyFilter: urgency
+    }));
+  }, []);
+
+  const handleOrderTypeFilter = useCallback((orderType: 'all' | 'po' | 'non_po') => {
+    setTableState(prev => ({
+      ...prev,
+      orderType: orderType
     }));
   }, []);
 
@@ -1678,7 +1715,8 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
       printStatus: 'all',
       selectedCouriers: [],
       paymentType: 'all',
-      urgencyFilter: 'all'
+      urgencyFilter: 'all',
+      orderType: 'all'
     }));
   }, []);
 
@@ -1968,6 +2006,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                       onPrintStatusFilter={handlePrintStatusFilter}
                       onPaymentTypeFilter={handlePaymentTypeFilter}
                       onUrgencyFilter={handleUrgencyFilter}
+                      onOrderTypeFilter={handleOrderTypeFilter}
                       onResetFilter={handleResetFilter}
                     />
                   </div>
@@ -2083,6 +2122,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
                     onPrintStatusFilter={handlePrintStatusFilter}
                     onPaymentTypeFilter={handlePaymentTypeFilter}
                     onUrgencyFilter={handleUrgencyFilter}
+                    onOrderTypeFilter={handleOrderTypeFilter}
                     onResetFilter={handleResetFilter}
                   />
                 </PopoverContent>
