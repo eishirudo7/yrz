@@ -59,7 +59,20 @@ export async function GET(request: Request) {
 
       if (data.length > 0) {
         // Get items for this order
-        const itemsData = await db.select().from(orderItems)
+        const itemsData = await db.select({
+          item_id: orderItems.itemId,
+          item_sku: orderItems.itemSku,
+          model_id: orderItems.modelId,
+          image_url: orderItems.imageUrl,
+          item_name: orderItems.itemName,
+          model_sku: orderItems.modelSku,
+          model_name: orderItems.modelName,
+          order_item_id: orderItems.orderItemId,
+          model_original_price: orderItems.modelOriginalPrice,
+          model_discounted_price: orderItems.modelDiscountedPrice,
+          model_quantity_purchased: orderItems.modelQuantityPurchased,
+          order_sn: orderItems.orderSn
+        }).from(orderItems)
           .where(eq(orderItems.orderSn, order_sn));
 
         // Get logistics for this order
@@ -73,7 +86,11 @@ export async function GET(request: Request) {
 
         data = data.map(order => ({
           ...order,
-          order_items: itemsData,
+          order_items: itemsData.map(item => ({
+            ...item,
+            model_original_price: Number(item.model_original_price || 0),
+            model_discounted_price: Number(item.model_discounted_price || 0),
+          })),
           logistics: logisticData,
           escrow: escrowData || null,
         }));
@@ -106,13 +123,34 @@ export async function GET(request: Request) {
         const orderSns = ordersData.map(o => o.order_sn);
 
         // Fetch order items for all these orders
-        const allItems = await db.select().from(orderItems)
+        const allItems = await db.select({
+          item_id: orderItems.itemId,
+          item_sku: orderItems.itemSku,
+          model_id: orderItems.modelId,
+          image_url: orderItems.imageUrl,
+          item_name: orderItems.itemName,
+          model_sku: orderItems.modelSku,
+          model_name: orderItems.modelName,
+          order_item_id: orderItems.orderItemId,
+          model_original_price: orderItems.modelOriginalPrice,
+          model_discounted_price: orderItems.modelDiscountedPrice,
+          model_quantity_purchased: orderItems.modelQuantityPurchased,
+          order_sn: orderItems.orderSn
+        }).from(orderItems)
           .where(sql`${orderItems.orderSn} IN ${orderSns}`);
 
         // Group items by order_sn
-        const itemsByOrderSn = allItems.reduce((acc: Record<string, typeof allItems>, item) => {
-          if (!acc[item.orderSn]) acc[item.orderSn] = [];
-          acc[item.orderSn].push(item);
+        const itemsByOrderSn = allItems.reduce((acc: Record<string, any[]>, item) => {
+          // @ts-ignore - handling string key safely
+          const orderSn = item.order_sn;
+          if (!acc[orderSn]) acc[orderSn] = [];
+
+          acc[orderSn].push({
+            ...item,
+            model_original_price: Number(item.model_original_price || 0),
+            model_discounted_price: Number(item.model_discounted_price || 0),
+          });
+
           return acc;
         }, {});
 
