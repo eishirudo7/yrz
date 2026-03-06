@@ -106,42 +106,49 @@ $$;
 -- ══════════════════════════════════════
 
 -- order_escrow: sync escrow_amount ke orders
+DROP TRIGGER IF EXISTS trg_sync_escrow_amount_from_escrow ON order_escrow;
 CREATE TRIGGER trg_sync_escrow_amount_from_escrow
   BEFORE INSERT OR UPDATE ON order_escrow
   FOR EACH ROW
   EXECUTE FUNCTION sync_escrow_amount_after_adjustment();
 
 -- orders: sync tracking_number ke logistic
+DROP TRIGGER IF EXISTS sync_tracking_number_to_logistic ON orders;
 CREATE TRIGGER sync_tracking_number_to_logistic
   AFTER UPDATE OF tracking_number ON orders
   FOR EACH ROW
   EXECUTE FUNCTION update_logistic_tracking_number();
 
 -- shopee_tokens: auto-add auto_ship_chat entry
+DROP TRIGGER IF EXISTS trg_add_auto_ship_chat ON shopee_tokens;
 CREATE TRIGGER trg_add_auto_ship_chat
   AFTER INSERT ON shopee_tokens
   FOR EACH ROW
   EXECUTE FUNCTION add_auto_ship_chat_entry();
 
 -- shopee_tokens: manage auto_ship_chat on is_active change
+DROP TRIGGER IF EXISTS on_shopee_tokens_update ON shopee_tokens;
 CREATE TRIGGER on_shopee_tokens_update
   AFTER UPDATE OF is_active ON shopee_tokens
   FOR EACH ROW
   EXECUTE FUNCTION manage_auto_ship_chat_rows();
 
 -- booking_orders: auto-update updated_at
+DROP TRIGGER IF EXISTS trigger_booking_orders_updated_at ON booking_orders;
 CREATE TRIGGER trigger_booking_orders_updated_at
   BEFORE UPDATE ON booking_orders
   FOR EACH ROW
   EXECUTE FUNCTION update_booking_orders_updated_at();
 
 -- subscription_plans: auto-update updated_at
+DROP TRIGGER IF EXISTS update_subscription_plans_updated_at ON subscription_plans;
 CREATE TRIGGER update_subscription_plans_updated_at
   BEFORE UPDATE ON subscription_plans
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- user_subscriptions: auto-update updated_at
+DROP TRIGGER IF EXISTS update_user_subscriptions_updated_at ON user_subscriptions;
 CREATE TRIGGER update_user_subscriptions_updated_at
   BEFORE UPDATE ON user_subscriptions
   FOR EACH ROW
