@@ -385,3 +385,54 @@ export async function fetchOrderItemsBatch(orderSns: string[]) {
 
     return allOrderItemsData;
 }
+
+// ============================================================
+// ORDER SEARCH
+// ============================================================
+
+export async function searchOrders(
+    shopIds: number[],
+    filters: { order_sn?: string; buyer_username?: string; tracking_number?: string }
+): Promise<any[]> {
+    let query = supabase
+        .from('orders')
+        .select('*')
+        .in('shop_id', shopIds);
+
+    if (filters.order_sn) query = query.ilike('order_sn', `%${filters.order_sn}%`);
+    if (filters.buyer_username) query = query.ilike('buyer_username', `%${filters.buyer_username}%`);
+    if (filters.tracking_number) query = query.ilike('tracking_number', `%${filters.tracking_number}%`);
+
+    const { data, error } = await query.order('create_time', { ascending: false });
+    if (error) throw new Error(`Error searching orders: ${error.message}`);
+    return data || [];
+}
+
+export async function fetchOrderItemsByOrderSn(orderSn: string): Promise<any[]> {
+    const { data, error } = await supabase
+        .from('order_items')
+        .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
+        .eq('order_sn', orderSn);
+
+    if (error) throw new Error(`Error fetching order items: ${error.message}`);
+    return data || [];
+}
+
+export async function fetchOrderItemsByOrderSns(orderSns: string[]): Promise<any[]> {
+    const { data, error } = await supabase
+        .from('order_items')
+        .select('order_sn, item_sku, model_sku, model_quantity_purchased, model_discounted_price')
+        .in('order_sn', orderSns);
+
+    if (error) throw new Error(`Error fetching order items: ${error.message}`);
+    return data || [];
+}
+
+export async function markOrdersAsPrinted(orderSns: string[]): Promise<void> {
+    const { error } = await supabase
+        .from('orders')
+        .update({ is_printed: true })
+        .in('order_sn', orderSns);
+
+    if (error) throw new Error(`Error marking orders as printed: ${error.message}`);
+}

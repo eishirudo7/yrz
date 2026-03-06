@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { supabase } from '@/lib/supabase';
+import { fetchKeluhanByShopIds, updateKeluhanStatus, deleteKeluhan } from '@/app/services/databaseOperations';
+import { getAllShopsFromDB } from '@/app/services/databaseOperations';
 
 // GET - Ambil keluhan berdasarkan toko user
-export async function GET(request: Request) {
+export async function GET() {
     try {
         const supabaseServer = await createClient();
         const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
@@ -12,29 +13,15 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Tidak terautentikasi' }, { status: 401 });
         }
 
-        // Get user's shop IDs
-        const { data: shops } = await supabase
-            .from('shopee_tokens')
-            .select('shop_id')
-            .eq('user_id', user.id)
-            .eq('is_active', true);
-
-        const shopIds = shops?.map(s => s.shop_id.toString()) || [];
+        const shops = await getAllShopsFromDB();
+        const shopIds = shops.map(s => s.shop_id.toString());
 
         if (shopIds.length === 0) {
             return NextResponse.json({ data: [] });
         }
 
-        const { data, error } = await supabase
-            .from('keluhan')
-            .select('*')
-            .in('shop_id', shopIds)
-            .order('create_at', { ascending: false })
-            .limit(20);
-
-        if (error) throw error;
-
-        return NextResponse.json({ data: data || [] });
+        const data = await fetchKeluhanByShopIds(shopIds);
+        return NextResponse.json({ data });
     } catch (error) {
         console.error('Error fetching keluhan:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -52,14 +39,7 @@ export async function PATCH(request: Request) {
         }
 
         const { id, status_keluhan } = await request.json();
-
-        const { error } = await supabase
-            .from('keluhan')
-            .update({ status_keluhan })
-            .eq('id', id);
-
-        if (error) throw error;
-
+        await updateKeluhanStatus(id, status_keluhan);
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error updating keluhan:', error);
@@ -84,13 +64,7 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: 'ID diperlukan' }, { status: 400 });
         }
 
-        const { error } = await supabase
-            .from('keluhan')
-            .delete()
-            .eq('id', parseInt(id));
-
-        if (error) throw error;
-
+        await deleteKeluhan(parseInt(id));
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error deleting keluhan:', error);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { supabase } from '@/lib/supabase';
+import { fetchOrderItemsByOrderSn } from '@/app/services/databaseOperations';
 
 // GET - Get order items for order detail
 export async function GET(request: Request) {
@@ -19,20 +19,15 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'order_sn diperlukan' }, { status: 400 });
         }
 
-        const { data, error } = await supabase
-            .from('order_items')
-            .select('model_quantity_purchased, model_discounted_price, item_sku, model_name')
-            .eq('order_sn', orderSn);
+        const items = await fetchOrderItemsByOrderSn(orderSn);
 
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
+        if (items.length === 0) {
             return NextResponse.json({ data: null });
         }
 
         return NextResponse.json({
             data: {
-                items: data.map(item => ({
+                items: items.map(item => ({
                     model_quantity_purchased: parseInt(item.model_quantity_purchased || '0'),
                     model_discounted_price: parseFloat(item.model_discounted_price || '0'),
                     item_sku: item.item_sku,

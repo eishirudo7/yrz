@@ -134,3 +134,21 @@ export async function getItemsBySku(itemIds: string[], shopId?: string | null): 
         throw error;
     }
 }
+
+export async function getItemsByShopIds(shopIds: number[]): Promise<any[]> {
+    const { data, error } = await supabase
+        .from('items')
+        .select('*')
+        .in('shop_id', shopIds);
+
+    if (error) throw new Error(`Error fetching items: ${error.message}`);
+    return data || [];
+}
+
+export async function upsertItem(item: any): Promise<void> {
+    const { error } = await supabase
+        .from('items')
+        .upsert(item, { onConflict: 'item_id' });
+
+    if (error) throw new Error(`Error upserting item: ${error.message}`);
+}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { supabase } from '@/lib/supabase';
+import { markOrdersAsPrinted } from '@/app/services/databaseOperations';
 
 // POST - Mark orders as printed
 export async function POST(request: Request) {
@@ -18,13 +18,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'order_sns diperlukan' }, { status: 400 });
         }
 
-        const { error } = await supabase
-            .from('orders')
-            .update({ is_printed: true })
-            .in('order_sn', order_sns);
-
-        if (error) throw error;
-
+        await markOrdersAsPrinted(order_sns);
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error marking orders as printed:', error);

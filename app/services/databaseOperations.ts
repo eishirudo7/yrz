@@ -21,6 +21,10 @@ export {
   getOrderPrintStatus,
   fetchDashboardOrders,
   fetchOrderItemsBatch,
+  searchOrders,
+  fetchOrderItemsByOrderSn,
+  fetchOrderItemsByOrderSns,
+  markOrdersAsPrinted,
 } from './db/orderOperations';
 
 // Escrow operations
@@ -57,10 +61,18 @@ export {
   getShopNameFromDB,
   getUserIdByShopId,
   getItemsBySku,
+  getItemsByShopIds,
+  upsertItem,
 } from './db/shopOperations';
 
 // User operations (keluhan, perubahan_pesanan)
 export {
   fetchKeluhanByUserId,
+  fetchKeluhanByShopIds,
+  updateKeluhanStatus,
+  deleteKeluhan,
   fetchPerubahanPesananByUserId,
+  fetchPerubahanPesananByShopIds,
+  updatePerubahanPesananStatus,
+  deletePerubahanPesanan,
 } from './db/userOperations';

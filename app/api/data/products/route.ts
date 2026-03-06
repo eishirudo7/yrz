@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
-import { supabase } from '@/lib/supabase';
+import { getItemsByShopIds, upsertItem } from '@/app/services/databaseOperations';
 
 // GET - Get products for user's shops
 export async function GET(request: Request) {
@@ -20,15 +20,8 @@ export async function GET(request: Request) {
         }
 
         const shopIds = shopIdsParam.split(',').map(Number);
-
-        const { data, error } = await supabase
-            .from('items')
-            .select('*')
-            .in('shop_id', shopIds);
-
-        if (error) throw error;
-
-        return NextResponse.json({ data: data || [] });
+        const data = await getItemsByShopIds(shopIds);
+        return NextResponse.json({ data });
     } catch (error) {
         console.error('Error fetching products:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -51,12 +44,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'item diperlukan' }, { status: 400 });
         }
 
-        const { error } = await supabase
-            .from('items')
-            .upsert(item, { onConflict: 'item_id' });
-
-        if (error) throw error;
-
+        await upsertItem(item);
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error upserting product:', error);
