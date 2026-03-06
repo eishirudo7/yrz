@@ -44,7 +44,23 @@ export async function GET(req: NextRequest) {
     console.log('Shops found:', shops.length);
 
     // Ambil shop_ids untuk filter
-    const shopIds = shops.map(shop => shop.shop_id);
+    const shopIds = shops.map(shop => shop.shop_id).filter(id => id !== undefined && id !== null);
+
+    if (shopIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          summary: {
+            pesananPerToko: {},
+            omsetPerToko: {},
+            totalOrders: 0,
+            totalOmset: 0
+          },
+          orders: [],
+          shops: []
+        }
+      });
+    }
 
     // Konversi waktu ke zona Jakarta dan ambil timestamp
     const jakartaDate = toZonedTime(new Date(), 'Asia/Jakarta');

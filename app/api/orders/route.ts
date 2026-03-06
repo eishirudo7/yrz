@@ -65,7 +65,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Buat array shop_id dari toko milik user
-    const userShopIds = userShops.map(shop => shop.shop_id);
+    const userShopIds = userShops.map(shop => shop.shop_id).filter(id => id !== undefined && id !== null);
+
+    if (userShopIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        total: 0,
+        ordersWithoutEscrow: []
+      });
+    }
 
     // Ambil parameter query
     const url = new URL(req.url);
