@@ -73,14 +73,14 @@ export async function GET(request: Request) {
 
         data = data.map(order => ({
           ...order,
-          items: itemsData,
+          order_items: itemsData,
           logistics: logisticData,
           escrow: escrowData || null,
         }));
       }
     } else {
       // All orders by buyer_user_id
-      data = await db.select({
+      const ordersData = await db.select({
         order_sn: orders.orderSn,
         shop_id: orders.shopId,
         buyer_user_id: orders.buyerUserId,
@@ -101,6 +101,28 @@ export async function GET(request: Request) {
         .from(orders)
         .leftJoin(shopeeTokens, eq(orders.shopId, shopeeTokens.shopId))
         .where(eq(orders.buyerUserId, parseInt(user_id!)));
+
+      if (ordersData.length > 0) {
+        const orderSns = ordersData.map(o => o.order_sn);
+
+        // Fetch order items for all these orders
+        const allItems = await db.select().from(orderItems)
+          .where(sql`${orderItems.orderSn} IN ${orderSns}`);
+
+        // Group items by order_sn
+        const itemsByOrderSn = allItems.reduce((acc: Record<string, typeof allItems>, item) => {
+          if (!acc[item.orderSn]) acc[item.orderSn] = [];
+          acc[item.orderSn].push(item);
+          return acc;
+        }, {});
+
+        data = ordersData.map(order => ({
+          ...order,
+          order_items: itemsByOrderSn[order.order_sn] || []
+        }));
+      } else {
+        data = [];
+      }
     }
 
     return NextResponse.json({
