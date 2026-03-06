@@ -390,15 +390,15 @@ export const OrderTable: React.FC<OrderTableProps> = ({
               >
                 <div className="flex items-center gap-1 flex-nowrap">
                   <span>{formatDate(order.pay_time)}</span>
-                  {['READY_TO_SHIP', 'PROCESSED'].includes(order.order_status) && order.ship_by_date > 0 && (
+                  {['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL'].includes(order.order_status) && order.ship_by_date > 0 && (
                     isOverdue(order.ship_by_date)
-                      ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300 border border-red-200 dark:border-red-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⚠ Telat</span>
+                      ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300 border border-red-200 dark:border-red-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⚠</span>
                       : isToday(order.ship_by_date)
-                        ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-200 dark:border-amber-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⏰ Hari Ini</span>
+                        ? <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-200 dark:border-amber-700 leading-none" title={`Deadline: ${formatDate(order.ship_by_date)}`}>⏰</span>
                         : null
                   )}
-                  {['READY_TO_SHIP', 'PROCESSED'].includes(order.order_status) && order.days_to_ship > 2 && (
-                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 border border-purple-200 dark:border-purple-700 leading-none" title={`SLA ${order.days_to_ship} hari (Pre-Order)`}>PO</span>
+                  {['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL'].includes(order.order_status) && order.days_to_ship > 2 && (
+                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300 border border-purple-200 dark:border-purple-700 leading-none" title={`Pre-Order (SLA ${order.days_to_ship} hari) — Deadline: ${formatDate(order.ship_by_date)}`}>PO</span>
                   )}
                 </div>
               </TableCell>

@@ -547,7 +547,7 @@ export function OrdersDetailTable({ orders, onOrderUpdate, isLoading }: OrdersDe
     // 6. Filter berdasarkan urgensi pengiriman
     if (tableState.urgencyFilter !== 'all') {
       result = result.filter(order => {
-        const activeStatuses = ['READY_TO_SHIP', 'PROCESSED'];
+        const activeStatuses = ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL'];
         if (!activeStatuses.includes(order.order_status)) return false;
         if (tableState.urgencyFilter === 'overdue') return isOverdue(order.ship_by_date);
         if (tableState.urgencyFilter === 'today') return !isOverdue(order.ship_by_date) && isToday(order.ship_by_date);
