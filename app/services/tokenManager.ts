@@ -9,7 +9,7 @@
 
 import { getShopeeSDK } from '@/lib/shopee-sdk';
 import { SupabaseTokenStorage } from '@/lib/shopee-sdk/tokenStorage';
-import { supabase } from '@/lib/supabase';
+import { updateShopName } from '@/app/services/databaseOperations';
 
 /**
  * Get initial tokens using authorization code (OAuth callback)
@@ -36,10 +36,7 @@ export async function getTokens(code: string, shopId: number, userId?: string): 
         }
 
         // Update shop_name in database (SupabaseTokenStorage.store already saved the token)
-        await supabase
-            .from('shopee_tokens')
-            .update({ shop_name: shopName })
-            .eq('shop_id', shopId);
+        await updateShopName(shopId, shopName);
 
         return { tokens: token, shopName };
     } catch (error) {

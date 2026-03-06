@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
+import { fetchKeluhanByUserId, fetchPerubahanPesananByUserId } from '@/app/services/databaseOperations';
 
 
 export async function GET(request: Request) {
@@ -8,30 +8,17 @@ export async function GET(request: Request) {
         const user_id = searchParams.get('user_id');
 
         if (!user_id) {
-            return NextResponse.json({ 
-                error: 'Parameter user_id diperlukan' 
+            return NextResponse.json({
+                error: 'Parameter user_id diperlukan'
             }, { status: 400 });
         }
 
-        // Cek keluhan
-        const { data: keluhan, error: keluhanError } = await supabase
-            .from('keluhan')
-            .select('*')
-            .eq('userid', parseInt(user_id));
+        const userId = parseInt(user_id);
 
-        if (keluhanError) {
-            throw new Error(`Error saat cek keluhan: ${keluhanError.message}`);
-        }
-
-        // Cek perubahan pesanan
-        const { data: perubahan, error: perubahanError } = await supabase
-            .from('perubahan_pesanan')
-            .select('*')
-            .eq('userid', parseInt(user_id));
-
-        if (perubahanError) {
-            throw new Error(`Error saat cek perubahan: ${perubahanError.message}`);
-        }
+        const [keluhan, perubahan] = await Promise.all([
+            fetchKeluhanByUserId(userId),
+            fetchPerubahanPesananByUserId(userId)
+        ]);
 
         return NextResponse.json({
             ada_keluhan: keluhan && keluhan.length > 0,
@@ -44,8 +31,8 @@ export async function GET(request: Request) {
 
     } catch (error) {
         console.error('Error:', error);
-        return NextResponse.json({ 
-            error: 'Terjadi kesalahan saat memproses permintaan' 
+        return NextResponse.json({
+            error: 'Terjadi kesalahan saat memproses permintaan'
         }, { status: 500 });
     }
 }

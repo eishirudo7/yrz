@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getShopNameFromDB } from '@/app/services/databaseOperations';
 import { upsertOrderData, upsertOrderItems, upsertLogisticData, trackingUpdate, updateDocumentStatus, withRetry, updateOrderStatusOnly, saveEscrowDetail } from '@/app/services/databaseOperations';
 import { getOrderDetail } from '@/app/services/shopeeService';
 import { getEscrowDetail, shipBooking, createBookingShippingDocument } from '@/app/services/shopeeService';
@@ -455,15 +455,11 @@ async function getShopName(shopId: number): Promise<string> {
     const cachedName = await redis.get(cacheKey);
     if (cachedName) return cachedName;
 
-    const { data } = await supabase
-      .from('shopee_tokens')
-      .select('shop_name')
-      .eq('shop_id', shopId)
-      .single();
+    const shopName = await getShopNameFromDB(shopId);
 
-    if (data?.shop_name) {
-      await redis.set(cacheKey, data.shop_name, 'EX', 86400); // Cache for 24h
-      return data.shop_name;
+    if (shopName) {
+      await redis.set(cacheKey, shopName, 'EX', 86400); // Cache for 24h
+      return shopName;
     }
 
     // Fallback if not found in db - check the active shopee:token cache (stored as Hash)

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createShippingDocument, getTrackingNumber } from '@/app/services/shopeeService';
-import { supabase } from '@/lib/supabase';
+import { updateOrderTrackingNumber, updateOrderDocumentStatusReady } from '@/app/services/databaseOperations';
 
 export async function POST(request: Request) {
     try {
@@ -24,8 +24,8 @@ export async function POST(request: Request) {
             console.log('Mencoba mendapatkan tracking number untuk:', { shopId, order_sn });
             const trackingResult = await getTrackingNumber(shopId, order_sn);
             console.log('Hasil getTrackingNumber:', JSON.stringify(trackingResult, null, 2));
-            
-            if (trackingResult.error || 
+
+            if (trackingResult.error ||
                 (trackingResult.response && !trackingResult.response.tracking_number)) {
                 console.error('Error saat mendapatkan tracking number:', trackingResult.error);
                 return NextResponse.json({
@@ -35,17 +35,14 @@ export async function POST(request: Request) {
                     details: trackingResult
                 }, { status: 400 });
             }
-            
+
             const finalTrackingNumber = trackingResult.response.tracking_number;
-            
+
             // Update tracking number di database
-            const { error: updateError } = await supabase
-                .from('orders')
-                .update({ tracking_number: finalTrackingNumber })
-                .eq('order_sn', order_sn);
-                
-            if (updateError) {
-                console.error('Gagal mengupdate tracking number di database:', updateError);
+            try {
+                await updateOrderTrackingNumber(order_sn, finalTrackingNumber);
+            } catch (err) {
+                console.error('Gagal mengupdate tracking number di database:', err);
             }
 
             // Jika hanya ingin mendapatkan tracking number, return di sini
@@ -101,13 +98,10 @@ async function createDocument(shopId: number, order_sn: string, tracking_number:
     }
 
     // Update status dokumen menjadi READY
-    const { error: updateError } = await supabase
-        .from('orders')
-        .update({ document_status: 'READY' })
-        .eq('order_sn', order_sn);
-
-    if (updateError) {
-        console.error('Gagal mengupdate status dokumen:', updateError);
+    try {
+        await updateOrderDocumentStatusReady(order_sn);
+    } catch (err) {
+        console.error('Gagal mengupdate status dokumen:', err);
         // Tetap lanjutkan karena dokumen sudah berhasil dibuat
     }
 

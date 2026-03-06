@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
 import { useUserData } from '@/contexts/UserDataContext';
 
 interface ShippingDocumentParams {
@@ -30,11 +29,10 @@ export function useShippingDocument() {
     currentCarrier: '',
     currentShop: ''
   });
-  const supabase = createClient();
   const { shops } = useUserData();
 
   const downloadDocument = async (
-    shopId: number, 
+    shopId: number,
     orderList: ShippingDocumentParams[]
   ): Promise<DownloadResponse> => {
     try {
@@ -57,40 +55,43 @@ export function useShippingDocument() {
       }).toString();
 
       const response = await fetch(`/api/shipping-document/view?${queryParams}`);
-      
+
       const failedOrdersHeader = response.headers.get('X-Failed-Orders');
       const failedOrders = failedOrdersHeader ? JSON.parse(failedOrdersHeader) : [];
-      
+
       if (response.status === 404) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Tidak ada dokumen yang berhasil diproses');
       }
-      
+
       if (!response.ok) {
         throw new Error(`Gagal mengambil dokumen`);
       }
-      
+
       const blob = await response.blob();
-      
-      const successfulOrders = orderList.filter(order => !failedOrders.includes(order.order_sn));
-      await Promise.all(
-        successfulOrders.map(async (order) => {
-          try {
-            await supabase
-              .from('orders')
-              .update({ is_printed: true })
-              .eq('order_sn', order.order_sn);
-          } catch (err) {
-            console.error(`Gagal mengupdate status is_printed untuk order ${order.order_sn}:`, err);
-          }
-        })
-      );
+
+      // Mark successful orders as printed via API
+      const successfulOrderSns = orderList
+        .filter(order => !failedOrders.includes(order.order_sn))
+        .map(order => order.order_sn);
+
+      if (successfulOrderSns.length > 0) {
+        try {
+          await fetch('/api/data/mark-printed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_sns: successfulOrderSns })
+          });
+        } catch (err) {
+          console.error('Gagal mengupdate status is_printed:', err);
+        }
+      }
 
       return {
         blob: blob,
         failedOrders: failedOrders
       };
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan');
       throw err;
@@ -109,4 +110,4 @@ export function useShippingDocument() {
     setBulkProgress,
     error
   };
-} 
+}

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { sendEventToShopOwners } from '@/app/services/serverSSEService';
+import { updateNotificationProcessed, insertNotification } from '@/app/services/databaseOperations';
 
 // Types
 export interface ShopPenaltyWebhook {
@@ -108,29 +109,19 @@ export class PenaltyService {
   }
 
   private static async updateProcessedStatus(data: ShopPenaltyWebhook) {
-    await supabase
-      .from('shopee_notifications')
-      .update({ processed: true })
-      .eq('shop_id', data.shop_id)
-      .eq('data->timestamp', data.timestamp);
+    await updateNotificationProcessed(data.shop_id, data.timestamp);
   }
 
   private static async sendPenaltyNotification(data: ShopPenaltyWebhook & { shop_name: string }) {
     try {
-      const { data: insertedData, error } = await supabase
-        .from('shopee_notifications')
-        .insert({
-          notification_type: 'shop_penalty',
-          shop_id: data.shop_id,
-          shop_name: data.shop_name,
-          data: data,
-          processed: false,
-          read: false
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
+      const insertedData = await insertNotification({
+        notification_type: 'shop_penalty',
+        shop_id: data.shop_id,
+        shop_name: data.shop_name,
+        data: data,
+        processed: false,
+        read: false
+      });
 
       const notification = this.createPenaltyNotification(data);
       const notificationWithId = {

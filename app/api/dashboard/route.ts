@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { getAllShops } from '@/app/services/shopeeService';
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
+import { fetchDashboardOrders, fetchOrderItemsBatch } from '@/app/services/databaseOperations';
 
 // Pastikan fungsi GET diekspor dengan benar
 export async function GET(req: NextRequest) {
@@ -48,84 +49,11 @@ export async function GET(req: NextRequest) {
     const startTimestamp = Math.floor(startOfDay(jakartaDate).getTime() / 1000);
     const endTimestamp = Math.floor(endOfDay(jakartaDate).getTime() / 1000);
 
-    const fetchPaginatedOrders = async (queryBuilder: any, pageSize: number = 800) => {
-      let allData: any[] = [];
-      let page = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        // range bersifat inklusif di Supabase, contoh: baris 0 s/d 799
-        const { data, error } = await queryBuilder.range(page * pageSize, (page + 1) * pageSize - 1);
-
-        if (error) {
-          throw error;
-        }
-
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-          page++;
-          // Jika jumlah baris yang kembali < pageSize, artinya kita sudah di halaman terakhir
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      return allData;
-    };
-
-    const normalOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed,
-          ship_by_date, days_to_ship
-        `)
-      .in('shop_id', shopIds)
-      .in('order_status', ['READY_TO_SHIP', 'PROCESSED', 'IN_CANCEL', 'TO_RETURN'])
-      .order('pay_time', { ascending: false });
-
-    const cancelledOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
-        `)
-      .in('shop_id', shopIds)
-      .eq('order_status', 'CANCELLED')
-      .gte('pay_time', startTimestamp)
-      .lte('pay_time', endTimestamp)
-      .order('pay_time', { ascending: false });
-
-    const shippedOrdersQuery = supabase
-      .from('orders')
-      .select(`
-          order_sn, shop_id, order_status, buyer_user_id, create_time, update_time, pay_time, buyer_username,
-          escrow_amount_after_adjustment, shipping_carrier, cod, tracking_number, document_status, is_printed
-        `)
-      .in('shop_id', shopIds)
-      .eq('order_status', 'SHIPPED')
-      .gte('pickup_done_time', startTimestamp)
-      .lte('pickup_done_time', endTimestamp)
-      .order('pickup_done_time', { ascending: false });
-
     console.time('fetch_orders_dashboard');
 
-    const [normalOrdersData, cancelledOrdersData, shippedOrdersData] = await Promise.all([
-      fetchPaginatedOrders(normalOrdersQuery),
-      fetchPaginatedOrders(cancelledOrdersQuery),
-      fetchPaginatedOrders(shippedOrdersQuery)
-    ]);
+    const ordersData = await fetchDashboardOrders(shopIds, startTimestamp, endTimestamp);
 
     console.timeEnd('fetch_orders_dashboard');
-
-    // Gabungkan hasil ketiga query
-    const ordersData = [
-      ...(normalOrdersData || []),
-      ...(cancelledOrdersData || []),
-      ...(shippedOrdersData || [])
-    ];
-
 
     if (!ordersData || ordersData.length === 0) {
       return NextResponse.json({
@@ -146,36 +74,7 @@ export async function GET(req: NextRequest) {
     // Ambil order_items secara paralel
     const orderSns = ordersData.map(order => order.order_sn);
 
-    // Implementasi batching untuk order_items
-    const batchSize = 500; // PostgreSQL umumnya bisa menangani IN clause hingga ~1000 item
-
-    interface OrderItem {
-      order_sn: string;
-      model_quantity_purchased: string | number;
-      model_discounted_price: string | number;
-      item_sku: string;
-      model_name: string;
-    }
-
-    let allOrderItemsData: OrderItem[] = [];
-
-    // Batch processing untuk order_items
-    for (let i = 0; i < orderSns.length; i += batchSize) {
-      const batchOrderSns = orderSns.slice(i, i + batchSize);
-      const { data: itemsBatchData, error: itemsBatchError } = await supabase
-        .from('order_items')
-        .select('order_sn, model_quantity_purchased, model_discounted_price, item_sku, model_name')
-        .in('order_sn', batchOrderSns);
-
-      if (itemsBatchError) {
-        console.error(`Gagal mengambil batch order items ${i}:`, itemsBatchError);
-        continue;
-      }
-
-      if (itemsBatchData) {
-        allOrderItemsData = [...allOrderItemsData, ...itemsBatchData];
-      }
-    }
+    const allOrderItemsData = await fetchOrderItemsBatch(orderSns);
 
     if (allOrderItemsData.length === 0) {
       console.error('Gagal mengambil data order items: Tidak ada data yang berhasil diambil');
@@ -185,21 +84,6 @@ export async function GET(req: NextRequest) {
         error: 'Tidak ada data yang berhasil diambil'
       }, { status: 500 });
     }
-
-    // Proses data untuk summary
-    const status_yang_dihitung = ['IN_CANCEL', 'PROCESSED', 'READY_TO_SHIP', 'SHIPPED'];
-    const summary = {
-      pesananPerToko: {} as Record<string, number>,
-      omsetPerToko: {} as Record<string, number>,
-      totalOrders: 0,
-      totalOmset: 0
-    };
-
-    // Inisialisasi data per toko
-    shops.forEach(shop => {
-      summary.pesananPerToko[shop.shop_name] = 0;
-      summary.omsetPerToko[shop.shop_name] = 0;
-    });
 
     // Gabungkan dan proses data
     const processedOrders = ordersData.map(order => {

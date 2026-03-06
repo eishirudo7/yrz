@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
-import { createClient } from '@/utils/supabase/client'
 
 export interface Product {
   item_id: number
@@ -155,7 +154,6 @@ interface ShopeeVariation {
 }
 
 export function useProducts() {
-  const supabase = createClient()
   const [isSyncing, setIsSyncing] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [shops, setShops] = useState<Shop[]>([])
@@ -167,16 +165,16 @@ export function useProducts() {
 
   const loadShops = async () => {
     if (isLoadingShops) return; // Hindari pemanggilan berulang
-    
+
     try {
       setIsLoadingShops(true)
       const response = await fetch('/api/shops')
       const result = await response.json()
-      
+
       if (!result.success) {
         throw new Error(result.message || 'Gagal memuat daftar toko')
       }
-      
+
       setShops(result.data)
       return result.data;
     } catch (error) {
@@ -190,37 +188,33 @@ export function useProducts() {
   }
 
   const loadProducts = async (shopData: Shop[] = shops) => {
-    if (isLoadingProducts) return; // Hindari pemanggilan berulang
-    
+    if (isLoadingProducts) return;
+
     try {
       setIsLoadingProducts(true)
-      
-      // Gunakan shop_id dari parameter atau state shops
+
       const shopIds = shopData.map(shop => shop.shop_id)
-      
+
       if (shopIds.length === 0) {
         setProducts([])
         return
       }
-      
+
       console.log('Memuat produk untuk shops:', shopIds);
-      
-      // Ambil items dari Supabase dengan client authenticated
-      const { data: items, error: itemsError } = await supabase
-        .from('items')
-        .select('*')
-        .in('shop_id', shopIds)
-      
-      if (itemsError) throw itemsError
-      
-      // Transform data seperti biasa
-      const productsWithShops = items?.map(item => ({
+
+      const response = await fetch(`/api/data/products?shop_ids=${shopIds.join(',')}`);
+      if (!response.ok) throw new Error('Gagal memuat produk');
+
+      const result = await response.json();
+      const items = result.data || [];
+
+      const productsWithShops = items.map((item: any) => ({
         ...item,
-        image_id_list: item.image.image_id_list || [],
-        image_url_list: item.image.image_url_list || [],
+        image_id_list: item.image?.image_id_list || [],
+        image_url_list: item.image?.image_url_list || [],
         shopee_tokens: shopData.filter(shop => shop.shop_id === item.shop_id)
-      })) || []
-      
+      }))
+
       setProducts(productsWithShops)
     } catch (error) {
       toast.error('Gagal Memuat Produk', {
@@ -235,15 +229,15 @@ export function useProducts() {
   useEffect(() => {
     const initialize = async () => {
       if (isInitialized) return;
-      
+
       const shopData = await loadShops();
       if (shopData && shopData.length > 0) {
         await loadProducts(shopData);
       }
-      
+
       setIsInitialized(true);
     };
-    
+
     initialize();
   }, [isInitialized]);
 
@@ -263,40 +257,42 @@ export function useProducts() {
 
           // Simpan data produk ke Supabase
           for (const item of data.data.items) {
-            // Insert/Update item utama
-            const { error: itemError } = await supabase
-              .from('items')
-              .upsert({
-                item_id: item.item_id,
-                shop_id: shopId,
-                category_id: item.category_id,
-                item_name: item.item_name,
-                description: item.description,
-                item_sku: item.item_sku,
-                create_time: item.create_time,
-                update_time: item.update_time,
-                weight: item.weight,
-                image: item.image,
-                logistic_info: item.logistic_info,
-                pre_order: item.pre_order,
-                condition: item.condition,
-                item_status: item.item_status,
-                has_model: item.has_model,
-                brand: item.brand,
-                item_dangerous: item.item_dangerous,
-                description_type: item.description_type,
-                size_chart_id: item.size_chart_id,
-                promotion_image: item.promotion_image,
-                deboost: item.deboost === 'FALSE' ? false : true,
-                authorised_brand_id: item.authorised_brand_id
-              }, { 
-                onConflict: 'item_id' 
+            const upsertResponse = await fetch('/api/data/products', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                item: {
+                  item_id: item.item_id,
+                  shop_id: shopId,
+                  category_id: item.category_id,
+                  item_name: item.item_name,
+                  description: item.description,
+                  item_sku: item.item_sku,
+                  create_time: item.create_time,
+                  update_time: item.update_time,
+                  weight: item.weight,
+                  image: item.image,
+                  logistic_info: item.logistic_info,
+                  pre_order: item.pre_order,
+                  condition: item.condition,
+                  item_status: item.item_status,
+                  has_model: item.has_model,
+                  brand: item.brand,
+                  item_dangerous: item.item_dangerous,
+                  description_type: item.description_type,
+                  size_chart_id: item.size_chart_id,
+                  promotion_image: item.promotion_image,
+                  deboost: item.deboost === 'FALSE' ? false : true,
+                  authorised_brand_id: item.authorised_brand_id
+                }
               })
+            });
 
-            if (itemError) throw itemError
+            const upsertResult = await upsertResponse.json();
+            if (!upsertResult.success) throw new Error('Gagal menyimpan produk');
 
             processedProducts++
-            
+
             // Update progress
             if (onProgress) {
               const progress = Math.round((processedProducts / totalProducts) * 100)
@@ -360,17 +356,17 @@ export function useProducts() {
           total_available_stock: model.stock_info.total_available_stock || 0
         },
         model_status: model.model_status,
-        image_url: item.variations?.find((v: ShopeeVariation) => 
-          v.variation_option_list?.some((opt) => 
+        image_url: item.variations?.find((v: ShopeeVariation) =>
+          v.variation_option_list?.some((opt) =>
             model.model_name.toUpperCase().includes(opt.variation_option_name.toUpperCase())
           )
-        )?.variation_option_list?.find((opt: { variation_option_id: number; variation_option_name: string; image_url: string | null }) => 
+        )?.variation_option_list?.find((opt: { variation_option_id: number; variation_option_name: string; image_url: string | null }) =>
           model.model_name.toUpperCase().includes(opt.variation_option_name.toUpperCase())
         )?.image_url || null
       }));
 
       return stockPrices;
-      
+
     } catch (error) {
       toast.error('Gagal Memuat Data Stok dan Harga', {
         description: error instanceof Error ? error.message : 'Terjadi kesalahan saat memuat data'

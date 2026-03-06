@@ -3,66 +3,17 @@
  * Migrated to use @congminh1254/shopee-sdk
  */
 
-import { supabase } from '@/lib/supabase';
 import { shopeeApi } from '@/lib/shopeeConfig';
 import { getValidAccessToken } from '@/app/services/tokenManager';
-import { createClient } from '@/utils/supabase/server';
 import { getShopeeSDK } from '@/lib/shopee-sdk';
+import { getShopInfoFromDB, getAllShopsFromDB } from '@/app/services/databaseOperations';
 
 export async function getShopInfo(shopId: number): Promise<any> {
-    try {
-        if (!shopId) {
-            throw new Error('ID Toko diperlukan');
-        }
-
-        const { data, error } = await supabase
-            .from('shopee_tokens')
-            .select('*')
-            .eq('shop_id', shopId)
-            .single();
-
-        if (error) {
-            console.error('Gagal mengambil informasi toko:', error);
-            throw error;
-        }
-
-        if (!data) {
-            throw new Error('Toko tidak ditemukan');
-        }
-
-        return data;
-    } catch (error) {
-        console.error('Gagal mendapatkan informasi toko:', error);
-        throw new Error('Gagal mengambil informasi toko dari database');
-    }
+    return getShopInfoFromDB(shopId);
 }
 
 export async function getAllShops(): Promise<any[]> {
-    try {
-        const supabaseServer = await createClient();
-        const { data: { user }, error: userError } = await supabaseServer.auth.getUser();
-
-        if (userError || !user) {
-            console.warn('Tidak ada user yang terautentikasi');
-            return [];
-        }
-
-        const { data, error } = await supabase
-            .from('shopee_tokens')
-            .select('*')
-            .eq('is_active', true)
-            .eq('user_id', user.id);
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            return [];
-        }
-
-        return data;
-    } catch (error) {
-        console.error('Gagal mengambil daftar toko:', error);
-        throw new Error('Gagal mengambil daftar toko aktif dari database');
-    }
+    return getAllShopsFromDB();
 }
 
 export async function getRefreshCount(shopId: number): Promise<number> {
@@ -130,17 +81,14 @@ export async function getShopPenalty(shopId: number): Promise<any> {
         await getValidAccessToken(shopId);
         const sdk = getShopeeSDK(shopId);
 
-        // Use new APIs: getPenaltyPointHistory + getPunishmentHistory
         const [penaltyHistory, punishmentHistory] = await Promise.all([
             sdk.accountHealth.getPenaltyPointHistory({ page_size: 100 }),
             sdk.accountHealth.getPunishmentHistory({ punishment_status: 1, page_size: 50 })
         ]);
 
-        // Aggregate penalty points by violation type
         const penaltyList = penaltyHistory.response?.penalty_point_list || [];
         const totalPoints = penaltyList.reduce((sum: number, r: any) => sum + (r.latest_point_num || 0), 0);
 
-        // Map ongoing punishments to match old format
         const punishmentList = punishmentHistory.response?.punishment_list || [];
         const ongoingPunishment = punishmentList.map((p: any) => ({
             punishment_name: `type_${p.punishment_type}`,

@@ -1,6 +1,5 @@
-import { supabase } from '@/lib/supabase';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { getItemsBySku } from '@/app/services/databaseOperations';
 
 export async function GET(request: Request) {
   try {
@@ -16,27 +15,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // Query ke database untuk multiple items
-    let query = supabase
-      .from('items')
-      .select('item_id, item_sku, item_name, image')
-      .in('item_id', itemIds);
+    const items = await getItemsBySku(itemIds, shopId);
 
-    // Tambahkan filter shop_id hanya jika disediakan
-    if (shopId) {
-      query = query.eq('shop_id', shopId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      return NextResponse.json(
-        { error: 'Gagal mengambil data' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ items: data });
+    return NextResponse.json({ items });
 
   } catch (error) {
     return NextResponse.json(

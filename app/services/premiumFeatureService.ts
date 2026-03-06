@@ -1,15 +1,14 @@
-import { withRetry } from '@/app/services/databaseOperations';
+import { withRetry, getOrderPrintStatus } from '@/app/services/databaseOperations';
 import { UserSettingsService, Shop } from '@/app/services/userSettingsService';
 import { processReadyToShipOrders } from "@/app/services/shopeeService";
-import { supabase } from '@/lib/supabase';
 
 export async function prosesOrder(shopId: number, orderSn: string, shippingMethod: string = 'dropoff', interval: number = 5): Promise<any> {
-    // Menambahkan delay sesuai interval dalam detik
-    await new Promise(resolve => setTimeout(resolve, interval * 1000));
-    
-    const shipResult = await processReadyToShipOrders(shopId, orderSn, shippingMethod);
-    
-    return shipResult;
+  // Menambahkan delay sesuai interval dalam detik
+  await new Promise(resolve => setTimeout(resolve, interval * 1000));
+
+  const shipResult = await processReadyToShipOrders(shopId, orderSn, shippingMethod);
+
+  return shipResult;
 }
 
 /**
@@ -43,7 +42,7 @@ export class PremiumFeatureService {
     try {
       // Dapatkan pengaturan toko dari shopId
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
-      
+
       if (!shop || !userId) {
         console.warn(`Tidak menemukan pengaturan untuk toko ${shopId}`);
         return false;
@@ -51,10 +50,10 @@ export class PremiumFeatureService {
 
       // Dapatkan pengaturan user untuk mengecek subscription
       const userSettings = await UserSettingsService.getUserSettings(userId);
-      
+
       // Cek apakah user memiliki subscription dan plan name adalah 'Admin'
       const isPremium = userSettings.subscription?.plan?.name === 'Admin';
-      
+
       return isPremium;
     } catch (error) {
       console.error(`Error checking premium status for shop ${shopId}:`, error);
@@ -74,35 +73,35 @@ export class PremiumFeatureService {
     try {
       // Dapatkan pengaturan toko dan userId dari shopId
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
-      
+
       if (!shop || !userId) {
         console.warn(`Tidak menemukan pengaturan atau user untuk toko ${shopId}`);
         return false;
       }
-      
+
       // Dapatkan pengaturan user untuk mengecek subscription
       const userSettings = await UserSettingsService.getUserSettings(userId);
-      
+
       // Verifikasi status premium berdasarkan plan name
       const isPremium = userSettings.subscription?.plan?.name === 'Admin';
       if (!isPremium) {
         console.log(`Toko ${shopId} bukan premium user, auto-ship tidak dijalankan`);
         return false;
       }
-      
+
       // Cek status auto-ship dari pengaturan toko
       if (!shop.status_ship) {
         console.log(`Auto-ship tidak aktif untuk toko ${shopId}`);
         return false;
       }
-      
+
       // Jalankan auto-ship untuk toko premium dengan interval dalam detik
       const result = await withRetry(
         () => prosesOrder(shopId, orderSn, 'dropoff', userSettings.auto_ship_interval),
         3,
         2000
       );
-      
+
       console.log(`Auto-ship berhasil dijalankan untuk toko ${shopId}, pesanan ${orderSn} dengan interval ${userSettings.auto_ship_interval} detik`);
       return true;
     } catch (error) {
@@ -122,31 +121,31 @@ export class PremiumFeatureService {
    * @returns Boolean yang menunjukkan keberhasilan proses
    */
   private static async handleAutoChat(
-    shopId: number, 
-    orderSn: string, 
-    buyerUserId: string, 
+    shopId: number,
+    orderSn: string,
+    buyerUserId: string,
     buyerUsername: string,
     statusType: 'cancel' | 'return'
   ): Promise<boolean> {
     try {
       // Dapatkan pengaturan toko dan userId dari shopId
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
-      
+
       if (!shop || !userId) {
         console.warn(`Tidak menemukan pengaturan atau user untuk toko ${shopId}`);
         return false;
       }
-      
+
       // Dapatkan pengaturan user untuk mengecek subscription
       const userSettings = await UserSettingsService.getUserSettings(userId);
-      
+
       // Verifikasi status premium berdasarkan plan name
       const isPremium = userSettings.subscription?.plan?.name === 'Admin';
       if (!isPremium) {
         console.log(`Toko ${shopId} bukan premium user, auto-chat tidak dijalankan`);
         return false;
       }
-      
+
       // Cek status auto-chat dari pengaturan toko
       if (statusType === 'cancel' && !userSettings.in_cancel_status) {
         console.log(`Auto-chat cancel tidak aktif untuk toko ${shopId}`);
@@ -194,19 +193,19 @@ export class PremiumFeatureService {
       if (statusType === 'cancel') {
         // Cek status cetak pesanan
         const isPrinted = await this.isOrderPrinted(orderSn);
-        
+
         // Split template berdasarkan karakter '||'
         const [unpackedMsg, packedMsg] = (userSettings.in_cancel_msg || '').split('||').map(msg => msg.trim());
-        
+
         if (isPrinted) {
-          template = packedMsg || 
+          template = packedMsg ||
             `Halo ${buyerUsername},\\n\\nMohon maaf, pesanan dengan nomor ${orderSn} sudah kami kemas dan siap kirim, jadi mohon maaf sekali tidak bisa kami konfirmasi pembatalan pesanannya.`;
         } else {
-          template = unpackedMsg || 
+          template = unpackedMsg ||
             `Halo ${buyerUsername},\\n\\nUntuk pesanan dengan nomor ${orderSn} belum kami kemas, jika kakak ingin mengubah warna atau ukuran, silakan tulis permintaan kakak di sini.\\n\\nDitunggu ya kak responnya.`;
         }
       } else {
-        template = userSettings.in_return_msg || 
+        template = userSettings.in_return_msg ||
           `Halo ${buyerUsername},\\n\\nPengembalian pesanan ${orderSn} harus dengan alasan yang jelas ya kak, jika terkesan tidak jelas atau mempermainkan seller maka akan kami banding juga ke shopee \\n\\nTerima kasih..`;
       }
 
@@ -247,9 +246,9 @@ export class PremiumFeatureService {
    * Menangani auto-cancel-chat untuk toko premium
    */
   static async handleChatCancel(
-    shopId: number, 
-    orderSn: string, 
-    buyerUserId: string, 
+    shopId: number,
+    orderSn: string,
+    buyerUserId: string,
     buyerUsername: string
   ): Promise<boolean> {
     return this.handleAutoChat(shopId, orderSn, buyerUserId, buyerUsername, 'cancel');
@@ -259,9 +258,9 @@ export class PremiumFeatureService {
    * Menangani auto-chat untuk return order
    */
   static async handleChatReturn(
-    shopId: number, 
-    orderSn: string, 
-    buyerUserId: string, 
+    shopId: number,
+    orderSn: string,
+    buyerUserId: string,
     buyerUsername: string
   ): Promise<boolean> {
     return this.handleAutoChat(shopId, orderSn, buyerUserId, buyerUsername, 'return');
@@ -276,9 +275,9 @@ export class PremiumFeatureService {
   static async getShopInfo(shopId: number): Promise<{ shopName: string, userId: string } | null> {
     try {
       const { shop, userId } = await UserSettingsService.getShopSettingsByShopId(shopId);
-      
+
       if (!shop || !userId) return null;
-      
+
       return {
         shopName: shop.shop_name,
         userId: userId
@@ -288,7 +287,7 @@ export class PremiumFeatureService {
       return null;
     }
   }
-  
+
   /**
    * Mendapatkan daftar toko premium dari pengguna tertentu
    * 
@@ -299,11 +298,11 @@ export class PremiumFeatureService {
     try {
       const userSettings = await UserSettingsService.getUserSettings(userId);
       const isPremium = userSettings.subscription?.plan?.name === 'Admin';
-      
+
       if (!isPremium) {
         return [];
       }
-      
+
       return userSettings.shops;
     } catch (error) {
       console.error(`Error getting premium shops for ${userId}:`, error);
@@ -317,18 +316,6 @@ export class PremiumFeatureService {
    * @returns Boolean yang menunjukkan apakah pesanan sudah dicetak
    */
   static async isOrderPrinted(orderSn: string): Promise<boolean> {
-    try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('is_printed')
-        .eq('order_sn', orderSn)
-        .single();
-
-      if (error) throw error;
-      return data?.is_printed || false;
-    } catch (error) {
-      console.error(`Error checking print status for order ${orderSn}:`, error);
-      return false;
-    }
+    return getOrderPrintStatus(orderSn);
   }
 } 
