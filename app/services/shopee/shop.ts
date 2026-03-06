@@ -17,7 +17,19 @@ export async function getShopInfo(shopId: number): Promise<any> {
             throw new Error('ID Toko diperlukan');
         }
 
-        const [data] = await db.select()
+        const [data] = await db.select({
+            id: shopeeTokens.id,
+            shop_id: shopeeTokens.shopId,
+            shop_name: shopeeTokens.shopName,
+            partner_id: shopeeTokens.partnerId,
+            access_token: shopeeTokens.accessToken,
+            refresh_token: shopeeTokens.refreshToken,
+            refresh_count: shopeeTokens.refreshCount,
+            is_active: shopeeTokens.isActive,
+            user_id: shopeeTokens.userId,
+            created_at: shopeeTokens.createdAt,
+            updated_at: shopeeTokens.updatedAt
+        })
             .from(shopeeTokens)
             .where(eq(shopeeTokens.shopId, shopId))
             .limit(1);
@@ -43,7 +55,18 @@ export async function getAllShops(): Promise<any[]> {
             return [];
         }
 
-        const data = await db.select()
+        const data = await db.select({
+            id: shopeeTokens.id,
+            shop_id: shopeeTokens.shopId,
+            shop_name: shopeeTokens.shopName,
+            partner_id: shopeeTokens.partnerId,
+            access_token: shopeeTokens.accessToken,
+            refresh_token: shopeeTokens.refreshToken,
+            is_active: shopeeTokens.isActive,
+            user_id: shopeeTokens.userId,
+            created_at: shopeeTokens.createdAt,
+            updated_at: shopeeTokens.updatedAt
+        })
             .from(shopeeTokens)
             .where(and(
                 eq(shopeeTokens.isActive, true),
