@@ -59,16 +59,16 @@ export function Sidebar() {
   const { subscription, isLoading } = useUserData()
 
   const isActive = (path: string) => pathname === path
-  const isProUser = !isLoading && subscription?.plan_name === 'Admin'
+  const isProUser = !isLoading && subscription?.plan_name?.toLowerCase() === 'admin'
 
   // Filter menu items berdasarkan level langganan
   const filteredNavItems = navItems.filter(item => {
     // Selalu tampilkan item yang memiliki showAlways: true
     if (item.showAlways) return true
-    
+
     // Tampilkan item khusus Pro jika user adalah Pro user
     if (item.proOnly) return isProUser
-    
+
     // Secara default tampilkan menu jika tidak ada flag khusus
     return true
   })
@@ -96,8 +96,8 @@ export function Sidebar() {
                   >
                     <item.icon className="size-5" />
                     {item.href === '/webchat' && totalUnread > 0 && (
-                      <Badge 
-                        variant="destructive" 
+                      <Badge
+                        variant="destructive"
                         className="absolute -top-0.5 -right-0.5 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
                       >
                         {totalUnread}

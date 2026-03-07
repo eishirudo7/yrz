@@ -25,7 +25,7 @@ export async function processWebhookJob(job: Job): Promise<void> {
     const webhookData = job.data;
     console.log(`[Worker] Processing job ${job.id} | code: ${webhookData.code}`);
 
-    const handlers: { [key: number]: (data: any) => Promise<void> } = {
+    const handlers: { [key: number]: (data: any, job?: Job) => Promise<void> } = {
         10: handleChat,
         3: handleOrder,
         4: handleTrackingUpdate,
@@ -38,7 +38,7 @@ export async function processWebhookJob(job: Job): Promise<void> {
     };
 
     const handler = handlers[webhookData.code] || handleOther;
-    await handler(webhookData);
+    await handler(webhookData, job);
 }
 
 // ============================================================
@@ -103,11 +103,14 @@ async function handleChat(data: any) {
 // Handler: Order (code 3)
 // ============================================================
 
-async function handleOrder(data: any) {
+async function handleOrder(data: any, job?: Job) {
     console.log('Memulai proses order:', data);
+    if (job) await job.log(`[Order] Memulai proses order: ${data.data?.ordersn} | Status: ${data.data?.status}`);
     const orderData = data.data;
 
     try {
+        if (job) await job.updateProgress(20);
+
         const [shopName, orderDetail] = await Promise.all([
             getShopName(data.shop_id),
             withRetry(
@@ -117,9 +120,13 @@ async function handleOrder(data: any) {
             ),
         ]);
 
+        if (job) await job.log(`[Order] Berhasil memperbarui status dan mengambil detail pesanan dari Shopee API.`);
+        if (job) await job.updateProgress(50);
+
         // Escrow detail for PROCESSED, COMPLETED, CANCELLED
         if (['PROCESSED', 'COMPLETED', 'CANCELLED'].includes(orderData.status)) {
             try {
+                if (job) await job.log(`[Escrow] Mengambil detail income/escrow untuk order ${orderData.ordersn}...`);
                 const escrowResponse = await withRetry(
                     () => getEscrowDetail(data.shop_id, orderData.ordersn),
                     3, 2000
@@ -127,13 +134,18 @@ async function handleOrder(data: any) {
 
                 if (escrowResponse?.success && escrowResponse.data) {
                     await saveEscrowDetail(data.shop_id, escrowResponse.data);
+                    if (job) await job.log(`[Escrow] Berhasil menyimpan detail escrow.`);
                 }
             } catch (error) {
                 console.error(`Error escrow detail: ${error}`);
+                if (job) await job.log(`[Escrow] Gagal mengambil detail escrow: ${error}`);
             }
         }
 
+        if (job) await job.updateProgress(80);
+
         if (orderData.status === 'READY_TO_SHIP') {
+            if (job) await job.log(`[Event] Memicu event new_order dan Auto-Ship untuk order ${orderData.ordersn}`);
             await Promise.all([
                 publishSSEEvent({
                     type: 'new_order',
@@ -147,7 +159,9 @@ async function handleOrder(data: any) {
                 }),
                 PremiumFeatureService.handleAutoShip(data.shop_id, orderData.ordersn),
             ]);
+            if (job) await job.log(`[Event] Selesai memproses Auto-Ship.`);
         } else if (orderData.status === 'IN_CANCEL') {
+            if (job) await job.log(`[Event] Pembatalan order terdeteksi. Memulai Auto-Chat untuk order ${orderData.ordersn}`);
             await PremiumFeatureService.handleChatCancel(
                 data.shop_id,
                 orderData.ordersn,
@@ -155,7 +169,11 @@ async function handleOrder(data: any) {
                 orderDetail.buyer_username
             );
         }
+
+        if (job) await job.updateProgress(100);
+        if (job) await job.log(`[Selesai] Semua data order ${orderData.ordersn} berhasil diproses.`);
     } catch (error) {
+        if (job) await job.log(`[Error] Terjadi kesalahan fatal: ${error}`);
         console.error(`Gagal memproses order ${orderData.ordersn}:`, error);
         throw error; // Let BullMQ retry
     }
@@ -248,7 +266,8 @@ async function handleDocumentUpdate(data: any) {
 // Handler: Penalty (code 28)
 // ============================================================
 
-async function handlePenalty(data: any) {
+async function handlePenalty(data: any, job?: Job) {
+    if (job) await job.log(`[Penalty] Menerima event penalty dari shop: ${data.shop_id}`);
     const shopName = await getShopName(data.shop_id);
 
     await publishSSEEvent({
@@ -261,13 +280,16 @@ async function handlePenalty(data: any) {
         ...data,
         shop_name: shopName,
     });
+    if (job) await job.log(`[Penalty] Berhasil memproses penalty.`);
+    if (job) await job.updateProgress(100);
 }
 
 // ============================================================
 // Handler: Update (code 5)
 // ============================================================
 
-async function handleUpdate(data: any) {
+async function handleUpdate(data: any, job?: Job) {
+    if (job) await job.log(`[Update] Menerima pembaruan data dari shop: ${data.shop_id}`);
     const shopName = await getShopName(data.shop_id);
 
     await publishSSEEvent({
@@ -280,13 +302,16 @@ async function handleUpdate(data: any) {
         ...data,
         shop_name: shopName,
     });
+    if (job) await job.log(`[Update] Selesai.`);
+    if (job) await job.updateProgress(100);
 }
 
 // ============================================================
 // Handler: Violation (code 16)
 // ============================================================
 
-async function handleViolation(data: any) {
+async function handleViolation(data: any, job?: Job) {
+    if (job) await job.log(`[Violation] Ada pelanggaran dari shop: ${data.shop_id}`);
     const shopName = await getShopName(data.shop_id);
 
     await publishSSEEvent({
@@ -299,6 +324,8 @@ async function handleViolation(data: any) {
         ...data,
         shop_name: shopName,
     });
+    if (job) await job.log(`[Violation] Penanganan pelanggaran selesai.`);
+    if (job) await job.updateProgress(100);
 }
 
 // ============================================================
