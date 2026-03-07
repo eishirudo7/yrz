@@ -18,7 +18,11 @@
     "start:prod": "npm run db:migrate && next start -p 10000"
   },
   "dependencies": {
+    "@bull-board/api": "^6.20.3",
+    "@bull-board/express": "^6.20.3",
+    "@bull-board/hono": "^6.20.3",
     "@congminh1254/shopee-sdk": "^1.5.3",
+    "@hono/node-server": "^1.19.11",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-checkbox": "^1.1.2",
@@ -55,8 +59,10 @@
     "dayjs": "^1.11.13",
     "drizzle-orm": "^0.45.1",
     "exceljs": "^4.4.0",
+    "express": "^5.2.1",
     "file-saver": "^2.0.5",
     "framer-motion": "latest",
+    "hono": "^4.12.5",
     "html5-qrcode": "^2.3.8",
     "immer": "^10.1.1",
     "ioredis": "^5.4.1",
