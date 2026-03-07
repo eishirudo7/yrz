@@ -11,97 +11,103 @@ interface SSEContextType {
 
 const SSEContext = createContext<SSEContextType | null>(null);
 
-class SSEService {
-  private static instance: SSEService;
-  private eventSource: EventSource | null = null;
-
-  private constructor() { }
-
-  static getInstance() {
-    if (!SSEService.instance) {
-      SSEService.instance = new SSEService();
-    }
-    return SSEService.instance;
-  }
-
-  connect() {
-    if (this.eventSource) return this.eventSource;
-
-    try {
-      const url = new URL('/api/notifications/sse', window.location.origin);
-      this.eventSource = new EventSource(url.toString());
-
-      return this.eventSource;
-    } catch (err) {
-      console.warn('Error initializing SSE:', err);
-      return null;
-    }
-  }
-
-  disconnect() {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
-  }
+// FIX #4: Pisahkan EventSource management dari Singleton agar reconnect bersih
+// tanpa risiko double EventSource berjalan bersamaan
+function createEventSource(url: string): EventSource {
+  return new EventSource(url);
 }
 
 export function SSEProvider({ children }: { children: React.ReactNode }) {
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<any | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    const sseService = SSEService.getInstance();
+    isMounted.current = true;
+
+    function cleanup() {
+      // FIX #4: Tutup koneksi lama dengan benar sebelum membuat yang baru
+      if (eventSourceRef.current) {
+        // Hanya close jika belum closed, hindari double-close
+        if (eventSourceRef.current.readyState !== EventSource.CLOSED) {
+          eventSourceRef.current.close();
+        }
+        eventSourceRef.current = null;
+      }
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+    }
 
     function setupConnection() {
-      // Bersihkan koneksi lama dulu
-      sseService.disconnect();
+      if (!isMounted.current) return;
 
-      const eventSource = sseService.connect();
-      if (!eventSource) return;
+      cleanup(); // Bersihkan koneksi lama dulu
 
-      eventSource.onopen = () => {
-        setIsConnected(true);
-      };
+      try {
+        const url = new URL('/api/notifications/sse', window.location.origin);
+        const es = createEventSource(url.toString());
+        eventSourceRef.current = es;
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setLastMessage(data);
+        es.onopen = () => {
+          if (!isMounted.current) return;
+          setIsConnected(true);
+        };
 
-          if (data.type === 'connection_established') {
-            setConnectionId(data.connectionId);
+        es.onmessage = (event) => {
+          if (!isMounted.current) return;
+          try {
+            const data = JSON.parse(event.data);
+
+            // Skip heartbeat — tidak perlu diproses lebih lanjut
+            if (data.type === 'heartbeat') return;
+
+            setLastMessage(data);
+
+            if (data.type === 'connection_established') {
+              setConnectionId(data.connectionId || data.user_id || null);
+            }
+
+            window.dispatchEvent(
+              new CustomEvent('sse-message', { detail: data })
+            );
+          } catch (err) {
+            console.warn('[SSE] Error parsing message:', err);
           }
+        };
 
-          window.dispatchEvent(
-            new CustomEvent('sse-message', { detail: data })
-          );
-        } catch (err) {
-          console.warn('Error parsing SSE message:', err);
-        }
-      };
+        es.onerror = () => {
+          if (!isMounted.current) return;
+          console.warn('[SSE] Koneksi terputus, reconnect dalam 5 detik...');
+          setIsConnected(false);
 
-      eventSource.onerror = () => {
-        console.warn('SSE connection lost, reconnecting in 5s...');
-        setIsConnected(false);
-        sseService.disconnect();
+          // FIX #4: cleanup dulu sebelum set timer,
+          // hindari timer lama bersaing dengan timer baru
+          cleanup();
 
-        // Reconnect dengan listeners baru
+          reconnectTimer.current = setTimeout(() => {
+            if (isMounted.current) {
+              setupConnection();
+            }
+          }, 5000);
+        };
+      } catch (err) {
+        console.warn('[SSE] Error membuat EventSource:', err);
         reconnectTimer.current = setTimeout(() => {
-          setupConnection();
+          if (isMounted.current) setupConnection();
         }, 5000);
-      };
+      }
     }
 
     setupConnection();
 
     return () => {
-      if (reconnectTimer.current) {
-        clearTimeout(reconnectTimer.current);
-      }
-      sseService.disconnect();
+      isMounted.current = false;
+      cleanup();
       setIsConnected(false);
     };
   }, []);

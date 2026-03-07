@@ -6,35 +6,52 @@ const clients = new Map<ReadableStreamDefaultController, {
   shopIds: number[]
 }>();
 
-// Batasi koneksi untuk mencegah overload
+// Rate limit per userId (bukan IP, karena IP tidak reliable di balik proxy)
+// FIX #3: Gunakan userId sebagai key, bukan IP
 const connectionAttempts = new Map<string, { count: number, firstAttempt: number }>();
 
-/**
- * Memeriksa apakah sebuah IP diperbolehkan untuk membuat koneksi baru
- * berdasarkan batasan 10 koneksi per menit
- */
-export function checkRateLimit(ip: string): { allowed: boolean, attempts?: { count: number, firstAttempt: number } } {
+// FIX #2: Cleanup connectionAttempts secara periodik agar tidak memory leak
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 menit
+setInterval(() => {
   const now = Date.now();
-  
-  // Cek dan update connection attempts
-  const attempts = connectionAttempts.get(ip) || { count: 0, firstAttempt: now };
-  
+  let cleaned = 0;
+  connectionAttempts.forEach((val, key) => {
+    if (now - val.firstAttempt > CLEANUP_INTERVAL_MS) {
+      connectionAttempts.delete(key);
+      cleaned++;
+    }
+  });
+  if (cleaned > 0) {
+    console.log(`[SSE] Cleanup: dihapus ${cleaned} entry rate limit kedaluwarsa`);
+  }
+}, CLEANUP_INTERVAL_MS);
+
+/**
+ * Memeriksa apakah sebuah userId diperbolehkan untuk membuat koneksi baru
+ * berdasarkan batasan 10 koneksi per menit
+ * FIX #3: Berbasis userId bukan IP
+ */
+export function checkRateLimit(userId: string): { allowed: boolean, attempts?: { count: number, firstAttempt: number } } {
+  const now = Date.now();
+
+  const attempts = connectionAttempts.get(userId) || { count: 0, firstAttempt: now };
+
   if (now - attempts.firstAttempt < 60000) { // Window 1 menit
     if (attempts.count > 10) { // Maksimal 10 koneksi per menit
       return { allowed: false, attempts };
     }
-    
+
     const updatedAttempts = {
       count: attempts.count + 1,
       firstAttempt: attempts.firstAttempt
     };
-    
-    connectionAttempts.set(ip, updatedAttempts);
+
+    connectionAttempts.set(userId, updatedAttempts);
     return { allowed: true, attempts: updatedAttempts };
   } else {
     // Reset jika sudah lewat 1 menit
     const newAttempts = { count: 1, firstAttempt: now };
-    connectionAttempts.set(ip, newAttempts);
+    connectionAttempts.set(userId, newAttempts);
     return { allowed: true, attempts: newAttempts };
   }
 }
@@ -48,67 +65,70 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
       start(controller) {
         // Simpan controller dengan userId dan shopIds
         clients.set(controller, { userId, shopIds });
-        console.log(`Koneksi SSE baru. Total koneksi aktif: ${clients.size}`);
-        
-        // Kirim data inisial ketika koneksi terbentuk
+        console.log(`[SSE] Koneksi baru (userId: ${userId}). Total koneksi aktif: ${clients.size}`);
+
+        // FIX #1: Tambahkan retry directive di initial event agar browser auto-reconnect
         const initialData = {
           type: 'connection_established',
           timestamp: Date.now(),
           message: 'Koneksi SSE berhasil dibuat',
-          user_id: userId, // Tambahkan informasi user
-          shop_ids: shopIds // Tambahkan informasi toko
+          user_id: userId,
+          shop_ids: shopIds
         };
-        
-        const event = [
+
+        const initialEvent = [
           `id: ${Date.now()}`,
+          `retry: 5000`,   // FIX #1: browser akan reconnect dalam 5 detik jika koneksi putus
           `data: ${JSON.stringify(initialData)}`,
           '\n'
         ].join('\n');
-        
-        controller.enqueue(event);
 
-        // Set up heartbeat
+        controller.enqueue(initialEvent);
+
+        // Heartbeat setiap 30 detik untuk mencegah timeout
         const heartbeatInterval = setInterval(() => {
           if (!clients.has(controller)) {
             clearInterval(heartbeatInterval);
             return;
           }
-          
+
           const heartbeat = {
             type: 'heartbeat',
             timestamp: Date.now()
           };
-          
+
+          // FIX #1: Sertakan retry di heartbeat juga
           const heartbeatEvent = [
             `id: ${Date.now()}`,
+            `retry: 5000`,
             `data: ${JSON.stringify(heartbeat)}`,
             '\n'
           ].join('\n');
-          
+
           try {
             controller.enqueue(heartbeatEvent);
           } catch (error) {
-            console.error('Error mengirim heartbeat, koneksi dihapus');
+            console.error('[SSE] Error mengirim heartbeat, koneksi dihapus');
             clearInterval(heartbeatInterval);
             clients.delete(controller);
           }
-        }, 30000); // Kirim heartbeat setiap 30 detik
+        }, 30000);
 
         req.signal.addEventListener('abort', () => {
           clearInterval(heartbeatInterval);
           clients.delete(controller);
-          console.log(`Koneksi SSE terputus. Total koneksi aktif: ${clients.size}`);
+          console.log(`[SSE] Koneksi terputus (userId: ${userId}). Total koneksi aktif: ${clients.size}`);
         });
       },
       cancel(controller) {
         clients.delete(controller);
-        console.log(`Koneksi SSE dibatalkan. Total koneksi aktif: ${clients.size}`);
+        console.log(`[SSE] Koneksi dibatalkan. Total koneksi aktif: ${clients.size}`);
       }
     });
 
     return stream;
   } catch (error) {
-    console.error('Error dalam membuat SSE connection:', error);
+    console.error('[SSE] Error dalam membuat koneksi:', error);
     throw error;
   }
 }
@@ -118,49 +138,47 @@ export function createSSEConnection(req: NextRequest, userId: string, shopIds: n
  */
 export function sendEventToShopOwners(data: any) {
   const eventId = Date.now().toString();
-  
-  // Ambil shop_id dari data
+
   const shopId = data.shop_id;
-  
+
   if (!shopId) {
-    console.error('Data tidak memiliki shop_id, tidak dapat mengirim notifikasi');
+    console.error('[SSE] Data tidak memiliki shop_id, tidak dapat mengirim notifikasi');
     return;
   }
-  
+
   const event = [
     `id: ${eventId}`,
-    `retry: 10000`,
+    `retry: 5000`,
     `data: ${JSON.stringify(data)}`,
     '\n'
   ].join('\n');
 
-  // Hitung jumlah klien yang menerima notifikasi
   let recipientCount = 0;
   const totalClients = clients.size;
 
-  // Iterasi semua client dan kirim hanya ke yang memiliki toko tersebut
   clients.forEach((userData, controller) => {
     try {
-      // Kirim hanya jika user memiliki toko ini
       if (userData.shopIds.includes(Number(shopId))) {
         controller.enqueue(event);
         recipientCount++;
       }
     } catch (error) {
-      console.error('Error mengirim notifikasi, koneksi dihapus');
+      console.error('[SSE] Error mengirim notifikasi, koneksi dihapus');
       clients.delete(controller);
     }
   });
 
-  console.log(`Notifikasi untuk toko ${shopId} dikirim ke ${recipientCount}/${totalClients} klien`);
+  console.log(`[SSE] Notifikasi toko ${shopId} → ${recipientCount}/${totalClients} klien`);
 }
 
-// Tetap pertahankan fungsi sendEventToAll untuk notifikasi sistem
+/**
+ * Mengirim event ke semua klien (untuk notifikasi sistem)
+ */
 export function sendEventToAll(data: any) {
   const eventId = Date.now().toString();
   const event = [
     `id: ${eventId}`,
-    `retry: 10000`,
+    `retry: 5000`,
     `data: ${JSON.stringify(data)}`,
     '\n'
   ].join('\n');
@@ -168,16 +186,15 @@ export function sendEventToAll(data: any) {
   let successCount = 0;
   const totalClients = clients.size;
 
-  // Perbaikan: Menggunakan key (controller) sebagai parameter pertama dan value (userData) sebagai kedua
   clients.forEach((userData, controller) => {
     try {
       controller.enqueue(event);
       successCount++;
     } catch (error) {
-      console.error('Error mengirim notifikasi sistem, koneksi dihapus');
+      console.error('[SSE] Error mengirim notifikasi sistem, koneksi dihapus');
       clients.delete(controller);
     }
   });
-  
-  console.log(`Notifikasi sistem dikirim ke ${successCount}/${totalClients} klien`);
-} 
+
+  console.log(`[SSE] Notifikasi sistem → ${successCount}/${totalClients} klien`);
+}

@@ -6,22 +6,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const unread = searchParams.get('unread');
     const limit = searchParams.get('limit');
-    
-    // Tentukan page_size berdasarkan parameter limit atau default 50
     const pageSize = limit ? parseInt(limit) : 50;
-    
-    // Gunakan getAllShops() sebagai pengganti query Supabase langsung
+
     const shopsResponse = await getAllShops();
-    
+
     if (!shopsResponse || shopsResponse.length === 0) {
       return NextResponse.json({ message: 'Tidak ada toko yang terhubung' }, { status: 404 });
     }
 
-    // Ambil daftar percakapan untuk setiap toko
+    // FIX #12: Track error per toko agar UI bisa menampilkan warning
+    const shopErrors: { shopId: number; shopName: string; error: string }[] = [];
+
     const allConversations = await Promise.all(
       shopsResponse.map(async (shop) => {
         try {
-          // Gunakan service function alih-alih memanggil API langsung
           const conversations = await getConversationList(
             shop.shop_id,
             {
@@ -30,35 +28,43 @@ export async function GET(request: Request) {
               page_size: pageSize
             }
           );
-          
+
           return conversations.response.conversations.map((conv: any) => ({
             ...conv,
             shop_name: shop.shop_name
           }));
         } catch (error) {
-          console.error(`Error mengambil percakapan untuk toko ${shop.shop_id}:`, error);
+          // FIX #12: Catat error per toko alih-alih ditelan
+          console.error(`[get_conversation_list] Error toko ${shop.shop_id} (${shop.shop_name}):`, error);
+          shopErrors.push({
+            shopId: shop.shop_id,
+            shopName: shop.shop_name,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
           return [];
         }
       })
     );
 
-    // Gabungkan semua percakapan menjadi satu array
     const flattenedConversations = allConversations.flat();
 
-    // Filter percakapan unread jika parameter unread=true
     let filteredConversations = flattenedConversations;
     if (unread === 'true') {
       filteredConversations = flattenedConversations.filter(conv => conv.unread_count > 0);
     }
 
-    // Urutkan percakapan berdasarkan last_message_timestamp secara menurun
-    const sortedConversations = filteredConversations.sort((a, b) => 
+    const sortedConversations = filteredConversations.sort((a, b) =>
       b.last_message_timestamp - a.last_message_timestamp
     );
 
+    // FIX #12: Jika ada toko yang gagal, sertakan dalam response agar client bisa warning
+    if (shopErrors.length > 0) {
+      return NextResponse.json({ conversations: sortedConversations, shopErrors });
+    }
+
     return NextResponse.json(sortedConversations);
   } catch (error) {
-    console.error('Error dalam rute API:', error);
+    console.error('[get_conversation_list] Error:', error);
     return NextResponse.json({ message: 'Kesalahan Server Internal' }, { status: 500 });
   }
 }

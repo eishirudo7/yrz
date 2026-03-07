@@ -446,26 +446,37 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       get().setError('fetch', undefined);
       const timestamp = new Date().getTime();
 
-      logger.info('Fetching conversation list...');
       const response = await fetch(`/api/msg/get_conversation_list?_=${timestamp}`);
 
-      logger.info('Response status:', response.status);
-
       if (!response.ok) {
-        logger.error('Response not OK:', { status: response.status, statusText: response.statusText });
         throw new Error('Gagal mengambil daftar percakapan');
       }
 
       const data = await response.json();
-      logger.info('Berhasil mengambil data conversations:', data);
 
+      // FIX #12: Handle dua format response:
+      // - Array biasa: semua toko berhasil
+      // - { conversations, shopErrors }: ada toko yang gagal
+      let conversations: any[];
       if (Array.isArray(data)) {
-        get().setConversations(data);
-        logger.info(`Berhasil mengambil ${data.length} percakapan`);
+        conversations = data;
+      } else if (data.conversations) {
+        conversations = data.conversations;
+        if (data.shopErrors?.length > 0) {
+          logger.error('Beberapa toko gagal dimuat:', data.shopErrors);
+          // Tampilkan toast warning untuk toko yang gagal
+          const failedNames = data.shopErrors.map((e: any) => e.shopName).join(', ');
+          // Import toast di sini tidak bisa langsung, tapi kita log saja
+          // UI bisa merespons dari state errors jika perlu
+          get().setError('fetch', `Token expired untuk: ${failedNames}`);
+        }
       } else {
-        logger.error('Data bukan array:', { data });
+        logger.error('Format data tidak valid:', { data });
         throw new Error('Format data tidak valid');
       }
+
+      get().setConversations(conversations);
+      logger.info(`Berhasil mengambil ${conversations.length} percakapan`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Error refreshing conversations:', error);
@@ -554,73 +565,55 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   },
 
   handleSSEMessage: (data) => {
-    logger.info('Menerima pesan SSE:', {
-      messageId: data?.message_id,
-      conversationId: data?.conversation_id,
-      type: data?.message_type,
-      sender: data?.sender,
-      content: data?.content,
-      timestamp: data?.timestamp ? new Date(data.timestamp * 1000).toLocaleString() : undefined
-    });
-
     if (!data?.message_id || !data.conversation_id || !data.shop_id) {
       logger.error('Invalid SSE message data:', data);
       return;
     }
 
+    // FIX #5: Store adalah satu-satunya pemilik processedMessages
+    // Hook tidak lagi punya processedMessages sendiri
     if (get().processedMessages.has(data.message_id)) {
-      logger.info(`Pesan dengan ID ${data.message_id} sudah diproses sebelumnya, mengabaikan...`);
+      logger.info(`[SSE] Pesan ${data.message_id} sudah diproses, skip`);
       return;
     }
 
-    // Batasi ukuran Set processedMessages
-    if (get().processedMessages.size > 1000) {
-      logger.info(`Cache pesan mencapai batas (${get().processedMessages.size}), menghapus 500 ID pesan tertua...`);
-      const newSet = new Set(Array.from(get().processedMessages).slice(-500));
-      set({ processedMessages: newSet });
-      logger.info(`Cache pesan dikurangi menjadi ${newSet.size} item`);
+    // Batasi ukuran Set agar tidak tumbuh tak terbatas
+    const processed = get().processedMessages;
+    if (processed.size > 500) {
+      const trimmed = new Set(Array.from(processed).slice(-250));
+      set({ processedMessages: trimmed });
     }
-
-    logger.info(`Menambahkan pesan ID ${data.message_id} ke daftar pesan yang sudah diproses`);
     get().processedMessages.add(data.message_id);
 
-    logger.info(`Mencari percakapan dengan ID ${data.conversation_id} dalam daftar ${get().conversations.length} percakapan...`);
     const conversation = get().conversations.find(
       conv => conv.conversation_id === data.conversation_id
     );
 
     if (!conversation) {
-      logger.info(`Conversation ${data.conversation_id} tidak ditemukan, mengambil dari API...`);
-      logger.info(`Parameter fetch: shopId=${data.shop_id}, conversationId=${data.conversation_id}`);
+      // Conversation belum ada di list, fetch dari API
+      logger.info(`[SSE] Conversation ${data.conversation_id} baru, fetch dari API`);
       get().fetchOneConversation(data.conversation_id, data.shop_id, data.shop_name)
         .then(result => {
-          if (result) {
-            logger.info(`Berhasil menambahkan conversation baru: ${result.conversation_id} dengan ${result.to_name}`);
-          } else {
-            logger.error(`Gagal mengambil conversation ${data.conversation_id} dari API`);
-          }
+          if (result) logger.info(`[SSE] Conversation baru ditambahkan: ${result.to_name}`);
+          else logger.error(`[SSE] Gagal fetch conversation ${data.conversation_id}`);
         })
-        .catch(err => {
-          logger.error(`Error saat mengambil conversation: ${err.message}`);
-        });
+        .catch(err => logger.error(`[SSE] Error fetch conversation: ${err.message}`));
     } else {
-      const prevUnreadCount = conversation.unread_count;
-      logger.info(`Memperbarui conversation ${data.conversation_id} dengan pesan baru`);
-      logger.info(`Detail update: from=${data.sender} (${data.sender === conversation.to_id ? 'buyer' : 'seller'}), type=${data.message_type}`);
       get().updateConversation(data.conversation_id, {
         latest_message_content: data.content,
         latest_message_from_id: data.sender,
         latest_message_id: data.message_id,
         last_message_timestamp: data.timestamp,
         latest_message_type: data.message_type,
-        unread_count: conversation.unread_count + 1
+        // Hanya tambah unread jika sender adalah buyer (to_id = buyer)
+        unread_count: data.sender === conversation.to_id
+          ? conversation.unread_count + 1
+          : conversation.unread_count
       });
-      logger.info(`Conversation ${data.conversation_id} diperbarui. Unread: ${prevUnreadCount} → ${conversation.unread_count + 1}`);
     }
 
-    logger.info(`Menyimpan pesan terakhir ke state untuk notifikasi dan UI updates`);
+    // Simpan untuk dikonsumsi hook UI (menambah pesan ke chat window)
     set({ lastMessage: data });
-    logger.info(`Proses handleSSEMessage selesai untuk pesan ID ${data.message_id}`);
   },
 
   initializeConversation: async (params: { userId: string; shopId: string; orderSn?: string }): Promise<string> => {
@@ -695,45 +688,47 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
   },
 
   fetchOneConversation: async (conversationId: string, shopId: number, shopName?: string) => {
+    // FIX #8: Hapus fallback ke refreshConversations yang berat
+    // Jika fetch satu conversation gagal, cukup log dan return null
     try {
       const response = await fetch(
         `/api/msg/get_one_conversation?conversationId=${conversationId}&shopId=${shopId}`
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.response) {
-          const conv = data.response;
-          const newConversation: Conversation = {
-            conversation_id: conv.conversation_id,
-            to_id: conv.to_id,
-            to_name: conv.to_name,
-            to_avatar: conv.to_avatar,
-            shop_id: shopId,
-            shop_name: shopName || conv.shop_name || 'Toko',
-            latest_message_content: conv.latest_message_content,
-            latest_message_from_id: conv.latest_message_from_id,
-            latest_message_id: conv.latest_message_id,
-            last_message_timestamp: conv.last_message_timestamp,
-            unread_count: conv.unread_count || 1,
-            pinned: conv.pinned,
-            last_read_message_id: conv.last_read_message_id,
-            latest_message_type: conv.latest_message_type
-          };
-
-          // Tambahkan conversation baru ke list secara manual
-          get().addConversation(newConversation);
-
-          return newConversation;
-        }
+      if (!response.ok) {
+        logger.error(`[fetchOneConversation] HTTP ${response.status} untuk conversation ${conversationId}`);
+        return null;
       }
 
-      console.error('[MiniChat] Gagal mengambil conversation, fallback ke refresh');
-      await get().refreshConversations();
-      return null;
+      const data = await response.json();
+      if (!data.response) {
+        logger.error(`[fetchOneConversation] Response kosong untuk conversation ${conversationId}`);
+        return null;
+      }
+
+      const conv = data.response;
+      const newConversation: Conversation = {
+        conversation_id: conv.conversation_id,
+        to_id: conv.to_id,
+        to_name: conv.to_name,
+        to_avatar: conv.to_avatar,
+        shop_id: shopId,
+        shop_name: shopName || conv.shop_name || 'Toko',
+        latest_message_content: conv.latest_message_content,
+        latest_message_from_id: conv.latest_message_from_id,
+        latest_message_id: conv.latest_message_id,
+        last_message_timestamp: conv.last_message_timestamp,
+        unread_count: conv.unread_count || 1,
+        pinned: conv.pinned,
+        last_read_message_id: conv.last_read_message_id,
+        latest_message_type: conv.latest_message_type
+      };
+
+      get().addConversation(newConversation);
+      return newConversation;
     } catch (error) {
-      console.error('Error fetching conversation:', error);
-      await get().refreshConversations();
+      // FIX #8: Tidak lagi fallback ke full refresh yang mahal
+      logger.error('[fetchOneConversation] Error:', error);
       return null;
     }
   },

@@ -3,20 +3,9 @@ import { checkRateLimit, createSSEConnection } from '@/app/services/serverSSESer
 import { createClient } from '@/utils/supabase/server';
 
 export async function GET(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-
-  // Cek rate limiting
-  const rateLimitResult = checkRateLimit(ip);
-
-  if (!rateLimitResult.allowed) {
-    return new Response('Too Many Requests', { status: 429 });
-  }
-
   try {
     // Autentikasi user
     const supabase = await createClient();
-
-    // Menggunakan getUser() yang lebih aman daripada getSession()
     const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
@@ -24,6 +13,12 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = user.id;
+
+    // FIX #3: Rate limit berbasis userId, bukan IP
+    const rateLimitResult = checkRateLimit(userId);
+    if (!rateLimitResult.allowed) {
+      return new Response('Too Many Requests', { status: 429 });
+    }
 
     // Ambil daftar toko yang dimiliki user
     const { data: shops } = await supabase
@@ -34,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     const shopIds = shops ? shops.map(shop => shop.shop_id) : [];
 
-    // Buat koneksi SSE dengan informasi user dan toko
+    // Buat koneksi SSE
     const stream = createSSEConnection(req, userId, shopIds);
 
     return new Response(stream, {
@@ -46,7 +41,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error dalam membuat SSE connection:', error);
+    console.error('[SSE] Error dalam membuat koneksi:', error);
     return new Response('Error', { status: 500 });
   }
-} 
+}
