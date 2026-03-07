@@ -238,9 +238,10 @@ const THROTTLE_TIME = 5000; // 5 detik
 // Interface untuk parameter sendMessage
 export interface SendMessageParams {
   conversationId: string;
-  content: string;
+  content: string | Record<string, any>;
   toId: number;
   shopId: number;
+  messageType?: string;  // default 'text' jika tidak diisi
 }
 
 // Tipe untuk state global
@@ -531,6 +532,7 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toId: params.toId,
+          messageType: params.messageType || 'text',  // FIX: kirim messageType dari params
           content: params.content,
           shopId: params.shopId,
         })
@@ -545,14 +547,15 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
       if (data.success && data.data) {
         // Update conversation dengan pesan terakhir
         get().updateConversation(params.conversationId, {
-          latest_message_content: { text: params.content },
+          latest_message_content: typeof params.content === 'string'
+            ? { text: params.content }
+            : params.content as any,
           latest_message_from_id: params.shopId,
           latest_message_id: data.data.message_id,
           last_message_timestamp: data.data.created_timestamp
-            ? data.data.created_timestamp * 1_000_000_000   // seconds → nanoseconds (sama dengan format Shopee)
-            : Date.now() * 1_000_000,                        // ms → nanoseconds fallback
-
-          latest_message_type: 'text',
+            ? data.data.created_timestamp * 1_000_000_000
+            : Date.now() * 1_000_000,
+          latest_message_type: params.messageType || 'text',
           unread_count: 0
         });
 
