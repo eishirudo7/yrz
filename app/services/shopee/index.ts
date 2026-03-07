@@ -89,5 +89,7 @@ export {
     getOneConversation,
     getMessages,
     sendMessage,
-    readConversation
+    readConversation,
+    uploadChatImage
 } from './chat';
+

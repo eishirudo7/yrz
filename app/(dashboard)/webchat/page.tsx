@@ -81,10 +81,10 @@ const WebChatPage: React.FC = () => {
                   </Tabs>
                 </div>
                 <div className="flex-1 overflow-hidden min-h-0">
-                  <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} />
+                  <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} shopId={chat.selectedShop} onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} />
                 </div>
                 <div className="p-4 py-3 border-t shrink-0">
-                  <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} />
+                  <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} />
                 </div>
               </div>
             ) : (
@@ -133,10 +133,10 @@ const WebChatPage: React.FC = () => {
 
               {/* Chat area */}
               <div className="flex-1 overflow-hidden min-h-0">
-                <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} />
+                <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} shopId={chat.selectedShop} onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} />
               </div>
               <div className="p-4 py-3 border-t shrink-0">
-                <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} />
+                <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} />
               </div>
             </div>
           )}

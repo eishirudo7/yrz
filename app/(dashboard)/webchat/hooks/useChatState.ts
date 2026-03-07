@@ -64,29 +64,35 @@ export function useChatState() {
         }
     }, [selectedConversationData, selectedConversation, isLoading, messages.length, handleMarkAsRead]);
 
-    const handleSendMessage = async (message: string) => {
-        if (!selectedConversationData || !message.trim() || !selectedConversation || !selectedShop) return;
+    const handleSendMessage = async (
+        message: string,
+        type: string = 'text',
+        content?: Record<string, any>
+    ) => {
+        if (!selectedConversationData || !selectedConversation || !selectedShop) return;
+        if (type === 'text' && !message.trim()) return;
 
         try {
             setIsSendingMessage(true);
+
             const params = {
                 conversationId: selectedConversation,
-                content: message,
+                content: type === 'text' ? message : content,
                 toId: selectedConversationData.to_id,
-                shopId: selectedShop
+                shopId: selectedShop,
+                messageType: type,
             };
 
-            // sendMessageStore sudah melakukan updateConversation di dalam store-nya
-            // FIX #7: Hapus updateConversation manual di sini agar tidak double-call
-            const messageId = await sendMessageStore(params);
+            const messageId = await sendMessageStore(params as any);
 
-            // Hanya tambah pesan ke UI lokal
+            // Aggiungi il messaggio all'UI locale
             const newMessage: UIMessage = {
                 id: messageId || Date.now().toString(),
                 sender: 'seller',
-                content: message,
+                content: type === 'text' ? message : content?.image_url || '',
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                type: 'text',
+                type: type as any,
+                ...(type === 'image' && { image_url: content?.image_url }),
             };
             setMessages(prev => [...prev, newMessage]);
 
@@ -101,6 +107,7 @@ export function useChatState() {
             setIsSendingMessage(false);
         }
     };
+
 
     const handleConversationSelect = useCallback(async (conversation: Conversation) => {
         if (conversation.conversation_id === selectedConversation) {

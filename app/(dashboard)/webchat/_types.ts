@@ -44,8 +44,9 @@ export interface Message {
 }
 
 export interface MessageInputProps {
-    onSendMessage: (message: string) => void;
+    onSendMessage: (message: string, type?: string, content?: Record<string, any>) => void;
     isSendingMessage: boolean;
+    shopId: number | null;
 }
 
 export interface ConversationItemProps {
@@ -105,6 +106,9 @@ export interface ChatContentProps {
     setActiveTab: (tab: 'chat' | 'orders') => void;
     selectedConversation: string | null;
     isMobileView: boolean;
+    shopId: number | null;
+    onSendMessage: (message: string, type?: string, content?: Record<string, any>) => void;
+    isSendingMessage: boolean;
 }
 
 export interface OrderItemProps {

@@ -109,3 +109,25 @@ export async function readConversation(shopId: number, conversationId: string, l
         return { success: false, error: "internal_server_error", message: error instanceof Error ? error.message : 'Terjadi kesalahan yang tidak diketahui' };
     }
 }
+
+/**
+ * Upload image to Shopee CDN for use in chat messages
+ */
+export async function uploadChatImage(shopId: number, file: File): Promise<{ url: string; thumbnail: string }> {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+        throw new Error(`Tidak dapat menemukan access token untuk toko: ${shopId}`);
+    }
+
+    const result = await shopeeApi.uploadImage(shopId, accessToken, file);
+
+    if (result.error) {
+        throw new Error(result.message || 'Gagal mengupload gambar ke Shopee');
+    }
+
+    return {
+        url: result.response.url,
+        thumbnail: result.response.thumbnail,
+    };
+}
+
