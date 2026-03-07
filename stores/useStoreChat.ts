@@ -548,7 +548,10 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
           latest_message_content: { text: params.content },
           latest_message_from_id: params.shopId,
           latest_message_id: data.data.message_id,
-          last_message_timestamp: data.data.created_timestamp || Date.now(),
+          last_message_timestamp: data.data.created_timestamp
+            ? data.data.created_timestamp * 1_000_000_000   // seconds → nanoseconds (sama dengan format Shopee)
+            : Date.now() * 1_000_000,                        // ms → nanoseconds fallback
+
           latest_message_type: 'text',
           unread_count: 0
         });
@@ -603,7 +606,10 @@ const useStoreChat = create<ChatState & ChatActions>((set, get) => ({
         latest_message_content: data.content,
         latest_message_from_id: data.sender,
         latest_message_id: data.message_id,
-        last_message_timestamp: data.timestamp,
+        last_message_timestamp: data.timestamp
+          ? data.timestamp * 1_000_000_000   // seconds → nanoseconds
+          : Date.now() * 1_000_000,
+
         latest_message_type: data.message_type,
         // Hanya tambah unread jika sender adalah buyer (to_id = buyer)
         unread_count: data.sender === conversation.to_id
