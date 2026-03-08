@@ -57,17 +57,21 @@ function formatDate(timestamp: number): string {
 function isToday(timestamp: number): boolean {
   if (!timestamp || timestamp === 0) return false;
 
-  // Konversi timestamp UTC ke WIB
-  const jakartaTimestamp = timestamp + (7 * 60 * 60);
-  const shipDate = new Date(jakartaTimestamp * 1000);
+  const shipDateStr = new Date(timestamp * 1000).toLocaleString('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
 
-  // Dapatkan tanggal sekarang dalam WIB
-  const now = new Date();
-  const jakartaNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+  const todayStr = new Date().toLocaleString('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
 
-  return shipDate.getDate() === jakartaNow.getDate() &&
-    shipDate.getMonth() === jakartaNow.getMonth() &&
-    shipDate.getFullYear() === jakartaNow.getFullYear();
+  return shipDateStr === todayStr;
 }
 
 // Fungsi untuk mengecek apakah pesanan telah melewati batas waktu pengiriman
