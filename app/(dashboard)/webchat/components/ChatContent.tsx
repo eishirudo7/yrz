@@ -15,7 +15,8 @@ const ChatContent = React.memo(({
     isLoadingConversation,
     messagesEndRef,
     selectedConversation,
-    isMobileView
+    isMobileView,
+    onRetry
 }: ChatContentProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,7 @@ const ChatContent = React.memo(({
                         message={message}
                         orders={orders}
                         isMobileView={isMobileView}
+                        onRetry={onRetry} // Pass onRetry to MessageBubble
                     />
                 ))}
                 <div ref={messagesEndRef} />

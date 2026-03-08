@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 // FIX #9: convertToUIMessage diimport sebagai fungsi biasa (pure function, tidak pernah berubah)
 // Tidak perlu masuk ke dependency array useCallback
-import useStoreChat, { convertToUIMessage, ShopeeMessage } from '@/stores/useStoreChat';
-import { UIMessage } from '@/types/shopeeMessage';
-import { Conversation, Order } from '../_types';
+import useStoreChat from '@/stores/useStoreChat';
+import { UIMessage, convertToUIMessage, ShopeeMessage } from '@/types/shopeeMessage';
+import { Conversation, Order, SelectedMedia } from '../_types';
 
 export function useChatState() {
     const {
@@ -64,50 +64,319 @@ export function useChatState() {
         }
     }, [selectedConversationData, selectedConversation, isLoading, messages.length, handleMarkAsRead]);
 
+    const uploadSingleMedia = async (media: SelectedMedia, shopId: number, conversationId: string, toId: number) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', media.file);
+            formData.append('shopId', shopId.toString());
+
+            const endpoint = media.type === 'video' ? '/api/msg/upload_video' : '/api/msg/upload_image';
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                body: formData,
+            });
+            const data = await res.json();
+
+            if (!data.success) {
+                throw new Error(`Upload gagal: ${data.error}`);
+            }
+
+            let finalContent: any = {};
+            if (media.type === 'video') {
+                let isVideoReady = false;
+                let videoData = null;
+                let attempts = 0;
+                const maxAttempts = 60; // 60 * 2s = 120s max timeout
+
+                while (!isVideoReady && attempts < maxAttempts) {
+                    try {
+                        const pollRes = await fetch(`/api/msg/video_upload_result?vid=${data.vid}&shopId=${shopId}`);
+                        const pollData = await pollRes.json();
+
+                        if (pollData.success && pollData.data) {
+                            if (pollData.data.status === 'successful') {
+                                isVideoReady = true;
+                                videoData = pollData.data;
+                            } else if (pollData.data.status === 'failed' || pollData.data.error) {
+                                throw new Error(pollData.data.message || pollData.data.error || 'Video upload failed processing');
+                            }
+                        }
+                    } catch (pollErr) {
+                        console.error('Polling error:', pollErr);
+                    }
+
+                    if (!isVideoReady) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        attempts++;
+                    }
+                }
+
+                if (!isVideoReady || !videoData) {
+                    throw new Error('Waktu pemrosesan video habis atau gagal.');
+                }
+
+                finalContent = {
+                    vid: data.vid,
+                    video_url: videoData.video,
+                    thumb_url: videoData.thumbnail,
+                    thumb_width: videoData.width,
+                    thumb_height: videoData.height,
+                    duration_seconds: videoData.duration ? Math.floor(videoData.duration / 1000) : 0
+                };
+            } else {
+                finalContent = { image_url: data.url };
+            }
+
+            // Send actual message to Shopee
+            const params = {
+                conversationId,
+                content: finalContent,
+                toId,
+                shopId,
+                messageType: media.type,
+            };
+
+            const realMessageId = await sendMessageStore(params as any);
+
+            // Perbarui pesan optimistic di UI local
+            setMessages(prev => prev.map(msg => {
+                if (msg.id === media.id) {
+                    return {
+                        ...msg,
+                        id: realMessageId || msg.id,
+                        status: 'success',
+                        ...(media.type === 'video' && {
+                            videoUrl: finalContent.video_url.startsWith('http') ? finalContent.video_url : `https://down-tx-sg.vod.susercontent.com/${finalContent.video_url}`,
+                            imageThumb: {
+                                url: finalContent.thumb_url.startsWith('http') ? finalContent.thumb_url : `https://down-tx-sg.vod.susercontent.com/${finalContent.thumb_url}`,
+                                width: finalContent.thumb_width,
+                                height: finalContent.thumb_height
+                            },
+                            videoDuration: finalContent.duration_seconds
+                        }),
+                        ...(media.type === 'image' && {
+                            imageUrl: finalContent.image_url
+                        })
+                    } as UIMessage;
+                }
+                return msg;
+            }));
+
+        } catch (error) {
+            console.error('[uploadSingleMedia] Error:', error);
+            // Update UI ke error state
+            setMessages(prev => prev.map(msg => msg.id === media.id ? { ...msg, status: 'error' } : msg));
+            toast.error(`Gagal mengirim media ${media.file.name}`);
+        }
+    };
+
     const handleSendMessage = async (
         message: string,
         type: string = 'text',
-        content?: Record<string, any>
+        content?: Record<string, any>,
+        mediaFiles?: SelectedMedia[]
     ) => {
         if (!selectedConversationData || !selectedConversation || !selectedShop) return;
-        if (type === 'text' && !message.trim()) return;
+        if (type === 'text' && !message.trim() && (!mediaFiles || mediaFiles.length === 0)) return;
 
-        try {
-            setIsSendingMessage(true);
-
-            const params = {
-                conversationId: selectedConversation,
-                content: type === 'text' ? message : content,
-                toId: selectedConversationData.to_id,
-                shopId: selectedShop,
-                messageType: type,
-            };
-
-            const messageId = await sendMessageStore(params as any);
-
-            // Aggiungi il messaggio all'UI locale
-            const newMessage: UIMessage = {
-                id: messageId || Date.now().toString(),
+        // Background media upload processing without blocking input UI
+        if (mediaFiles && mediaFiles.length > 0) {
+            const tempMessages = mediaFiles.map(m => ({
+                id: m.id,
                 sender: 'seller',
-                content: type === 'text' ? message : content?.image_url || '',
+                content: '',
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                type: type as any,
-                ...(type === 'image' && { image_url: content?.image_url }),
-            };
-            setMessages(prev => [...prev, newMessage]);
+                type: m.type,
+                status: 'sending',
+                file: m.file,
+                localFileUrl: m.preview,
+                imageUrl: m.type === 'image' ? m.preview : undefined,
+                videoUrl: m.type === 'video' ? m.preview : undefined,
+                imageThumb: m.type === 'video' ? { url: m.preview, width: 480, height: 848 } : undefined
+            } as UIMessage));
 
+            setMessages(prev => [...prev, ...tempMessages]);
             setTimeout(() => {
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }, 100);
 
-        } catch (error) {
-            console.error('[handleSendMessage] Error:', error);
-            toast.error('Gagal mengirim pesan. Silakan coba lagi.');
-        } finally {
-            setIsSendingMessage(false);
+            // Execute asynchronous uploads
+            for (const media of mediaFiles) {
+                uploadSingleMedia(media, selectedShop, selectedConversation, selectedConversationData.to_id);
+            }
+        }
+
+        // Send Text Message if present
+        if (type === 'text' && message.trim()) {
+            try {
+                setIsSendingMessage(true);
+                const params = {
+                    conversationId: selectedConversation,
+                    content: message,
+                    toId: selectedConversationData.to_id,
+                    shopId: selectedShop,
+                    messageType: 'text',
+                };
+
+                const messageId = await sendMessageStore(params as any);
+
+                // Tambahkan pesan ke UI lokal (optimistic update)
+                const newMessage: UIMessage = {
+                    id: messageId || Date.now().toString(),
+                    sender: 'seller',
+                    content: message,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type: 'text',
+                    status: 'success'
+                };
+                setMessages(prev => [...prev, newMessage]);
+
+                setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+
+            } catch (error) {
+                console.error('[handleSendMessage Text] Error:', error);
+                toast.error('Gagal mengirim teks.');
+            } finally {
+                setIsSendingMessage(false);
+            }
+        }
+
+        // Send Sticker Message
+        if (type === 'sticker' && content?.sticker_id && content?.sticker_package_id) {
+            try {
+                setIsSendingMessage(true);
+                const params = {
+                    conversationId: selectedConversation,
+                    content: {
+                        sticker_id: content.sticker_id,
+                        sticker_package_id: content.sticker_package_id,
+                    },
+                    toId: selectedConversationData.to_id,
+                    shopId: selectedShop,
+                    messageType: 'sticker',
+                };
+
+                const messageId = await sendMessageStore(params as any);
+
+                const newMessage: UIMessage = {
+                    id: messageId || Date.now().toString(),
+                    sender: 'seller',
+                    content: 'Stiker',
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type: 'sticker',
+                    stickerData: {
+                        stickerId: content.sticker_id,
+                        packageId: content.sticker_package_id,
+                    },
+                    status: 'success'
+                };
+                setMessages(prev => [...prev, newMessage]);
+
+                setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+
+            } catch (error) {
+                console.error('[handleSendMessage Sticker] Error:', error);
+                toast.error('Gagal mengirim stiker.');
+            } finally {
+                setIsSendingMessage(false);
+            }
+        }
+
+        // Send Item (Product) Message
+        if (type === 'item' && content?.item_id) {
+            try {
+                setIsSendingMessage(true);
+                const params = {
+                    conversationId: selectedConversation,
+                    content: { item_id: content.item_id },
+                    toId: selectedConversationData.to_id,
+                    shopId: selectedShop,
+                    messageType: 'item',
+                };
+
+                const messageId = await sendMessageStore(params as any);
+
+                const newMessage: UIMessage = {
+                    id: messageId || Date.now().toString(),
+                    sender: 'seller',
+                    content: 'Produk',
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type: 'item',
+                    itemData: { itemId: content.item_id, shopId: selectedShop },
+                    status: 'success'
+                };
+                setMessages(prev => [...prev, newMessage]);
+
+                setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+
+            } catch (error) {
+                console.error('[handleSendMessage Item] Error:', error);
+                toast.error('Gagal mengirim produk.');
+            } finally {
+                setIsSendingMessage(false);
+            }
+        }
+
+        // Send Order Message
+        if (type === 'order' && content?.order_sn) {
+            try {
+                setIsSendingMessage(true);
+                const params = {
+                    conversationId: selectedConversation,
+                    content: { order_sn: content.order_sn },
+                    toId: selectedConversationData.to_id,
+                    shopId: selectedShop,
+                    messageType: 'order',
+                };
+
+                const messageId = await sendMessageStore(params as any);
+
+                const newMessage: UIMessage = {
+                    id: messageId || Date.now().toString(),
+                    sender: 'seller',
+                    content: 'Pesanan',
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    type: 'order',
+                    orderData: { orderSn: content.order_sn, shopId: selectedShop },
+                    status: 'success'
+                };
+                setMessages(prev => [...prev, newMessage]);
+
+                setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+
+            } catch (error) {
+                console.error('[handleSendMessage Order] Error:', error);
+                toast.error('Gagal mengirim pesanan.');
+            } finally {
+                setIsSendingMessage(false);
+            }
         }
     };
 
+    const handleRetryMedia = useCallback((messageId: string) => {
+        const targetMsg = messages.find(m => m.id === messageId);
+        if (!targetMsg || !targetMsg.file || !targetMsg.localFileUrl || !selectedShop || !selectedConversation || !selectedConversationData) return;
+
+        setMessages(prev => prev.map(msg => msg.id === messageId ? { ...msg, status: 'sending' } : msg));
+
+        const mediaToRetry: SelectedMedia = {
+            id: targetMsg.id,
+            file: targetMsg.file,
+            preview: targetMsg.localFileUrl,
+            type: targetMsg.type as 'image' | 'video'
+        };
+
+        uploadSingleMedia(mediaToRetry, selectedShop, selectedConversation, selectedConversationData.to_id);
+    }, [messages, selectedShop, selectedConversation, selectedConversationData]);
 
     const handleConversationSelect = useCallback(async (conversation: Conversation) => {
         if (conversation.conversation_id === selectedConversation) {
@@ -347,5 +616,6 @@ export function useChatState() {
         handleSendMessage,
         handleMarkAsRead,
         loadMessages,
+        handleRetryMedia,
     };
 }

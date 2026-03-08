@@ -96,4 +96,12 @@ export class ShopeeAPI {
     async uploadImage(shopId: number, accessToken: string, file: File): Promise<any> {
         return chat.uploadImage(this.client, shopId, accessToken, file);
     }
+
+    async uploadVideo(shopId: number, accessToken: string, file: File): Promise<any> {
+        return chat.uploadVideo(this.client, shopId, accessToken, file);
+    }
+
+    async getVideoUploadResult(shopId: number, accessToken: string, vid: string): Promise<any> {
+        return chat.getVideoUploadResult(this.client, shopId, accessToken, vid);
+    }
 }

@@ -43,8 +43,15 @@ export interface Message {
     receiver_name?: string;
 }
 
+export interface SelectedMedia {
+    id: string;
+    file: File;
+    preview: string;
+    type: 'image' | 'video';
+}
+
 export interface MessageInputProps {
-    onSendMessage: (message: string, type?: string, content?: Record<string, any>) => void;
+    onSendMessage: (message: string, type?: string, content?: Record<string, any>, mediaFiles?: SelectedMedia[]) => void;
     isSendingMessage: boolean;
     shopId: number | null;
 }
@@ -82,6 +89,7 @@ export interface MessageBubbleProps {
     message: import('@/types/shopeeMessage').UIMessage;
     orders: Order[];
     isMobileView: boolean;
+    onRetry?: (messageId: string) => void;
 }
 
 export interface ItemDetail {
@@ -107,8 +115,9 @@ export interface ChatContentProps {
     selectedConversation: string | null;
     isMobileView: boolean;
     shopId: number | null;
-    onSendMessage: (message: string, type?: string, content?: Record<string, any>) => void;
+    onSendMessage: (message: string, type?: string, content?: Record<string, any>, mediaFiles?: SelectedMedia[]) => void;
     isSendingMessage: boolean;
+    onRetry?: (messageId: string) => void;
 }
 
 export interface OrderItemProps {

@@ -87,8 +87,8 @@ export async function sendMessage(
         throw new Error('Invalid to_id. Must be a positive integer.');
     }
 
-    if (!['text', 'sticker', 'image', 'item', 'order'].includes(messageType)) {
-        throw new Error('Invalid message_type. Must be "text", "sticker", "image", "item", or "order".');
+    if (!['text', 'sticker', 'image', 'item', 'order', 'video'].includes(messageType)) {
+        throw new Error('Invalid message_type. Must be "text", "sticker", "image", "item", "order", or "video".');
     }
 
     const body: any = {
@@ -133,6 +133,18 @@ export async function sendMessage(
                 throw new Error('Invalid content for order message. order_sn must be a non-empty string.');
             }
             body.content.order_sn = orderContent.order_sn;
+            break;
+        case 'video':
+            const videoContent = content as MessageContent;
+            if (!videoContent.vid) {
+                throw new Error('Invalid content for video message. Must include vid.');
+            }
+            body.content.vid = videoContent.vid;
+            body.content.video_url = videoContent.video_url || undefined;
+            body.content.thumb_url = videoContent.thumb_url || undefined;
+            body.content.thumb_width = videoContent.thumb_width || undefined;
+            body.content.thumb_height = videoContent.thumb_height || undefined;
+            body.content.duration_seconds = videoContent.duration_seconds || undefined;
             break;
     }
 
@@ -269,6 +281,84 @@ export async function uploadImage(
         return response.json();
     } catch (error) {
         console.error('Error uploading image:', error);
+        throw error;
+    }
+}
+
+/**
+ * Upload video via Shopee API
+ * Referensi: https://openplatform.shopee.com/documents?module=104&type=1&id=648
+ */
+export async function uploadVideo(
+    client: ShopeeClient,
+    shopId: number,
+    accessToken: string,
+    file: File
+): Promise<any> {
+    const path = '/api/v2/sellerchat/upload_video';
+    const { timestamp, sign } = client.generateSignature(path, accessToken, shopId);
+
+    const params = new URLSearchParams({
+        partner_id: client.partnerId.toString(),
+        timestamp: timestamp.toString(),
+        sign,
+        shop_id: shopId.toString(),
+        access_token: accessToken
+    });
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const url = `${SHOPEE_API_BASE_URL}${path}?${params.toString()}`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData
+        });
+
+        return response.json();
+    } catch (error) {
+        console.error('Error uploading video:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get video upload result via Shopee API
+ */
+export async function getVideoUploadResult(
+    client: ShopeeClient,
+    shopId: number,
+    accessToken: string,
+    vid: string
+): Promise<any> {
+    const path = '/api/v2/sellerchat/get_video_upload_result';
+    const { timestamp, sign } = client.generateSignature(path, accessToken, shopId);
+
+    const params = new URLSearchParams({
+        partner_id: client.partnerId.toString(),
+        timestamp: timestamp.toString(),
+        sign,
+        shop_id: shopId.toString(),
+        access_token: accessToken,
+        vid: vid
+    });
+
+    const url = `${SHOPEE_API_BASE_URL}${path}?${params.toString()}`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        const rawText = await response.text();
+        if (!rawText) return {};
+
+        return JSONParse(rawText);
+    } catch (error) {
+        console.error('Error getting video upload result:', error);
         throw error;
     }
 }

@@ -113,7 +113,7 @@ export interface MessageOptions {
     message_id_list?: number[];
 }
 
-export type MessageType = 'text' | 'sticker' | 'image' | 'item' | 'order';
+export type MessageType = 'text' | 'sticker' | 'image' | 'item' | 'order' | 'video';
 
 export interface MessageContent {
     text?: string;
@@ -122,6 +122,12 @@ export interface MessageContent {
     image_url?: string;
     item_id?: number;
     order_sn?: string;
+    vid?: string;
+    video_url?: string;
+    thumb_url?: string;
+    thumb_width?: number;
+    thumb_height?: number;
+    duration_seconds?: number;
 }
 
 // Flash Sale Types

@@ -5,7 +5,7 @@ import { sendMessage } from '@/app/services/shopeeService';
 export async function POST(req: NextRequest) {
   const currentTime = new Date().toISOString();
   const body = await req.json();
-  
+
   console.log(`[${currentTime}] Data baru yang diterima di server:`, JSON.stringify(body));
 
   try {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validasi messageType
-    if (!['text', 'sticker', 'image', 'item', 'order'].includes(messageType)) {
+    if (!['text', 'sticker', 'image', 'item', 'order', 'video'].includes(messageType)) {
       return NextResponse.json({ success: false, error: 'messageType tidak valid' }, { status: 400 });
     }
 
@@ -33,14 +33,14 @@ export async function POST(req: NextRequest) {
     try {
       // Gunakan service function untuk mengirim pesan
       const result = await sendMessage(parsedShopId, parsedToId, messageType, content);
-      
+
       // Log hasil dari API Shopee
       console.log('Hasil dari API Shopee:', result);
-  
+
       // Periksa keberhasilan berdasarkan adanya 'response' dan 'message_id'
       if (result.response && result.response.message_id) {
         console.log('Pesan berhasil dikirim:', result.response);
-        
+
         // Format respons untuk MiniChatContext
         // Pastikan semua field yang dibutuhkan untuk pembaruan conversation_list tersedia
         const responseData = {
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
             from_id: parsedShopId // Sender adalah toko (untuk tracking di MiniChatContext)
           }
         };
-        
+
         // Gunakan NextResponse dengan JSONStringify untuk menangani BigInt
         return new NextResponse(JSONStringify(responseData), {
           headers: {
@@ -70,11 +70,11 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error('Error saat mengirim pesan:', error);
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'Terjadi kesalahan saat mengirim pesan',
           details: (error as Error).message
-        }, 
+        },
         { status: 500 }
       );
     }
@@ -89,13 +89,15 @@ function validateContent(messageType: string, content: any): boolean {
     case 'text':
       return typeof content === 'string' && content.trim().length > 0;
     case 'sticker':
-      return content && typeof content.sticker_id === 'number' && typeof content.sticker_package_id === 'number';
+      return content && (typeof content.sticker_id === 'string' || typeof content.sticker_id === 'number') && (typeof content.sticker_package_id === 'string' || typeof content.sticker_package_id === 'number');
     case 'image':
       return content && typeof content.image_url === 'string' && content.image_url.trim().length > 0;
     case 'item':
       return content && Number.isInteger(content.item_id) && content.item_id > 0;
     case 'order':
       return content && typeof content.order_sn === 'string' && content.order_sn.trim().length > 0;
+    case 'video':
+      return content && (typeof content.vid === 'string' || typeof content.vid === 'number') && String(content.vid).trim().length > 0;
     default:
       return false;
   }

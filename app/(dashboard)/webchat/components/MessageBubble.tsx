@@ -4,17 +4,21 @@ import { ShoppingBag } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import CustomImageLightbox from '@/components/CustomImageLightbox';
 import { UIMessage } from '@/types/shopeeMessage';
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { MessageBubbleProps, ItemDetail, Order } from '../_types';
 
 // Komponen ItemPreview
-const ItemPreview = React.memo(({ itemId }: { itemId: number }) => {
+const ItemPreview = React.memo(({ itemId, shopId }: { itemId: number; shopId?: number }) => {
     const [item, setItem] = useState<ItemDetail | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchItem = async () => {
             try {
-                const response = await fetch(`/api/get_sku?item_ids=${itemId}`);
+                let url = `/api/get_sku?item_ids=${itemId}`;
+                if (shopId) url += `&shop_id=${shopId}`;
+                const response = await fetch(url);
                 const data = await response.json();
                 if (data.items?.[0]) {
                     setItem(data.items[0]);
@@ -124,7 +128,7 @@ function OrderExpandDetail({ orderInfo, isExpanded, onToggle, orderSn, isSeller 
             </div>
 
             {isExpanded && orderInfo && (
-                <div className={`ml-5 text-xs text-muted-foreground space-y-1 mt-1 ${isSeller ? 'dark:text-primary-foreground/90' : 'dark:text-muted-foreground'}`}>
+                <div className={`ml-5 text-xs space-y-1 mt-1 ${isSeller ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                     <div className="flex justify-between items-center">
                         <span>Pembayaran:</span>
                         <span className="text-[11px]">{orderInfo.payment_method}</span>
@@ -174,9 +178,13 @@ function OrderExpandDetail({ orderInfo, isExpanded, onToggle, orderSn, isSeller 
 }
 
 // Komponen MessageBubble yang dimemoize
-const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubbleProps) => {
+const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, orders, isMobileView, onRetry }) => {
     const [isLightboxOpen, setIsLightboxOpen] = useState(false);
     const [isOrderExpanded, setIsOrderExpanded] = useState(false);
+
+    if (message.type === 'video') {
+        console.log('[DEBUG MessageBubble] Rendering video message:', message);
+    }
 
     const hasOrderReference = message.type === 'order' ||
         (message.sourceContent && message.sourceContent.order_sn);
@@ -191,6 +199,38 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
 
     const formatCurrency = (amount: number) => `Rp${amount.toLocaleString('id-ID')}`;
     const isSeller = message.sender === 'seller';
+    const isSending = message.status === 'sending';
+    const isError = message.status === 'error';
+
+    const renderOverlay = () => {
+        if (!isSending && !isError) return null;
+
+        return (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 rounded overlay-backdrop backdrop-blur-[2px] transition-all duration-300">
+                {isSending ? (
+                    <Loader2 className="h-8 w-8 text-white animate-spin drop-shadow-md" />
+                ) : (
+                    <div className="flex flex-col items-center gap-2">
+                        <AlertCircle className="h-8 w-8 text-destructive drop-shadow-md bg-white rounded-full" />
+                        {onRetry && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-8 px-3 text-xs font-semibold shadow-md cursor-pointer hover:bg-secondary/90 z-20 pointer-events-auto"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRetry(message.id);
+                                }}
+                            >
+                                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                                Coba Lagi
+                            </Button>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className={`flex ${isSeller ? 'justify-end' : 'justify-start'} mb-4 w-full`}>
@@ -203,7 +243,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                         <p className="break-words whitespace-pre-wrap">{message.content}</p>
 
                         {message.sourceContent?.item_id && (
-                            <ItemPreview itemId={message.sourceContent.item_id} />
+                            <ItemPreview itemId={message.sourceContent.item_id} shopId={message.sourceContent.shop_id} />
                         )}
 
                         {message.sourceContent?.order_sn && (
@@ -238,10 +278,39 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                                 imageUrl={message.imageUrl}
                                 altText={message.type === 'image_with_text' ? message.content : 'Pesan gambar'}
                             />
+                            {renderOverlay()}
                         </div>
                         {message.type === 'image_with_text' && message.content && (
                             <p className="break-words whitespace-pre-wrap mt-2">{message.content}</p>
                         )}
+                    </div>
+                ) : message.type === 'video' && message.videoUrl ? (
+                    <div className="relative inline-flex">
+                        <video
+                            src={message.videoUrl}
+                            poster={message.imageThumb?.url}
+                            preload="metadata"
+                            controls={!isSending && !isError}
+                            className={`rounded max-w-full bg-black/10 dark:bg-black/40 ${isSending || isError ? 'pointer-events-none focus:outline-none' : ''}`}
+                            style={{
+                                maxHeight: '300px',
+                                minHeight: '150px',
+                                width: 'auto',
+                                minWidth: '200px',
+                                maxWidth: '100%'
+                            }}
+                            onPlay={(e) => {
+                                if (isSending || isError) {
+                                    e.currentTarget.pause();
+                                }
+                            }}
+                            onClick={(e) => {
+                                if (isSending || isError) {
+                                    e.preventDefault();
+                                }
+                            }}
+                        />
+                        {renderOverlay()}
                     </div>
                 ) : message.type === 'order' && message.orderData ? (
                     <div className="flex flex-col">
@@ -259,7 +328,7 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
                             <ShoppingBag className="h-4 w-4 flex-shrink-0" />
                             <span className="text-xs font-medium">Detail Produk</span>
                         </div>
-                        <ItemPreview itemId={message.itemData.itemId} />
+                        <ItemPreview itemId={message.itemData.itemId} shopId={message.itemData.shopId} />
                     </div>
                 ) : message.type === 'sticker' && message.stickerData ? (
                     <div className="flex flex-col items-center justify-center">
@@ -277,7 +346,8 @@ const MessageBubble = React.memo(({ message, orders, isMobileView }: MessageBubb
     );
 }, (prevProps, nextProps) => {
     return prevProps.message.id === nextProps.message.id &&
-        prevProps.message.type === nextProps.message.type;
+        prevProps.message.type === nextProps.message.type &&
+        prevProps.message.status === nextProps.message.status;
 });
 
 MessageBubble.displayName = 'MessageBubble';

@@ -90,6 +90,8 @@ export {
     getMessages,
     sendMessage,
     readConversation,
-    uploadChatImage
+    uploadChatImage,
+    uploadChatVideo,
+    getChatVideoUploadResult
 } from './chat';
 

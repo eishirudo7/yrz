@@ -131,3 +131,41 @@ export async function uploadChatImage(shopId: number, file: File): Promise<{ url
     };
 }
 
+/**
+ * Upload video to Shopee CDN for use in chat messages
+ */
+export async function uploadChatVideo(shopId: number, file: File): Promise<{ vid: string }> {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+        throw new Error(`Tidak dapat menemukan access token untuk toko: ${shopId}`);
+    }
+
+    const result = await shopeeApi.uploadVideo(shopId, accessToken, file);
+
+    if (result.error) {
+        throw new Error(result.message || 'Gagal mengupload video ke Shopee');
+    }
+
+    return {
+        vid: result.response.vid,
+    };
+}
+
+/**
+ * Get video upload result from Shopee
+ */
+export async function getChatVideoUploadResult(shopId: number, vid: string): Promise<any> {
+    const accessToken = await getValidAccessToken(shopId);
+    if (!accessToken) {
+        throw new Error(`Tidak dapat menemukan access token untuk toko: ${shopId}`);
+    }
+
+    const result = await shopeeApi.getVideoUploadResult(shopId, accessToken, vid);
+
+    if (result.error) {
+        throw new Error(result.message || 'Gagal mendapatkan status upload video');
+    }
+
+    return result.response;
+}
+

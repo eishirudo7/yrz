@@ -11,6 +11,10 @@ export interface MessageContent {
   order_sn?: string;
   shop_id?: number;
   item_id?: number;
+  video_url?: string;
+  vid?: string | number;
+  duration?: number;
+  duration_seconds?: number;
 }
 
 // Tipe untuk source content
@@ -20,8 +24,8 @@ export interface SourceContent {
 }
 
 // Definisikan message type sebagai type tersendiri
-export type ShopeeMessageType = 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item' | 'new_message';
-export type UIMessageType = 'text' | 'image' | 'image_with_text' | 'order' | 'sticker' | 'item';
+export type ShopeeMessageType = 'text' | 'image' | 'video' | 'image_with_text' | 'order' | 'sticker' | 'item' | 'new_message';
+export type UIMessageType = 'text' | 'image' | 'video' | 'image_with_text' | 'order' | 'sticker' | 'item';
 
 // Tipe lengkap yang mewakili respons API Shopee
 export interface ShopeeMessage {
@@ -49,7 +53,12 @@ export interface UIMessage {
   content: string;
   time: string;
   type: UIMessageType;
+  status?: 'sending' | 'error' | 'success';
+  localFileUrl?: string;
+  file?: File;
   imageUrl?: string;
+  videoUrl?: string;
+  videoDuration?: number;
   imageThumb?: {
     url: string;
     height: number;
@@ -72,7 +81,7 @@ export interface UIMessage {
 
 // Fungsi untuk mengkonversi dari ShopeeMessage ke UIMessage
 export function convertToUIMessage(
-  message: ShopeeMessage, 
+  message: ShopeeMessage,
   shopId: number
 ): UIMessage {
   // Skip konversi jika tipe pesan adalah new_message
@@ -89,12 +98,28 @@ export function convertToUIMessage(
     };
   }
 
+  // Pastikan content adalah object (Shopee sering mengembalikan JSON string jika lewat API langsung)
+  let parsedContent = message.content as any;
+  if (typeof message.content === 'string') {
+    try {
+      parsedContent = JSON.parse(message.content);
+    } catch (e) {
+      console.warn('Gagal mem-parsing message.content:', message.content);
+      parsedContent = {};
+    }
+  }
+
+  if (message.message_type === 'video') {
+    console.log('[DEBUG UIMessage Conversion] Raw Message:', message);
+    console.log('[DEBUG UIMessage Conversion] Parsed Content:', parsedContent);
+  }
+
   return {
     id: message.message_id,
     sender: message.from_shop_id === shopId ? 'seller' : 'buyer',
     type: message.message_type,
     content: ['text', 'image_with_text'].includes(message.message_type)
-      ? message.content.text || ''
+      ? parsedContent.text || ''
       : message.message_type === 'order'
         ? 'Menampilkan detail pesanan'
         : message.message_type === 'sticker'
@@ -103,36 +128,58 @@ export function convertToUIMessage(
             ? 'Menampilkan detail produk'
             : '',
     imageUrl: message.message_type === 'image'
-      ? message.content.url
+      ? parsedContent.url
       : message.message_type === 'image_with_text'
-        ? message.content.image_url
+        ? parsedContent.image_url
         : undefined,
-    imageThumb: ['image', 'image_with_text'].includes(message.message_type) 
-      ? {
-          url: message.message_type === 'image'
-            ? (message.content.thumb_url || message.content.url || '')
-            : (message.content.thumb_url || message.content.image_url || ''),
-          height: message.content.thumb_height || 0,
-          width: message.content.thumb_width || 0
-        }
-      : undefined,
+    videoUrl: (() => {
+      if (message.message_type !== 'video') return undefined;
+      const url = parsedContent.video_url || parsedContent.url || '';
+      if (!url) return '';
+      if (!url.startsWith('http')) return `https://down-tx-sg.vod.susercontent.com/${url}`;
+      return url;
+    })(),
+    videoDuration: (() => {
+      if (message.message_type !== 'video') return undefined;
+      return parsedContent.duration_seconds || parsedContent.duration || 0;
+    })(),
+    imageThumb: (() => {
+      if (!['image', 'image_with_text', 'video'].includes(message.message_type)) return undefined;
+
+      let url = '';
+      if (message.message_type === 'image') {
+        url = parsedContent.thumb_url || parsedContent.url || '';
+      } else if (message.message_type === 'video') {
+        url = parsedContent.thumb_url || '';
+      } else {
+        url = parsedContent.thumb_url || parsedContent.image_url || '';
+      }
+
+      if (!url) return undefined;
+
+      return {
+        url,
+        height: parsedContent.thumb_height || 0,
+        width: parsedContent.thumb_width || 0
+      };
+    })(),
     orderData: message.message_type === 'order'
       ? {
-          shopId: message.content.shop_id || 0,
-          orderSn: message.content.order_sn || ''
-        }
+        shopId: parsedContent.shop_id || 0,
+        orderSn: parsedContent.order_sn || ''
+      }
       : undefined,
     stickerData: message.message_type === 'sticker'
       ? {
-          stickerId: message.content.sticker_id || '',
-          packageId: message.content.sticker_package_id || ''
-        }
+        stickerId: parsedContent.sticker_id || '',
+        packageId: parsedContent.sticker_package_id || ''
+      }
       : undefined,
     itemData: message.message_type === 'item'
       ? {
-          shopId: message.content.shop_id || 0,
-          itemId: message.content.item_id || 0
-        }
+        shopId: parsedContent.shop_id || 0,
+        itemId: parsedContent.item_id || 0
+      }
       : undefined,
     sourceContent: message.source_content,
     time: new Date(message.created_timestamp * 1000).toLocaleTimeString([], {
