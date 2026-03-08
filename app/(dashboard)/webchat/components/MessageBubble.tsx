@@ -47,7 +47,9 @@ const ItemPreview = React.memo(({ itemId, shopId }: { itemId: number; shopId?: n
 
     if (!item) return null;
 
-    const imageUrl = item.image.image_url_list[0];
+    const imageUrl = typeof item.image === 'string'
+        ? item.image
+        : item.image?.image_url_list?.[0] || '';
 
     return (
         <div className="flex gap-2 items-center p-2 bg-muted/30 rounded-md mt-2">
@@ -287,7 +289,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({ message, order
                 ) : message.type === 'video' && message.videoUrl ? (
                     <div className="relative inline-flex">
                         <video
-                            src={message.videoUrl}
+                            src={message.videoUrl ? `${message.videoUrl}#t=0.001` : undefined}
                             poster={message.imageThumb?.url}
                             preload="metadata"
                             controls={!isSending && !isError}
