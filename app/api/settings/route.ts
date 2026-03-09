@@ -64,25 +64,17 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .single();
 
-    if (subscriptionError || !subscription || new Date(subscription.end_date) < new Date()) {
-      console.log('Subscription tidak ditemukan, error, atau sudah expired. Mengembalikan ke default subscription');
-
-      // Jika expired, update status di database ke 'expired'
-      if (subscription && new Date(subscription.end_date) < new Date()) {
-        await supabase
-          .from('user_subscriptions')
-          .update({ status: 'expired' })
-          .eq('id', subscription.id);
-      }
+    if (subscriptionError || !subscription) {
+      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
 
       const { data: freePlan, error: planError } = await supabase
         .from('subscription_plans')
         .select('*')
-        .eq('name', 'Free')
+        .eq('name', 'Basic')
         .single();
 
       if (planError) {
-        console.error('Error saat mencari paket Free:', planError);
+        console.error('Error saat mencari paket Basic:', planError);
       }
 
       subscription = {
@@ -92,7 +84,7 @@ export async function GET(req: NextRequest) {
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
         plan: freePlan || {
           id: 'default-plan',
-          name: 'Free',
+          name: 'Basic',
           features: {
             feature_chat_ai: false,
             feature_flashsale: false,
@@ -243,25 +235,17 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
 
-    if (subscriptionError || !subscription || new Date(subscription.end_date) < new Date()) {
-      console.log('Subscription tidak ditemukan, error, atau sudah expired. Mengembalikan ke default subscription');
-
-      // Jika expired, update status di database ke 'expired'
-      if (subscription && new Date(subscription.end_date) < new Date()) {
-        await supabase
-          .from('user_subscriptions')
-          .update({ status: 'expired' })
-          .eq('id', subscription.id);
-      }
+    if (subscriptionError || !subscription) {
+      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
 
       const { data: freePlan, error: planError } = await supabase
         .from('subscription_plans')
         .select('*')
-        .eq('name', 'Free')
+        .eq('name', 'Basic')
         .single();
 
       if (planError) {
-        console.error('Error saat mencari paket Free:', planError);
+        console.error('Error saat mencari paket Basic:', planError);
       }
 
       subscription = {
@@ -271,7 +255,7 @@ export async function POST(req: NextRequest) {
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
         plan: freePlan || {
           id: 'default-plan',
-          name: 'Free',
+          name: 'Basic',
           features: {
             feature_chat_ai: false,
             feature_flashsale: false,
