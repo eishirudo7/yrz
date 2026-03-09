@@ -184,6 +184,37 @@ export default function UbahPesananPage() {
     }
   }, [chats])
 
+  // Effect untuk fetch status print saat data pesanan dimuat
+  useEffect(() => {
+    const orderSns = perubahanPesanan
+      .map(o => o.nomor_invoice)
+      .filter((sn): sn is string => !!sn)
+
+    if (orderSns.length === 0) return
+
+    const fetchPrintStatus = async () => {
+      try {
+        const response = await fetch('/api/data/print-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_sns: orderSns })
+        })
+        const result = await response.json()
+        if (result.success && result.printed?.length > 0) {
+          setPrintedOrders(prev => {
+            const next = new Set(prev)
+            result.printed.forEach((sn: string) => next.add(sn))
+            return next
+          })
+        }
+      } catch (error) {
+        console.error('Error fetching print status:', error)
+      }
+    }
+
+    fetchPrintStatus()
+  }, [perubahanPesanan])
+
   // Fungsi untuk mengambil detail pesanan
   const fetchOrderDetails = async (userId: string) => {
     setLoadingDetails(true)
