@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     // Ambil user ID dari session
     const userId = await getUserIdFromSession();
-    
+
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized', message: 'User tidak terautentikasi' },
@@ -35,14 +35,14 @@ export async function GET(req: NextRequest) {
 
     // Selalu ambil dari database terlebih dahulu
     const supabase = await createClient();
-      
+
     // Ambil pengaturan user
     const { data: pengaturan, error: pengaturanError } = await supabase
       .from('pengaturan')
       .select('*')
       .eq('user_id', userId)
       .single();
-    
+
     if (pengaturanError && pengaturanError.code !== 'PGRST116') {
       console.error('Error saat mengambil pengaturan:', pengaturanError);
       throw pengaturanError;
@@ -63,20 +63,28 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
-    
-    if (subscriptionError || !subscription) {
-      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
-      
+
+    if (subscriptionError || !subscription || new Date(subscription.end_date) < new Date()) {
+      console.log('Subscription tidak ditemukan, error, atau sudah expired. Mengembalikan ke default subscription');
+
+      // Jika expired, update status di database ke 'expired'
+      if (subscription && new Date(subscription.end_date) < new Date()) {
+        await supabase
+          .from('user_subscriptions')
+          .update({ status: 'expired' })
+          .eq('id', subscription.id);
+      }
+
       const { data: freePlan, error: planError } = await supabase
         .from('subscription_plans')
         .select('*')
-        .eq('name', 'Basic')
+        .eq('name', 'Free')
         .single();
-      
+
       if (planError) {
-        console.error('Error saat mencari paket Basic:', planError);
+        console.error('Error saat mencari paket Free:', planError);
       }
-      
+
       subscription = {
         id: 'default-subscription',
         status: 'active',
@@ -84,7 +92,7 @@ export async function GET(req: NextRequest) {
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
         plan: freePlan || {
           id: 'default-plan',
-          name: 'Basic',
+          name: 'Free',
           features: {
             feature_chat_ai: false,
             feature_flashsale: false,
@@ -97,20 +105,20 @@ export async function GET(req: NextRequest) {
 
     // Ambil data toko
     const userShops = await getAllShops();
-    
+
     // Proses data toko dan auto_ship_chat
     let transformedAutoShip: any[] = [];
-    
+
     if (userShops && userShops.length > 0) {
       // Buat array dari shop_id milik user
       const shopIds = userShops.map(shop => shop.shop_id);
-      
+
       // Query auto_ship_chat dengan shop_id yang dimiliki user
       const { data: autoShip, error: autoShipError } = await supabase
         .from('auto_ship_chat')
         .select('*')
         .in('shop_id', shopIds);
-      
+
       if (autoShipError) {
         console.error('Error saat mengambil auto ship:', autoShipError);
       } else {
@@ -119,17 +127,17 @@ export async function GET(req: NextRequest) {
           acc[shop.shop_id] = shop.shop_name || `Toko ${shop.shop_id}`;
           return acc;
         }, {});
-        
+
         // Dapatkan paket berlangganan user
         let maxShops = 1;
         let planName = 'basic';
-        
+
         if (subscription && subscription.plan && subscription.plan.length > 0) {
           const plan = subscription.plan[0];
           maxShops = plan.max_shops || 1;
           planName = plan.name || 'basic';
         }
-        
+
         // Transform data untuk kompatibilitas frontend
         transformedAutoShip = autoShip?.map(item => ({
           shop_id: item.shop_id,
@@ -137,7 +145,7 @@ export async function GET(req: NextRequest) {
           status_chat: item.status_chat || false,
           status_ship: item.status_ship || false
         })) || [];
-        
+
         // Tambahkan toko yang belum memiliki entri di auto_ship_chat
         userShops.forEach(shop => {
           const exists = transformedAutoShip.some(item => item.shop_id === shop.shop_id);
@@ -152,7 +160,7 @@ export async function GET(req: NextRequest) {
         });
       }
     }
-    
+
     // Gabungkan semua data
     const settingsData = {
       ...pengaturan,
@@ -160,10 +168,10 @@ export async function GET(req: NextRequest) {
       shops: transformedAutoShip,
       user_id: userId
     };
-    
+
     // Perbarui cache Redis SETELAH mengambil dari database
     await UserSettingsService.saveUserSettings(userId, settingsData);
-    
+
     // Respon data dari database ke frontend
     return NextResponse.json({
       ok: true,
@@ -196,21 +204,21 @@ export async function POST(req: NextRequest) {
   try {
     // Ambil user ID dari session
     const userId = await getUserIdFromSession();
-    
+
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized', message: 'User tidak terautentikasi' },
         { status: 401 }
       );
     }
-    
+
     // Inisialisasi Supabase
     const supabase = await createClient();
-    
+
     // Ambil data dari request
     const reqData = await req.json();
     const { updatedSettings, updatedAutoShip } = reqData;
-    
+
     // Validasi data
     if (!updatedSettings || !updatedAutoShip || !Array.isArray(updatedAutoShip)) {
       return NextResponse.json(
@@ -234,20 +242,28 @@ export async function POST(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
-    
-    if (subscriptionError || !subscription) {
-      console.log('Subscription tidak ditemukan atau error, membuat default subscription');
-      
+
+    if (subscriptionError || !subscription || new Date(subscription.end_date) < new Date()) {
+      console.log('Subscription tidak ditemukan, error, atau sudah expired. Mengembalikan ke default subscription');
+
+      // Jika expired, update status di database ke 'expired'
+      if (subscription && new Date(subscription.end_date) < new Date()) {
+        await supabase
+          .from('user_subscriptions')
+          .update({ status: 'expired' })
+          .eq('id', subscription.id);
+      }
+
       const { data: freePlan, error: planError } = await supabase
         .from('subscription_plans')
         .select('*')
-        .eq('name', 'Basic')
+        .eq('name', 'Free')
         .single();
-      
+
       if (planError) {
-        console.error('Error saat mencari paket Basic:', planError);
+        console.error('Error saat mencari paket Free:', planError);
       }
-      
+
       subscription = {
         id: 'default-subscription',
         status: 'active',
@@ -255,7 +271,7 @@ export async function POST(req: NextRequest) {
         end_date: new Date(new Date().setFullYear(new Date().getFullYear() + 10)).toISOString(),
         plan: freePlan || {
           id: 'default-plan',
-          name: 'Basic',
+          name: 'Free',
           features: {
             feature_chat_ai: false,
             feature_flashsale: false,
@@ -270,10 +286,10 @@ export async function POST(req: NextRequest) {
     const sanitizedSettings: UserSettings = {
       openai_api: updatedSettings.openai_api || null,
       openai_model: updatedSettings.openai_model || 'gpt-3.5-turbo',
-      openai_temperature: typeof updatedSettings.openai_temperature === 'number' ? 
+      openai_temperature: typeof updatedSettings.openai_temperature === 'number' ?
         updatedSettings.openai_temperature : 0.4,
       openai_prompt: updatedSettings.openai_prompt || '',
-      auto_ship_interval: typeof updatedSettings.auto_ship_interval === 'number' ? 
+      auto_ship_interval: typeof updatedSettings.auto_ship_interval === 'number' ?
         updatedSettings.auto_ship_interval : 5,
       in_cancel_msg: updatedSettings.in_cancel_msg !== undefined ? updatedSettings.in_cancel_msg : null,
       in_cancel_status: updatedSettings.in_cancel_status !== undefined ? updatedSettings.in_cancel_status : false,
@@ -342,8 +358,8 @@ export async function POST(req: NextRequest) {
 
     // Simpan ke UserSettingsService
     await UserSettingsService.saveUserSettings(userId, sanitizedSettings);
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       success: true,
       ok: true,
       message: 'Pengaturan berhasil disimpan',

@@ -56,21 +56,34 @@ export async function GET() {
         let formattedSubscription = null;
 
         if (subscriptionData && !subscriptionError) {
-            const planData = Array.isArray(subscriptionData.subscription_plans)
-                ? subscriptionData.subscription_plans[0]
-                : subscriptionData.subscription_plans;
+            const isExpired = new Date(subscriptionData.end_date) < new Date();
 
-            if (planData) {
-                formattedSubscription = {
-                    id: subscriptionData.id,
-                    plan_id: subscriptionData.plan_id,
-                    plan_name: planData.name,
-                    status: subscriptionData.status,
-                    start_date: subscriptionData.start_date,
-                    end_date: subscriptionData.end_date,
-                    max_shops: planData.max_shops,
-                    features: planData.features || []
-                };
+            if (isExpired) {
+                // Update status di database menjadi expired karena sudah melewati batas waktu
+                console.log(`Langganan ${subscriptionData.id} kedaluwarsa. Mengubah status ke expired.`);
+                await supabase
+                    .from('user_subscriptions')
+                    .update({ status: 'expired' })
+                    .eq('id', subscriptionData.id);
+
+                formattedSubscription = null;
+            } else {
+                const planData = Array.isArray(subscriptionData.subscription_plans)
+                    ? subscriptionData.subscription_plans[0]
+                    : subscriptionData.subscription_plans;
+
+                if (planData) {
+                    formattedSubscription = {
+                        id: subscriptionData.id,
+                        plan_id: subscriptionData.plan_id,
+                        plan_name: planData.name,
+                        status: subscriptionData.status,
+                        start_date: subscriptionData.start_date,
+                        end_date: subscriptionData.end_date,
+                        max_shops: planData.max_shops,
+                        features: planData.features || []
+                    };
+                }
             }
         } else if (subscriptionError && subscriptionError.code !== 'PGRST116') {
             // Ignore PGRST116 (No rows found), log other errors
