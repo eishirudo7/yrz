@@ -109,7 +109,7 @@ const HEALTH_CHECK_INTERVAL = 30 * 60 * 1000; // 30 menit dalam milliseconds
 const LAST_HEALTH_CHECK_KEY = 'last_health_check';
 
 export function Header() {
-
+  const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false)
   const { theme, setTheme } = useTheme()
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -146,6 +146,7 @@ export function Header() {
   }, [lastMessage])
 
   useEffect(() => {
+    setMounted(true);
     fetchNotifications()
     fetchUserShops()
   }, [])
@@ -389,7 +390,7 @@ export function Header() {
       <div className="flex-1 flex justify-center">
         <Link href="/">
           <Image
-            src={theme === 'dark' ? logoGelap : logoTerang}
+            src={mounted && theme === 'dark' ? logoGelap : logoTerang}
             alt="Logo Perusahaan"
             width={120}
             height={40}
@@ -760,7 +761,7 @@ export function Header() {
             size="icon"
             className="rounded-full hover:bg-muted"
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {mounted && theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
         )}
 
@@ -781,7 +782,7 @@ export function Header() {
                 <span>My Account</span>
                 {isMobile && (
                   <Button onClick={toggleTheme} variant="ghost" size="icon" className="ml-auto">
-                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {mounted && theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                   </Button>
                 )}
               </div>
