@@ -185,27 +185,24 @@ export default function ProfitCalculator({
   // Fungsi untuk mengambil semua data HPP sekaligus dari hpp_master
   const fetchAllSkuData = async (orders: Order[]) => {
     try {
-      const { data: { user } } = await createClient().auth.getUser()
+      // Query hpp_master via API (include canonical_sku for alias resolution)
+      const res = await fetch('/api/data/hpp');
+      const result = await res.json();
 
-      if (!user) {
-        toast.error('Anda harus login untuk mengakses fitur ini')
-        return
-      }
-
-      // Query hpp_master (include canonical_sku for alias resolution)
-      const { data, error } = await createClient()
-        .from('hpp_master')
-        .select('item_sku, tier1_variation, cost_price, canonical_sku')
-        .eq('user_id', user.id);
-
-      if (error) {
-        console.error('Error fetching HPP data:', error);
+      if (!res.ok) {
+        if (result.error === 'Tidak terautentikasi') {
+          toast.error('Anda harus login untuk mengakses fitur ini');
+        } else {
+          console.error('Error fetching HPP data:', result.error);
+        }
         return;
       }
 
+      const data = result.data;
+
       // Build alias map: alias SKU → canonical SKU
       const aliasMap: { [alias: string]: string } = {};
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         if (item.canonical_sku) {
           aliasMap[item.item_sku.toUpperCase()] = item.canonical_sku.toUpperCase();
         }
@@ -216,13 +213,13 @@ export default function ProfitCalculator({
       const skuMap: { [key: string]: { cost_price: number | null } } = {};
 
       // First pass: add all direct entries
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         const key = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
         skuMap[key] = { cost_price: item.cost_price };
       });
 
       // Second pass: resolve aliases (canonical_sku points to another SKU's HPP)
-      data?.forEach(item => {
+      data?.forEach((item: any) => {
         if (item.canonical_sku) {
           const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
           const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
@@ -236,7 +233,7 @@ export default function ProfitCalculator({
       setSkuProfitData(skuMap);
 
       // Detect missing SKUs/tier1s and trigger sync
-      await syncMissingSkus(orders, skuMap, user.id, aliasMap);
+      await syncMissingSkus(orders, skuMap, aliasMap);
 
     } catch (error) {
       console.error('Error in fetchAllSkuData:', error);
@@ -247,7 +244,6 @@ export default function ProfitCalculator({
   const syncMissingSkus = async (
     orders: Order[],
     currentMap: { [key: string]: any },
-    userId: string,
     aliasMap: { [alias: string]: string } = {}
   ) => {
     // Collect SKUs that are in orders but not in hpp_master
@@ -298,20 +294,19 @@ export default function ProfitCalculator({
         if (result.inserted > 0) {
           console.log(`Synced ${result.inserted} new SKU variations`);
           // Refetch HPP data after sync (with canonical_sku)
-          const { data: newData } = await createClient()
-            .from('hpp_master')
-            .select('item_sku, tier1_variation, cost_price, canonical_sku')
-            .eq('user_id', userId);
+          const refetchRes = await fetch('/api/data/hpp');
+          const refetchResult = await refetchRes.json();
+          const newData = refetchRes.ok ? refetchResult.data : null;
 
           if (newData) {
             const newMap: { [key: string]: { cost_price: number | null } } = {};
             // First pass
-            newData.forEach(item => {
+            newData.forEach((item: any) => {
               const k = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
               newMap[k] = { cost_price: item.cost_price };
             });
             // Resolve aliases
-            newData.forEach(item => {
+            newData.forEach((item: any) => {
               if (item.canonical_sku) {
                 const aliasKey = `${item.item_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
                 const canonicalKey = `${item.canonical_sku.toUpperCase()}|${(item.tier1_variation || '').toUpperCase()}`;
@@ -448,9 +443,8 @@ export default function ProfitCalculator({
     setProfitDetails([]);
 
     try {
-      const { data: { user } } = await createClient().auth.getUser();
-
-      if (!user) {
+      const res = await fetch('/api/data/hpp');
+      if (res.status === 401) {
         toast.error('Anda harus login untuk menghitung profit');
         setIsCalculating(false);
         return;

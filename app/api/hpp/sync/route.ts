@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { skus } = body as { skus: { sku: string, shop_id: number, item_id: number }[] };
+        const { skus } = body as { skus: { sku: string, shop_id: number, item_id: number, canonical_sku?: string }[] };
 
         if (!skus || !Array.isArray(skus) || skus.length === 0) {
             return NextResponse.json({ success: false, message: 'Parameter skus diperlukan' }, { status: 400 });
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         const errors: string[] = [];
 
         // Process each SKU
-        for (const { sku, shop_id, item_id } of skus) {
+        for (const { sku, shop_id, item_id, canonical_sku } of skus) {
             try {
                 // Call Shopee API to get all models/variations for this item
                 const result = await getModelList(shop_id, item_id);
@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
                     user_id: user.id,
                     item_sku: sku,
                     tier1_variation: tier1,
+                    ...(canonical_sku ? { canonical_sku } : {})
                 }));
 
                 const { error: upsertError, count } = await supabase
