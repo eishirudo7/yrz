@@ -80,11 +80,11 @@ const WebChatPage: React.FC = () => {
                     </TabsList>
                   </Tabs>
                 </div>
-                <div className="flex-1 overflow-hidden min-h-0">
+                <div className="flex-1 overflow-hidden min-h-0 relative">
                   <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} shopId={chat.selectedShop} onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} onRetry={chat.handleRetryMedia} />
-                </div>
-                <div className="p-4 py-3 border-t shrink-0">
-                  <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} orders={chat.orders} />
+                  <div className="absolute bottom-0 left-0 right-0 z-10">
+                    <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} orders={chat.orders} />
+                  </div>
                 </div>
               </div>
             ) : (
@@ -132,11 +132,11 @@ const WebChatPage: React.FC = () => {
               </div>
 
               {/* Chat area */}
-              <div className="flex-1 overflow-hidden min-h-0">
+              <div className="flex-1 overflow-hidden min-h-0 relative">
                 <ChatContent messages={chat.messages} orders={chat.orders} isLoading={chat.isLoading} error={chat.error} hasMoreMessages={chat.hasMoreMessages} isLoadingConversation={chat.isLoadingConversation} messagesEndRef={chat.messagesEndRef} setActiveTab={chat.setActiveTab} selectedConversation={chat.selectedConversation} isMobileView={chat.isMobileView} shopId={chat.selectedShop} onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} onRetry={chat.handleRetryMedia} />
-              </div>
-              <div className="p-4 py-3 border-t shrink-0">
-                <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} orders={chat.orders} />
+                <div className="absolute bottom-0 left-0 right-0 z-10">
+                  <MessageInput onSendMessage={chat.handleSendMessage} isSendingMessage={chat.isSendingMessage} shopId={chat.selectedShop} orders={chat.orders} />
+                </div>
               </div>
             </div>
           )}

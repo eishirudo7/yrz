@@ -1,5 +1,5 @@
 'use client'
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Loader2, MessageSquare } from "lucide-react";
 import { UIMessage } from '@/types/shopeeMessage';
@@ -20,19 +20,6 @@ const ChatContent = React.memo(({
 }: ChatContentProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-    // Scroll ke bawah ketika pesan baru ditambahkan atau percakapan dibuka
-    useEffect(() => {
-        if (messages.length > 0 && scrollContainerRef.current && !isLoading) {
-            const timeoutId = setTimeout(() => {
-                if (scrollContainerRef.current) {
-                    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-                }
-            }, 150);
-
-            return () => clearTimeout(timeoutId);
-        }
-    }, [messages.length, isLoading]);
 
     if (isLoadingConversation) {
         return (
@@ -88,6 +75,7 @@ const ChatContent = React.memo(({
             <div
                 ref={scrollContainerRef}
                 className="h-full w-full overflow-auto scrollbar-thin p-4"
+                style={{ paddingBottom: '200px' }}
             >
                 {messages.map((message) => (
                     <MessageBubble

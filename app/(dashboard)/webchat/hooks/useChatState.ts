@@ -21,6 +21,19 @@ export function useChatState() {
     const [selectedShop, setSelectedShop] = useState<number | null>(null);
     const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Centralized scroll helper — finds the scrollable parent and scrolls to bottom
+    const scrollToBottom = useCallback((smooth = true) => {
+        const el = messagesEndRef.current;
+        if (!el) return;
+        const container = el.parentElement;
+        if (!container) return;
+        container.scrollTo({
+            top: container.scrollHeight,
+            behavior: smooth ? 'smooth' : 'instant',
+        });
+    }, []);
+
     const [isMobileView, setIsMobileView] = useState(false);
     const [showConversationList, setShowConversationList] = useState(true);
     const [isFullScreenChat, setIsFullScreenChat] = useState(false);
@@ -197,9 +210,7 @@ export function useChatState() {
             } as UIMessage));
 
             setMessages(prev => [...prev, ...tempMessages]);
-            setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            }, 100);
+            setTimeout(() => scrollToBottom(), 100);
 
             // Execute asynchronous uploads
             for (const media of mediaFiles) {
@@ -232,9 +243,7 @@ export function useChatState() {
                 };
                 setMessages(prev => [...prev, newMessage]);
 
-                setTimeout(() => {
-                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                }, 100);
+                setTimeout(() => scrollToBottom(), 100);
 
             } catch (error) {
                 console.error('[handleSendMessage Text] Error:', error);
@@ -275,9 +284,7 @@ export function useChatState() {
                 };
                 setMessages(prev => [...prev, newMessage]);
 
-                setTimeout(() => {
-                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                }, 100);
+                setTimeout(() => scrollToBottom(), 100);
 
             } catch (error) {
                 console.error('[handleSendMessage Sticker] Error:', error);
@@ -312,9 +319,7 @@ export function useChatState() {
                 };
                 setMessages(prev => [...prev, newMessage]);
 
-                setTimeout(() => {
-                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                }, 100);
+                setTimeout(() => scrollToBottom(), 100);
 
             } catch (error) {
                 console.error('[handleSendMessage Item] Error:', error);
@@ -349,9 +354,7 @@ export function useChatState() {
                 };
                 setMessages(prev => [...prev, newMessage]);
 
-                setTimeout(() => {
-                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-                }, 100);
+                setTimeout(() => scrollToBottom(), 100);
 
             } catch (error) {
                 console.error('[handleSendMessage Order] Error:', error);
@@ -470,12 +473,10 @@ export function useChatState() {
     // Pertahankan hanya yang lebih efisien (compare length, bukan array reference)
     useEffect(() => {
         if (messages.length > 0 && !isLoading) {
-            const timer = setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            }, 100);
+            const timer = setTimeout(() => scrollToBottom(), 150);
             return () => clearTimeout(timer);
         }
-    }, [messages.length, isLoading]);
+    }, [messages.length, isLoading, scrollToBottom]);
 
     const fetchOrders = useCallback(async (userId: string) => {
         setIsLoadingOrders(true);
@@ -581,9 +582,7 @@ export function useChatState() {
         const newUIMessage = convertToUIMessage(shopeeMsg, selectedShop);
         setMessages(prev => [...prev, newUIMessage]);
 
-        setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
+        setTimeout(() => scrollToBottom(), 100);
 
     }, [lastMessage, selectedConversation, selectedShop, messages, selectedConversationData?.to_id]);
     // FIX #5: updateConversation DIHAPUS dari deps — store sudah update via handleSSEMessage
